@@ -11,7 +11,6 @@ UserRole _parseRole(String? value) {
   }
 }
 
-
 class AuthTokens {
   final String access;
   final String refresh;
@@ -19,9 +18,9 @@ class AuthTokens {
   const AuthTokens({required this.access, required this.refresh});
 
   factory AuthTokens.fromJson(Map<String, dynamic> json) => AuthTokens(
-        access: json['access'] as String,
-        refresh: json['refresh'] as String,
-      );
+    access: json['access'] as String,
+    refresh: json['refresh'] as String,
+  );
 }
 
 class Gym {
@@ -32,12 +31,16 @@ class Gym {
   const Gym({required this.id, required this.name, required this.needsSetup});
 
   factory Gym.fromJson(Map<String, dynamic> json) => Gym(
-        id: json['id'].toString(),
-        name: json['name'] as String? ?? '',
-        needsSetup: json['needs_setup'] as bool? ?? false,
-      );
+    id: json['id'].toString(),
+    name: json['name'] as String? ?? '',
+    needsSetup: json['needs_setup'] as bool? ?? false,
+  );
 
-  Map<String, dynamic> toJson() => {'id': id, 'name': name, 'needs_setup': needsSetup};
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'needs_setup': needsSetup,
+  };
 }
 
 class AuthUser {
@@ -60,22 +63,22 @@ class AuthUser {
   });
 
   factory AuthUser.fromJson(Map<String, dynamic> json) => AuthUser(
-        id: json['id'].toString(),
-        email: json['email'] as String? ?? '',
-        fullName: json['full_name'] as String? ?? '',
-        defaultLocationId: json['default_location_id']?.toString(),
-        role: _parseRole(json['role'] as String?),
-        gym: Gym.fromJson(json['gym'] as Map<String, dynamic>),
-        mustChangePassword: json['must_change_password'] as bool? ?? false,
-      );
+    id: json['id'].toString(),
+    email: json['email'] as String? ?? '',
+    fullName: json['full_name'] as String? ?? '',
+    defaultLocationId: json['default_location_id']?.toString(),
+    role: _parseRole(json['role'] as String?),
+    gym: Gym.fromJson(json['gym'] as Map<String, dynamic>),
+    mustChangePassword: json['must_change_password'] as bool? ?? false,
+  );
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'email': email,
-        'full_name': fullName,
-        'default_location_id': defaultLocationId,
-        'role': role.name,
-        'gym': gym.toJson(),
-        'must_change_password': mustChangePassword,
-      };
+    'id': id,
+    'email': email,
+    'full_name': fullName,
+    'default_location_id': defaultLocationId,
+    'role': role.name,
+    'gym': gym.toJson(),
+    'must_change_password': mustChangePassword,
+  };
 }

@@ -1,4 +1,3 @@
-// lib/features/shell/screens/home_placeholder_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../auth/providers/auth_providers.dart';

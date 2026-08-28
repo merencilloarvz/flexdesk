@@ -26,9 +26,14 @@ SECRET_KEY = 'django-insecure-gk*gwe#t5egz*q^_hnjaw_&2no(ci#ea0qxetkcl@90!joitxx
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', '192.168.68.227', '192.168.100.33']
-
-
+ALLOWED_HOSTS = ['localhost', '127.0.0.1', '192.168.68.227', '192.168.100.33','192.168.100.35']
+if DEBUG:
+    CORS_ALLOW_ALL_ORIGINS = True
+else:
+    CORS_ALLOWED_ORIGINS = [
+        # add your real Railway domain here once deployed, e.g.:
+        # "https://flexdesk.up.railway.app",
+    ]
 # Application definition
 
 INSTALLED_APPS = [
@@ -38,6 +43,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'corsheaders',
     "rest_framework",
     "django_filters",
     'core',
@@ -68,6 +74,7 @@ SIMPLE_JWT = {
 AUTH_USER_MODEL = "core.User"
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',

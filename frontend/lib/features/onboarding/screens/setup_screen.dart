@@ -1,4 +1,3 @@
-// lib/features/onboarding/screens/setup_screen.dart
 import 'package:flutter/material.dart';
 
 class SetupScreen extends StatelessWidget {
@@ -7,7 +6,9 @@ class SetupScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const Scaffold(
-      body: Center(child: Text('Setup — stub, needs_setup is false on your test gym')),
+      body: Center(
+        child: Text('Setup — stub, needs_setup is false on your test gym'),
+      ),
     );
   }
 }

@@ -7,12 +7,15 @@ class AuthApi {
   final Dio _dio;
   AuthApi(this._dio);
 
-  Future<(AuthTokens, AuthUser, String)> login(String email, String password) async {
+  Future<(AuthTokens, AuthUser, String)> login(
+    String email,
+    String password,
+  ) async {
     try {
-      final response = await _dio.post('/auth/login/', data: {
-        'email': email,
-        'password': password,
-      });
+      final response = await _dio.post(
+        '/auth/login/',
+        data: {'email': email, 'password': password},
+      );
       final data = response.data as Map<String, dynamic>;
       final userJson = data['user'] as Map<String, dynamic>;
 
@@ -37,13 +40,12 @@ class AuthApi {
 
   Future<void> changePassword(String oldPassword, String newPassword) async {
     try {
-      await _dio.post('/auth/change-password/', data: {
-        'old_password': oldPassword,
-        'new_password': newPassword,
-      });
+      await _dio.post(
+        '/auth/change-password/',
+        data: {'current_password': oldPassword, 'new_password': newPassword},
+      );
     } on DioException catch (e) {
       throw ApiException.from(e);
     }
   }
 }
-

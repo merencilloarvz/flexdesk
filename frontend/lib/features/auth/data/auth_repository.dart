@@ -19,9 +19,16 @@ class AuthRepository {
     return user;
   }
 
-  /// Session-validity rule: the refresh token is the sole authority on
-  /// "am I logged in." Its absence means unauthenticated, full stop —
-  /// regardless of what else might still be cached.
+  Future<AuthUser> changePassword(
+    String oldPassword,
+    String newPassword,
+  ) async {
+    await _api.changePassword(oldPassword, newPassword);
+    final user = await _api.me();
+    await _tokenStorage.updateCachedUser(jsonEncode(user.toJson()));
+    return user;
+  }
+
   Future<AuthUser?> restoreSession() async {
     final refresh = await _tokenStorage.readRefresh();
     if (refresh == null) return null;
@@ -29,13 +36,10 @@ class AuthRepository {
     final cachedJson = await _tokenStorage.readCachedUserJson();
     if (cachedJson != null) {
       try {
-        return AuthUser.fromJson(jsonDecode(cachedJson) as Map<String, dynamic>);
-      } catch (_) {
-        // Cache present but unparseable (stale shape, corruption) —
-        // fall through to a live fetch rather than treating this as
-        // logged-out. The refresh token is still valid; only the
-        // cache is bad.
-      }
+        return AuthUser.fromJson(
+          jsonDecode(cachedJson) as Map<String, dynamic>,
+        );
+      } catch (_) {}
     }
 
     return _api.me();

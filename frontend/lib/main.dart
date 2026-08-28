@@ -9,7 +9,6 @@ void main() {
 
 class FlexDeskApp extends ConsumerStatefulWidget {
   const FlexDeskApp({super.key});
-
   @override
   ConsumerState<FlexDeskApp> createState() => _FlexDeskAppState();
 }
@@ -18,20 +17,12 @@ class _FlexDeskAppState extends ConsumerState<FlexDeskApp> {
   @override
   void initState() {
     super.initState();
-    // Fires once at startup. Cache-first: no network call required if
-    // a valid refresh token + cached user JSON are already on disk.
-    // The router's redirect logic reacts to the resulting AuthState
-    // change via refreshListenable — no navigation call needed here.
     Future.microtask(() => ref.read(authControllerProvider.notifier).restore());
   }
 
   @override
   Widget build(BuildContext context) {
     final router = ref.watch(appRouterProvider);
-
-    return MaterialApp.router(
-      title: 'FlexDesk',
-      routerConfig: router,
-    );
+    return MaterialApp.router(title: 'FlexDesk', routerConfig: router);
   }
 }
