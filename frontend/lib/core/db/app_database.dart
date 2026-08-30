@@ -5,7 +5,7 @@ import 'package:drift/native.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
-
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'tables.dart';
 
 part 'app_database.g.dart';
@@ -26,10 +26,6 @@ class AppDatabase extends _$AppDatabase {
   MigrationStrategy get migration => MigrationStrategy(
     onCreate: (Migrator m) async {
       await m.createAll();
-
-      // Partial unique index — Drift's `uniqueKeys` can't express a
-      // WHERE clause, so this mirrors `uniq_member_code_per_gym`
-      // (gym_id, member_code) WHERE member_code != '' as raw SQL.
       await customStatement(
         'CREATE UNIQUE INDEX uniq_member_code_per_gym '
         'ON members (gym_id, member_code) '
@@ -37,16 +33,77 @@ class AppDatabase extends _$AppDatabase {
       );
     },
     onUpgrade: (Migrator m, int from, int to) async {
-      // v1 -> v2: added Members.currentPlanCategory (the Student/Regular
-      // badge). A fresh nullable column, so a plain addColumn is enough —
-      // existing rows just get NULL until the next refreshMembers() call
-      // fills it in from the server.
-      if (from < 2) {
-        await m.addColumn(members, members.currentPlanCategory);
+      try {
+        // v1 -> v2: added Members.currentPlanCategory (the Student/Regular
+        // badge). A fresh nullable column, so a plain addColumn is enough —
+        // existing rows just get NULL until the next refreshMembers() call
+        // fills it in from the server.
+        if (from < 2) {
+          await m.addColumn(members, members.currentPlanCategory);
+        }
+      } catch (e) {
+        if (kDebugMode)
+          rethrow; // fail loudly while building, never hide a real bug from yourself
+
+        // Recovery path for release builds only. Not all local rows are a
+        // re-downloadable cache — rows with isDirty:true (offline-created
+        // members never synced to the server) are the ONLY copy that
+        // exists. Rescue those before dropping anything.
+        List<Map<String, dynamic>> rescued = [];
+        try {
+          final rows = await customSelect(
+            'SELECT * FROM members WHERE is_dirty = 1',
+          ).get();
+          rescued = rows.map((r) => r.data).toList();
+        } catch (_) {
+          // If even reading failed, the table is too damaged to rescue from.
+          // Fall through to the drop — losing dirty rows here is a last
+          // resort, not the default path.
+        }
+
+        await m.deleteTable('members');
+        await m.deleteTable('membership_plans');
+        await m.createAll();
+        await customStatement(
+          'CREATE UNIQUE INDEX uniq_member_code_per_gym '
+          'ON members (gym_id, member_code) '
+          "WHERE member_code != '';",
+        );
+
+        // Best-effort re-insert. A row missing a field it used to have is
+        // recoverable; a missing member is not — so one bad row must never
+        // stop the rest from going back in.
+        for (final row in rescued) {
+          try {
+            await into(members).insert(
+              MembersCompanion.insert(
+                id: row['id'] as String,
+                gymId: row['gym_id'] as String,
+                homeLocationId: row['home_location_id'] as String,
+                firstName: row['first_name'] as String,
+                memberType: row['member_type'] as String,
+                createdAt: DateTime.fromMillisecondsSinceEpoch(
+                  (row['created_at'] as int) * 1000,
+                ),
+                updatedAt: DateTime.fromMillisecondsSinceEpoch(
+                  (row['updated_at'] as int) * 1000,
+                ),
+                memberCode: Value(row['member_code'] as String? ?? ''),
+                lastName: Value(row['last_name'] as String? ?? ''),
+                phone: Value(row['phone'] as String? ?? ''),
+                email: Value(row['email'] as String? ?? ''),
+                notes: Value(row['notes'] as String? ?? ''),
+                isDirty: const Value(true), // still unsynced, keep flagged
+              ),
+              mode: InsertMode.insertOrReplace,
+            );
+          } catch (_) {
+            // Skip this one row rather than aborting the whole recovery.
+          }
+        }
       }
     },
   );
-
   // Every query in this app should filter on gymId. A shared front-desk
   // tablet that has logged into two gyms will hold rows for both — the
   // gymId filter is the only thing keeping them apart locally.
