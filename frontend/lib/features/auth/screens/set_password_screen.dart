@@ -83,20 +83,27 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
       return;
     }
 
-    final result = await verify(_curCtrl.text, _nwCtrl.text);
-    if (!mounted) return;
+    try {
+      final result = await verify(_curCtrl.text, _nwCtrl.text);
+      if (!mounted) return;
 
-    if (result.isSuccess) {
-      setState(() {
-        _loading = false;
-        _done = true;
-      });
-      widget.onPasswordSet?.call();
-    } else {
-      setState(() {
-        _loading = false;
-        _error = result.errorMessage ?? "That temporary password isn't right.";
-      });
+      if (result.isSuccess) {
+        setState(() => _done = true);
+        await Future.delayed(const Duration(milliseconds: 900));
+        if (!mounted) return;
+        widget.onPasswordSet?.call();
+      } else {
+        setState(() {
+          _error =
+              result.errorMessage ?? "That temporary password isn't right.";
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _error = 'Something went wrong. Please try again.');
+      }
+    } finally {
+      if (mounted && !_done) setState(() => _loading = false);
     }
   }
 
@@ -150,7 +157,7 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.06),
+                color: Colors.black.withValues(alpha: 0.06),
                 blurRadius: 12,
                 offset: const Offset(0, 4),
               ),

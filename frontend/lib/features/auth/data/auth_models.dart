@@ -26,19 +26,33 @@ class AuthTokens {
 class Gym {
   final String id;
   final String name;
+  final String timezone;
+  final String currency;
   final bool needsSetup;
 
-  const Gym({required this.id, required this.name, required this.needsSetup});
+  const Gym({
+    required this.id,
+    required this.name,
+    required this.timezone,
+    required this.currency,
+    required this.needsSetup,
+  });
 
   factory Gym.fromJson(Map<String, dynamic> json) => Gym(
     id: json['id'].toString(),
     name: json['name'] as String? ?? '',
+    // Defaults, not hard casts: a cache written by the pre-fix toJson()
+    // has no timezone/currency key and must still parse on next launch.
+    timezone: json['timezone'] as String? ?? 'Asia/Manila',
+    currency: json['currency'] as String? ?? 'PHP',
     needsSetup: json['needs_setup'] as bool? ?? false,
   );
 
   Map<String, dynamic> toJson() => {
     'id': id,
     'name': name,
+    'timezone': timezone,
+    'currency': currency,
     'needs_setup': needsSetup,
   };
 }
@@ -81,4 +95,14 @@ class AuthUser {
     'gym': gym.toJson(),
     'must_change_password': mustChangePassword,
   };
+
+  AuthUser copyWith({bool? mustChangePassword}) => AuthUser(
+    id: id,
+    email: email,
+    fullName: fullName,
+    defaultLocationId: defaultLocationId,
+    role: role,
+    gym: gym,
+    mustChangePassword: mustChangePassword ?? this.mustChangePassword,
+  );
 }

@@ -18,11 +18,10 @@ class AuthInterceptor extends Interceptor {
   Completer<String?>? _refreshCompleter;
 
   AuthInterceptor({
-    required TokenStorage tokenStorage,
+    required this._tokenStorage,
     required String baseUrl,
     required this.onSessionExpired,
-  }) : _tokenStorage = tokenStorage,
-       _plainDio = Dio(
+  }) : _plainDio = Dio(
          BaseOptions(
            baseUrl: baseUrl,
            connectTimeout: ApiConfig.connectTimeout,

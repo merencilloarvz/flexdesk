@@ -50,8 +50,8 @@ class ApiException implements Exception {
         if (data['non_field_errors'] is List &&
             (data['non_field_errors'] as List).isNotEmpty) {
           message = (data['non_field_errors'] as List).join(' ');
-        } else if (fieldErrors != null && fieldErrors!.isNotEmpty) {
-          final firstList = fieldErrors!.values.first;
+        } else if (fieldErrors != null && fieldErrors.isNotEmpty) {
+          final firstList = fieldErrors.values.first;
           if (firstList.isNotEmpty) message = firstList.first;
         }
       }

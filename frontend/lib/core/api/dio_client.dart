@@ -6,7 +6,10 @@ import 'api_config.dart';
 import 'token_storage.dart';
 import '../../features/auth/providers/auth_providers.dart';
 
-Dio _buildDio(TokenStorage tokenStorage, {required void Function() onSessionExpired}) {
+Dio _buildDio(
+  TokenStorage tokenStorage, {
+  required void Function() onSessionExpired,
+}) {
   final dio = Dio(
     BaseOptions(
       baseUrl: ApiConfig.baseUrl,

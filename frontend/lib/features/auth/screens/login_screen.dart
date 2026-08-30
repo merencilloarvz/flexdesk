@@ -24,7 +24,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   Future<void> _submit() async {
-    if (_isSubmitting) return; // guard against double-submit on a throttled endpoint
+    if (_isSubmitting) {
+      return;
+    }
 
     final email = _emailController.text.trim();
     final password = _passwordController.text; // never trim the password
@@ -42,7 +44,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     } on ApiException catch (e) {
       setState(() => _errorMessage = e.message);
     } finally {
-      if (mounted) setState(() => _isSubmitting = false);
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+      }
     }
   }
 
@@ -86,7 +90,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     Text(
                       _errorMessage!,
                       textAlign: TextAlign.center,
-                      style: TextStyle(color: Theme.of(context).colorScheme.error),
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
                     ),
                     const SizedBox(height: 16),
                   ],

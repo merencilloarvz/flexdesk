@@ -1,4 +1,5 @@
 import 'dart:convert';
+import '../../../core/api/api_exception.dart';
 import '../../../core/api/token_storage.dart';
 import 'auth_api.dart';
 import 'auth_models.dart';
@@ -20,13 +21,41 @@ class AuthRepository {
   }
 
   Future<AuthUser> changePassword(
-    String oldPassword,
+    String currentPassword,
     String newPassword,
   ) async {
-    await _api.changePassword(oldPassword, newPassword);
-    final user = await _api.me();
-    await _tokenStorage.updateCachedUser(jsonEncode(user.toJson()));
-    return user;
+    await _api.changePassword(currentPassword, newPassword);
+
+    try {
+      final user = await _api.me();
+      await _tokenStorage.updateCachedUser(jsonEncode(user.toJson()));
+      return user;
+    } catch (_) {
+      final cachedJson = await _tokenStorage.readCachedUserJson();
+      if (cachedJson != null) {
+        try {
+          final cached = AuthUser.fromJson(
+            jsonDecode(cachedJson) as Map<String, dynamic>,
+          );
+          final updated = cached.copyWith(mustChangePassword: false);
+          await _tokenStorage.updateCachedUser(jsonEncode(updated.toJson()));
+          return updated;
+        } catch (_) {
+          throw ApiException(
+            kind: ApiExceptionKind.unknown,
+            message:
+                'Password was changed, but the local session could not '
+                'be refreshed. Please log in again with your new password.',
+          );
+        }
+      }
+      throw ApiException(
+        kind: ApiExceptionKind.unknown,
+        message:
+            'Password was changed, but the local session could not '
+            'be refreshed. Please log in again with your new password.',
+      );
+    }
   }
 
   Future<AuthUser?> restoreSession() async {
@@ -36,13 +65,16 @@ class AuthRepository {
     final cachedJson = await _tokenStorage.readCachedUserJson();
     if (cachedJson != null) {
       try {
-        return AuthUser.fromJson(
+        final user = AuthUser.fromJson(
           jsonDecode(cachedJson) as Map<String, dynamic>,
         );
+        return user;
       } catch (_) {}
     }
 
-    return _api.me();
+    final user = await _api.me();
+    await _tokenStorage.updateCachedUser(jsonEncode(user.toJson()));
+    return user;
   }
 
   Future<void> logout() async {

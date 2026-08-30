@@ -1,3 +1,4 @@
+import 'package:flexdesk/core/api/api_exception.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api/dio_client.dart';
 import '../../../core/api/token_storage.dart';
@@ -12,7 +13,8 @@ sealed class AuthState {
 }
 
 class AuthUnknown extends AuthState {
-  const AuthUnknown();
+  final bool restoreFailed;
+  const AuthUnknown({this.restoreFailed = false});
 }
 
 class AuthUnauthenticated extends AuthState {
@@ -45,6 +47,12 @@ class AuthController extends Notifier<AuthState> {
       state = user != null
           ? AuthAuthenticated(user)
           : const AuthUnauthenticated();
+    } on ApiException catch (e) {
+      // Only an explicit rejection means the session is dead. A network failure
+      // means we hold a valid refresh token and simply can't confirm the user yet.
+      state = e.kind == ApiExceptionKind.network
+          ? const AuthUnknown(restoreFailed: true)
+          : const AuthUnauthenticated();
     } catch (_) {
       state = const AuthUnauthenticated();
     }
@@ -55,17 +63,16 @@ class AuthController extends Notifier<AuthState> {
     state = AuthAuthenticated(user);
   }
 
-  Future<void> completePasswordChange(
-    String oldPassword,
+  Future<AuthUser> completePasswordChange(
+    String currentPassword,
     String newPassword,
   ) async {
-    final user = await ref
+    return ref
         .read(authRepositoryProvider)
-        .changePassword(oldPassword, newPassword);
-    Future.delayed(const Duration(milliseconds: 900), () {
-      state = AuthAuthenticated(user);
-    });
+        .changePassword(currentPassword, newPassword);
   }
+
+  void applyUser(AuthUser user) => state = AuthAuthenticated(user);
 
   Future<void> logout() async {
     await ref.read(authRepositoryProvider).logout();

@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'package:dio/dio.dart';
 import '../../../core/api/api_exception.dart';
-import 'auth_models.dart';
+import 'package:flexdesk/features/auth/data/auth_models.dart';
 
 class AuthApi {
   final Dio _dio;
@@ -38,11 +38,17 @@ class AuthApi {
     }
   }
 
-  Future<void> changePassword(String oldPassword, String newPassword) async {
+  Future<void> changePassword(
+    String currentPassword,
+    String newPassword,
+  ) async {
     try {
       await _dio.post(
         '/auth/change-password/',
-        data: {'current_password': oldPassword, 'new_password': newPassword},
+        data: {
+          'current_password': currentPassword,
+          'new_password': newPassword,
+        },
       );
     } on DioException catch (e) {
       throw ApiException.from(e);
