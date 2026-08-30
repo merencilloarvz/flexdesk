@@ -12,12 +12,23 @@ part 'app_database.g.dart';
 
 @DriftDatabase(tables: [Members, MembershipPlans])
 class AppDatabase extends _$AppDatabase {
-  AppDatabase() : super(_openConnection());
+  // Normally mirrors kDebugMode: fail loudly while developing, recover
+  // quietly in release. Overridable so tests can force recovery-path
+  // behavior even though `flutter test` always runs with kDebugMode true.
+  final bool _rethrowMigrationErrors;
 
-  // Lets tests (and the smoke-test script) pass NativeDatabase.memory()
-  // directly, bypassing path_provider — which needs Flutter bindings this
-  // constructor's caller may not have set up.
-  AppDatabase.forTesting(QueryExecutor executor) : super(executor);
+  AppDatabase({bool rethrowMigrationErrors = kDebugMode})
+    : _rethrowMigrationErrors = rethrowMigrationErrors,
+      super(_openConnection());
+
+  // Lets tests pass NativeDatabase directly, bypassing path_provider —
+  // which needs Flutter bindings this constructor's caller may not have
+  // set up.
+  AppDatabase.forTesting(
+    QueryExecutor executor, {
+    bool rethrowMigrationErrors = kDebugMode,
+  }) : _rethrowMigrationErrors = rethrowMigrationErrors,
+       super(executor);
 
   @override
   int get schemaVersion => 2;
@@ -42,8 +53,7 @@ class AppDatabase extends _$AppDatabase {
           await m.addColumn(members, members.currentPlanCategory);
         }
       } catch (e) {
-        if (kDebugMode)
-          rethrow; // fail loudly while building, never hide a real bug from yourself
+        if (_rethrowMigrationErrors) rethrow; // fail loudly while building
 
         // Recovery path for release builds only. Not all local rows are a
         // re-downloadable cache — rows with isDirty:true (offline-created
@@ -104,6 +114,7 @@ class AppDatabase extends _$AppDatabase {
       }
     },
   );
+
   // Every query in this app should filter on gymId. A shared front-desk
   // tablet that has logged into two gyms will hold rows for both — the
   // gymId filter is the only thing keeping them apart locally.
