@@ -12,6 +12,11 @@ import '../../features/auth/screens/login_screen.dart';
 import '../../features/auth/screens/set_password_screen.dart';
 import '../../features/onboarding/screens/setup_screen.dart';
 import '../../features/shell/screens/home_placeholder_screen.dart';
+import '../../features/shell/screens/settings_screen.dart';
+import '../../features/shell/app_shell.dart';
+import '../../features/checkin/checkin_placeholder_screen.dart';
+import '../../features/inventory/inventory_placeholder_screen.dart';
+import '../../features/pos/pos_placeholder_screen.dart';
 
 class _SplashScreen extends ConsumerWidget {
   const _SplashScreen();
@@ -95,6 +100,8 @@ class _MembersRoute extends ConsumerWidget {
   }
 }
 
+final _shellNavigatorKey = GlobalKey<NavigatorState>();
+
 final appRouterProvider = Provider<GoRouter>((ref) {
   final refreshNotifier = ValueNotifier<int>(0);
   final sub = ref.listen<AuthState>(authControllerProvider, (_, _) {
@@ -143,14 +150,17 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const _ChangePasswordRoute(),
       ),
       GoRoute(path: '/setup', builder: (context, state) => const SetupScreen()),
+
+      // Reached via the persistent gear icon in AppShell (context.push),
+      // not a bottom-nav tab — so it stays outside the ShellRoute and
+      // shows without the pill nav underneath it.
       GoRoute(
-        path: '/home',
-        builder: (context, state) => const HomePlaceholderScreen(),
+        path: '/settings',
+        builder: (context, state) => const SettingsScreen(),
       ),
-      GoRoute(
-        path: '/members',
-        builder: (context, state) => const _MembersRoute(),
-      ),
+
+      // Detail/create/manage flows stay as plain top-level routes, same
+      // as before — no bottom nav under these either.
       GoRoute(
         path: '/members/create',
         builder: (context, state) => const MemberCreateScreen(),
@@ -169,6 +179,36 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/members/:id',
         builder: (context, state) =>
             MemberDetailScreen(memberId: state.pathParameters['id']!),
+      ),
+
+      // Main tabs, wrapped in the persistent shell (floating pill nav).
+      // Add any future top-level screen as a sibling GoRoute inside this
+      // ShellRoute, not as a standalone route above.
+      ShellRoute(
+        navigatorKey: _shellNavigatorKey,
+        builder: (context, state, child) => AppShell(child: child),
+        routes: [
+          GoRoute(
+            path: '/home',
+            builder: (context, state) => const HomePlaceholderScreen(),
+          ),
+          GoRoute(
+            path: '/members',
+            builder: (context, state) => const _MembersRoute(),
+          ),
+          GoRoute(
+            path: '/checkin',
+            builder: (context, state) => const CheckInPlaceholderScreen(),
+          ),
+          GoRoute(
+            path: '/pos',
+            builder: (context, state) => const PosPlaceholderScreen(),
+          ),
+          GoRoute(
+            path: '/inventory',
+            builder: (context, state) => const InventoryPlaceholderScreen(),
+          ),
+        ],
       ),
     ],
   );

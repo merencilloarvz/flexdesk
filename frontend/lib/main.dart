@@ -23,6 +23,10 @@ class _FlexDeskAppState extends ConsumerState<FlexDeskApp> {
   @override
   Widget build(BuildContext context) {
     final router = ref.watch(appRouterProvider);
-    return MaterialApp.router(title: 'FlexDesk', routerConfig: router);
+    return MaterialApp.router(
+      title: 'FlexDesk',
+      routerConfig: router,
+      debugShowCheckedModeBanner: false,
+    );
   }
 }
