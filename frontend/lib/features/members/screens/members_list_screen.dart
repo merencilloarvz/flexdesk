@@ -3,32 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/db/app_database.dart';
+import '../../../core/theme/colors.dart';
 import '../../../core/utils/gym_time.dart';
 import '../../../core/utils/member_status.dart';
+import '../../shell/app_shell.dart';
 import '../providers/members_providers.dart';
 import '../providers/plans_provider.dart';
-
-const Color _cPageBg = Color(0xFFEDEFF0);
-const Color _cInk = Color(0xFF0E1A13);
-const Color _cSubtle = Color(0xFF6B7570);
-const Color _cMuted = Color(0xFF8A938E);
-const Color _cCardBg = Colors.white;
-const Color _cBorder = Color(0xFFD8DAD5);
-
-// Teal is the app's accent — used for the gym-name label, selected tab,
-// and (below) the active-status color. Amber/red stay as distinct warm
-// colors for warning/danger, so status is still readable at a glance
-// rather than three shades of the same hue.
-const Color _cAccentTeal = Color(0xFF0F6E56);
-
-const Color _cActiveBg = Color(0xFF0F6E56);
-const Color _cActiveIcon = Color(0xFFE1F5EE);
-const Color _cExpiringBg = Color(0xFF92600B);
-const Color _cExpiringIcon = Color(0xFFFBEEDC);
-const Color _cExpiredBg = Color(0xFF9E3125);
-const Color _cExpiredIcon = Color(0xFFFCEBE8);
-const Color _cNoMembershipBg = Color(0xFF5F6462);
-const Color _cNoMembershipIcon = Colors.white;
 
 enum _StatusFilter { all, active, expiring, expired }
 
@@ -108,150 +88,180 @@ class _MembersListScreenState extends ConsumerState<MembersListScreen> {
     final today = GymTime.today();
 
     return Scaffold(
-      backgroundColor: _cPageBg,
+      backgroundColor: AppColors.pageBg,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // TODO: gym name is hardcoded — wire to the real gym name
-              // from AuthUser.gym once threaded through to this screen.
-              const Text(
-                'IRON WORKS CEBU',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0.5,
-                  color: _cAccentTeal,
-                ),
-              ),
-              const SizedBox(height: 2),
-              const Text(
-                'Members',
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w500,
-                  color: _cInk,
-                ),
-              ),
-              const SizedBox(height: 14),
-
-              Container(
-                decoration: BoxDecoration(
-                  color: _cCardBg,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: TextField(
-                  controller: _searchController,
-                  decoration: const InputDecoration(
-                    hintText: 'Search by name',
-                    hintStyle: TextStyle(color: _cMuted, fontSize: 14),
-                    prefixIcon: Icon(Icons.search, color: _cMuted, size: 20),
-                    border: InputBorder.none,
-                    contentPadding: EdgeInsets.symmetric(vertical: 12),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 14),
-
-              Container(
-                padding: const EdgeInsets.only(bottom: 8),
-                decoration: const BoxDecoration(
-                  border: Border(
-                    bottom: BorderSide(color: _cBorder, width: 0.5),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    _TabLabel(
-                      label: 'All',
-                      selected: _filter == _StatusFilter.all,
-                      onTap: () => setState(() => _filter = _StatusFilter.all),
-                    ),
-                    const SizedBox(width: 16),
-                    _TabLabel(
-                      label: 'Active',
-                      selected: _filter == _StatusFilter.active,
-                      onTap: () =>
-                          setState(() => _filter = _StatusFilter.active),
-                    ),
-                    const SizedBox(width: 16),
-                    _TabLabel(
-                      label: 'Expiring',
-                      selected: _filter == _StatusFilter.expiring,
-                      onTap: () =>
-                          setState(() => _filter = _StatusFilter.expiring),
-                    ),
-                    const SizedBox(width: 16),
-                    _TabLabel(
-                      label: 'Expired',
-                      selected: _filter == _StatusFilter.expired,
-                      onTap: () =>
-                          setState(() => _filter = _StatusFilter.expired),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 10),
-
-              Expanded(
-                child: membersAsync.when(
-                  data: (members) {
-                    if (members.isEmpty) {
-                      return const _EmptyMembersList();
-                    }
-                    final filtered = _filtered(members, today);
-                    if (filtered.isEmpty) {
-                      return const Center(
-                        child: Text(
-                          'No members match',
-                          style: TextStyle(color: _cSubtle),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return Stack(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // TODO: gym name is hardcoded — wire to the real gym
+                      // name from AuthUser.gym once threaded through here.
+                      const Text(
+                        'IRON WORKS CEBU',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0.5,
+                          color: AppColors.accentTeal,
                         ),
-                      );
-                    }
-                    return RefreshIndicator(
-                      onRefresh: _refresh,
-                      child: ListView.separated(
-                        itemCount: filtered.length,
-                        separatorBuilder: (_, _) => const SizedBox(height: 8),
-                        itemBuilder: (context, index) =>
-                            _MemberTile(member: filtered[index], today: today),
                       ),
-                    );
-                  },
-                  loading: () =>
-                      const Center(child: CircularProgressIndicator()),
-                  error: (error, _) =>
-                      Center(child: Text('Something went wrong: $error')),
+                      const SizedBox(height: 2),
+                      const Text(
+                        'Members',
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w500,
+                          color: AppColors.ink,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+
+                      Container(
+                        decoration: BoxDecoration(
+                          color: AppColors.cardBg,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: TextField(
+                          controller: _searchController,
+                          decoration: const InputDecoration(
+                            hintText: 'Search by name',
+                            hintStyle: TextStyle(
+                              color: AppColors.muted,
+                              fontSize: 14,
+                            ),
+                            prefixIcon: Icon(
+                              Icons.search,
+                              color: AppColors.muted,
+                              size: 20,
+                            ),
+                            border: InputBorder.none,
+                            contentPadding: EdgeInsets.symmetric(vertical: 12),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+
+                      Container(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        decoration: const BoxDecoration(
+                          border: Border(
+                            bottom: BorderSide(
+                              color: AppColors.border,
+                              width: 0.5,
+                            ),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            _TabLabel(
+                              label: 'All',
+                              selected: _filter == _StatusFilter.all,
+                              onTap: () =>
+                                  setState(() => _filter = _StatusFilter.all),
+                            ),
+                            const SizedBox(width: 16),
+                            _TabLabel(
+                              label: 'Active',
+                              selected: _filter == _StatusFilter.active,
+                              onTap: () => setState(
+                                () => _filter = _StatusFilter.active,
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            _TabLabel(
+                              label: 'Expiring',
+                              selected: _filter == _StatusFilter.expiring,
+                              onTap: () => setState(
+                                () => _filter = _StatusFilter.expiring,
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            _TabLabel(
+                              label: 'Expired',
+                              selected: _filter == _StatusFilter.expired,
+                              onTap: () => setState(
+                                () => _filter = _StatusFilter.expired,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+
+                      Expanded(
+                        child: membersAsync.when(
+                          data: (members) {
+                            if (members.isEmpty) {
+                              return const _EmptyMembersList();
+                            }
+                            final filtered = _filtered(members, today);
+                            if (filtered.isEmpty) {
+                              return const Center(
+                                child: Text(
+                                  'No members match',
+                                  style: TextStyle(color: AppColors.subtle),
+                                ),
+                              );
+                            }
+                            return RefreshIndicator(
+                              onRefresh: _refresh,
+                              child: ListView.separated(
+                                padding: EdgeInsets.only(
+                                  bottom: AppShell.reservedNavHeight + 72,
+                                ),
+                                // Pre-builds rows just off-screen so they're
+                                // ready before they're scrolled into view —
+                                // smooths out scroll jank on longer lists.
+                                cacheExtent: 600,
+                                itemCount: filtered.length,
+                                separatorBuilder: (_, _) =>
+                                    const SizedBox(height: 8),
+                                itemBuilder: (context, index) {
+                                  final member = filtered[index];
+                                  return RepaintBoundary(
+                                    key: ValueKey(member.id),
+                                    child: _MemberTile(
+                                      member: member,
+                                      today: today,
+                                    ),
+                                  );
+                                },
+                              ),
+                            );
+                          },
+                          loading: () =>
+                              const Center(child: CircularProgressIndicator()),
+                          error: (error, _) => Center(
+                            child: Text('Something went wrong: $error'),
+                          ),
+                        ),
+                      ),
+
+                      if (_refreshFailed) ...[
+                        const SizedBox(height: 8),
+                        const _RefreshFailedBanner(),
+                      ],
+                    ],
+                  ),
                 ),
-              ),
 
-              if (_refreshFailed) ...[
-                const SizedBox(height: 8),
-                const _RefreshFailedBanner(),
-              ],
-
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
+                // Floating "Add Member" button — round, plus-only, starts
+                // bottom-right above the pill nav, and can be dragged
+                // anywhere on screen. Lives in its own widget/state so
+                // dragging only repaints the button, not this whole screen.
+                _DraggableAddButton(
+                  constraints: constraints,
+                  bottomInset: AppShell.reservedNavHeight,
                   onPressed: () => context.push('/members/create'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: _cInk,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                  ),
-                  child: const Text(
-                    'Add Member',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
-                  ),
                 ),
-              ),
-            ],
-          ),
+              ],
+            );
+          },
         ),
       ),
     );
@@ -278,7 +288,7 @@ class _TabLabel extends StatelessWidget {
         decoration: selected
             ? const BoxDecoration(
                 border: Border(
-                  bottom: BorderSide(color: _cAccentTeal, width: 2),
+                  bottom: BorderSide(color: AppColors.accentTeal, width: 2),
                 ),
               )
             : null,
@@ -287,7 +297,7 @@ class _TabLabel extends StatelessWidget {
           style: TextStyle(
             fontSize: 14,
             fontWeight: selected ? FontWeight.w500 : FontWeight.w400,
-            color: selected ? _cInk : _cSubtle,
+            color: selected ? AppColors.ink : AppColors.subtle,
           ),
         ),
       ),
@@ -308,20 +318,26 @@ class _MemberTile extends StatelessWidget {
     final remaining = daysRemaining(member.currentEndDate, today);
 
     final (avatarBg, avatarIcon) = switch (status) {
-      MembershipStatus.active => (_cActiveBg, _cActiveIcon),
-      MembershipStatus.expiring => (_cExpiringBg, _cExpiringIcon),
-      MembershipStatus.expired => (_cExpiredBg, _cExpiredIcon),
-      MembershipStatus.noMembership => (_cNoMembershipBg, _cNoMembershipIcon),
+      MembershipStatus.active => (AppColors.activeBg, AppColors.activeIcon),
+      MembershipStatus.expiring => (
+        AppColors.expiringBg,
+        AppColors.expiringIcon,
+      ),
+      MembershipStatus.expired => (AppColors.expiredBg, AppColors.expiredIcon),
+      MembershipStatus.noMembership => (
+        AppColors.noMembershipBg,
+        AppColors.noMembershipIcon,
+      ),
     };
     final labelColor = switch (status) {
-      MembershipStatus.active => _cActiveBg,
-      MembershipStatus.expiring => _cExpiringBg,
-      MembershipStatus.expired => _cExpiredBg,
-      MembershipStatus.noMembership => _cNoMembershipBg,
+      MembershipStatus.active => AppColors.activeBg,
+      MembershipStatus.expiring => AppColors.expiringBg,
+      MembershipStatus.expired => AppColors.expiredBg,
+      MembershipStatus.noMembership => AppColors.noMembershipBg,
     };
 
     return Material(
-      color: _cCardBg,
+      color: AppColors.cardBg,
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
@@ -349,14 +365,17 @@ class _MemberTile extends StatelessWidget {
                       style: const TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w500,
-                        color: _cInk,
+                        color: AppColors.ink,
                       ),
                     ),
                     if (member.currentPlanCategory != null &&
                         member.currentPlanCategory!.isNotEmpty)
                       Text(
                         member.currentPlanCategory!,
-                        style: const TextStyle(fontSize: 12, color: _cMuted),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: AppColors.muted,
+                        ),
                       ),
                   ],
                 ),
@@ -374,7 +393,10 @@ class _MemberTile extends StatelessWidget {
                   ),
                   Text(
                     _detailLabel(status, remaining),
-                    style: const TextStyle(fontSize: 11, color: _cMuted),
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: AppColors.muted,
+                    ),
                   ),
                 ],
               ),
@@ -413,7 +435,7 @@ class _EmptyMembersList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const Center(
-      child: Text('No members yet', style: TextStyle(color: _cSubtle)),
+      child: Text('No members yet', style: TextStyle(color: AppColors.subtle)),
     );
   }
 }
@@ -427,12 +449,67 @@ class _RefreshFailedBanner extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
       decoration: BoxDecoration(
-        color: const Color(0xFFFCEBE8),
+        color: AppColors.errorBg,
         borderRadius: BorderRadius.circular(10),
       ),
       child: const Text(
         "Couldn't refresh — showing cached list",
-        style: TextStyle(color: Color(0xFF9E3125), fontSize: 13),
+        style: TextStyle(color: AppColors.errorText, fontSize: 13),
+      ),
+    );
+  }
+}
+
+class _DraggableAddButton extends StatefulWidget {
+  const _DraggableAddButton({
+    required this.constraints,
+    required this.bottomInset,
+    required this.onPressed,
+  });
+
+  final BoxConstraints constraints;
+  final double bottomInset;
+  final VoidCallback onPressed;
+
+  @override
+  State<_DraggableAddButton> createState() => _DraggableAddButtonState();
+}
+
+class _DraggableAddButtonState extends State<_DraggableAddButton> {
+  Offset? _offset;
+
+  @override
+  Widget build(BuildContext context) {
+    final defaultOffset = Offset(
+      widget.constraints.maxWidth - 16 - 56,
+      widget.constraints.maxHeight - widget.bottomInset - 56,
+    );
+    final offset = _offset ?? defaultOffset;
+
+    return Positioned(
+      left: offset.dx,
+      top: offset.dy,
+      child: GestureDetector(
+        onPanUpdate: (details) {
+          setState(() {
+            final current = _offset ?? defaultOffset;
+            final newX = (current.dx + details.delta.dx).clamp(
+              0.0,
+              widget.constraints.maxWidth - 56,
+            );
+            final newY = (current.dy + details.delta.dy).clamp(
+              0.0,
+              widget.constraints.maxHeight - 56,
+            );
+            _offset = Offset(newX, newY);
+          });
+        },
+        child: FloatingActionButton(
+          onPressed: widget.onPressed,
+          backgroundColor: AppColors.ink,
+          shape: const CircleBorder(),
+          child: const Icon(Icons.add),
+        ),
       ),
     );
   }

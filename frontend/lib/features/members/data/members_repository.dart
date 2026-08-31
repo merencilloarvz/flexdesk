@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:drift/drift.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
@@ -32,8 +34,9 @@ class MembersRepository {
   static final _dateFormat = DateFormat('yyyy-MM-dd');
 
   Future<void> refreshMembers(String gymId) async {
-    final rawMembers = await _api.fetchAllMembers();
+    await syncPendingMembers(gymId);
 
+    final rawMembers = await _api.fetchAllMembers();
     final rows = rawMembers.map((json) => memberFromJson(json, gymId)).toList();
     final fetchedIds = rawMembers.map((json) => json['id'] as String).toSet();
 
@@ -48,6 +51,66 @@ class MembersRepository {
           ))
           .go();
     });
+  }
+
+  /// Retries every offline-created member that's still marked dirty. Each
+  /// one replays the exact request it tried to send originally (the plan
+  /// choice included), since `createMember` is idempotent server-side on
+  /// `id` — calling it again for an already-synced id is safe.
+  Future<void> syncPendingMembers(String gymId) async {
+    final pending =
+        await (_db.select(_db.members)..where(
+              (m) =>
+                  m.gymId.equals(gymId) &
+                  m.isDirty.equals(true) &
+                  m.pendingPayload.isNotNull(),
+            ))
+            .get();
+
+    for (final member in pending) {
+      final payload = member.pendingPayload;
+      if (payload == null) continue;
+
+      try {
+        final body = jsonDecode(payload) as Map<String, dynamic>;
+        await _api.createMember(body);
+        await (_db.update(
+          _db.members,
+        )..where((m) => m.id.equals(member.id))).write(
+          const MembersCompanion(
+            isDirty: Value(false),
+            pendingPayload: Value(null),
+          ),
+        );
+      } on ApiException catch (e) {
+        if (e.kind == ApiExceptionKind.network) {
+          // Still offline — stop trying the rest this round, they'll fail too.
+          return;
+        }
+        final isIdempotentDuplicate =
+            e.kind == ApiExceptionKind.validation &&
+            (e.fieldErrors?.containsKey('id') ?? false);
+        if (isIdempotentDuplicate) {
+          await (_db.update(
+            _db.members,
+          )..where((m) => m.id.equals(member.id))).write(
+            const MembersCompanion(
+              isDirty: Value(false),
+              pendingPayload: Value(null),
+            ),
+          );
+        }
+        // Any other rejection: leave it dirty. It'll show up in the
+        // logout warning, which is the correct signal that it needs
+        // manual attention.
+      } catch (_) {
+        // A corrupt/unparseable stored payload (e.g. jsonDecode failure)
+        // must not take down the whole refresh — skip this row and let
+        // the rest of the batch continue. It'll keep showing as dirty,
+        // same as any other unresolved row.
+        continue;
+      }
+    }
   }
 
   Stream<List<Member>> watchVisibleMembers(String gymId) =>
@@ -109,6 +172,20 @@ class MembersRepository {
     final now = DateTime.now();
     final startDate = GymTime.today();
 
+    final body = <String, dynamic>{
+      'id': id,
+      'first_name': firstName,
+      'last_name': lastName,
+      'phone': phone,
+      'email': email,
+      if (dateOfBirth != null) 'date_of_birth': _dateFormat.format(dateOfBirth),
+      'member_type': memberType,
+      'notes': notes,
+      'home_location': homeLocationId,
+      'start_date': _dateFormat.format(startDate),
+      if (planId != null) 'plan_id': planId,
+    };
+
     await _db
         .into(_db.members)
         .insertOnConflictUpdate(
@@ -128,22 +205,9 @@ class MembersRepository {
             updatedAt: now,
             archivedAt: const Value(null),
             isDirty: const Value(true),
+            pendingPayload: Value(jsonEncode(body)),
           ),
         );
-
-    final body = <String, dynamic>{
-      'id': id,
-      'first_name': firstName,
-      'last_name': lastName,
-      'phone': phone,
-      'email': email,
-      if (dateOfBirth != null) 'date_of_birth': _dateFormat.format(dateOfBirth),
-      'member_type': memberType,
-      'notes': notes,
-      'home_location': homeLocationId,
-      'start_date': _dateFormat.format(startDate),
-      if (planId != null) 'plan_id': planId,
-    };
 
     try {
       await _api.createMember(body);
@@ -175,7 +239,10 @@ class MembersRepository {
 
   Future<void> _markSyncedAndRefresh(String id, String gymId) async {
     await (_db.update(_db.members)..where((m) => m.id.equals(id))).write(
-      const MembersCompanion(isDirty: Value(false)),
+      const MembersCompanion(
+        isDirty: Value(false),
+        pendingPayload: Value(null),
+      ),
     );
     await refreshMembers(gymId);
   }

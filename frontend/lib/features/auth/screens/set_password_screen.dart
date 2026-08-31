@@ -1,19 +1,7 @@
 // lib/features/auth/screens/set_password_screen.dart
 import 'package:flutter/material.dart';
 
-const Color _cPageBg = Color(0xFFEDEFF0);
-const Color _cInk = Color(0xFF0E1A13);
-const Color _cSubtle = Color(0xFF6B7570);
-const Color _cMuted = Color(0xFF8A938E);
-const Color _cFieldBg = Color(0xFFF5F6F7);
-const Color _cCardBg = Colors.white;
-const Color _cAccentGreen = Color(0xFF39C77F);
-const Color _cErrorBg = Color(0xFFFCEBE8);
-const Color _cErrorText = Color(0xFF9E3125);
-const Color _cSuccessBg = Color(0xFFE6F6ED);
-const Color _cLinkGreen = Color(0xFF1F7A4D);
-const Color _cDisabledBg = Color(0xFFE2E5E3);
-const Color _cDisabledLabel = Color(0xFF9AA39E);
+import '../../../core/theme/colors.dart';
 
 class TempPasswordResult {
   const TempPasswordResult.success() : errorMessage = null;
@@ -110,7 +98,7 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _cPageBg,
+      backgroundColor: AppColors.pageBg,
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
@@ -138,13 +126,13 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
           style: TextStyle(
             fontSize: 26,
             fontWeight: FontWeight.bold,
-            color: _cInk,
+            color: AppColors.ink,
           ),
         ),
         const SizedBox(height: 8),
         const Text(
           'Your gym owner created a temporary password for you. Choose a new one to continue.',
-          style: TextStyle(fontSize: 15, color: _cSubtle),
+          style: TextStyle(fontSize: 15, color: AppColors.subtle),
         ),
         const SizedBox(height: 24),
 
@@ -153,7 +141,7 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
         Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: _cCardBg,
+            color: AppColors.cardBg,
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
@@ -201,7 +189,7 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
         Center(
           child: Text(
             'Signed in as ${widget.staffEmail}',
-            style: const TextStyle(fontSize: 13, color: _cMuted),
+            style: const TextStyle(fontSize: 13, color: AppColors.muted),
           ),
         ),
       ],
@@ -214,7 +202,7 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
-          color: _cInk,
+          color: AppColors.ink,
           borderRadius: BorderRadius.circular(999),
         ),
         child: Row(
@@ -224,7 +212,7 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
               width: 6,
               height: 6,
               decoration: const BoxDecoration(
-                color: _cAccentGreen,
+                color: AppColors.accentGreen,
                 shape: BoxShape.circle,
               ),
             ),
@@ -248,17 +236,17 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: _cErrorBg,
+        color: AppColors.errorBg,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
         children: [
-          const Icon(Icons.error_outline, color: _cErrorText, size: 20),
+          const Icon(Icons.error_outline, color: AppColors.errorText, size: 20),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
               message,
-              style: const TextStyle(color: _cErrorText, fontSize: 14),
+              style: const TextStyle(color: AppColors.errorText, fontSize: 14),
             ),
           ),
         ],
@@ -283,7 +271,7 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
           style: const TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w600,
-            color: _cSubtle,
+            color: AppColors.subtle,
           ),
         ),
         const SizedBox(height: 6),
@@ -291,7 +279,7 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
           height: 52,
           padding: const EdgeInsets.symmetric(horizontal: 14),
           decoration: BoxDecoration(
-            color: _cFieldBg,
+            color: AppColors.fieldBg,
             borderRadius: BorderRadius.circular(12),
           ),
           child: Row(
@@ -318,7 +306,10 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
           const SizedBox(height: 4),
           Text(
             helper,
-            style: TextStyle(fontSize: 12, color: helperColor ?? _cMuted),
+            style: TextStyle(
+              fontSize: 12,
+              color: helperColor ?? AppColors.muted,
+            ),
           ),
         ],
       ],
@@ -331,8 +322,8 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
       child: ElevatedButton(
         onPressed: (_isValid && !_loading) ? _submit : null,
         style: ElevatedButton.styleFrom(
-          backgroundColor: _isValid ? _cInk : _cDisabledBg,
-          foregroundColor: _isValid ? Colors.white : _cDisabledLabel,
+          backgroundColor: _isValid ? AppColors.ink : AppColors.disabledBg,
+          foregroundColor: _isValid ? Colors.white : AppColors.disabledLabel,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(999),
           ),
@@ -362,10 +353,10 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
           width: 72,
           height: 72,
           decoration: const BoxDecoration(
-            color: _cSuccessBg,
+            color: AppColors.successBg,
             shape: BoxShape.circle,
           ),
-          child: const Icon(Icons.check, size: 32, color: _cLinkGreen),
+          child: const Icon(Icons.check, size: 32, color: AppColors.linkGreen),
         ),
         const SizedBox(height: 20),
         const Text(
@@ -373,14 +364,14 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
           style: TextStyle(
             fontSize: 22,
             fontWeight: FontWeight.bold,
-            color: _cInk,
+            color: AppColors.ink,
           ),
         ),
         const SizedBox(height: 8),
         const Text(
           "You're all set. Taking you to the front desk…",
           textAlign: TextAlign.center,
-          style: TextStyle(color: _cSubtle),
+          style: TextStyle(color: AppColors.subtle),
         ),
       ],
     );

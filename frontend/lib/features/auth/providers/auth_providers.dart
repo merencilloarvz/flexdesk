@@ -2,6 +2,7 @@ import 'package:flexdesk/core/api/api_exception.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api/dio_client.dart';
 import '../../../core/api/token_storage.dart';
+import '../../../core/db/app_database.dart';
 import '../data/auth_api.dart';
 import '../data/auth_repository.dart';
 import '../data/auth_models.dart';
@@ -24,6 +25,14 @@ class AuthUnauthenticated extends AuthState {
 class AuthAuthenticated extends AuthState {
   final AuthUser user;
   const AuthAuthenticated(this.user);
+}
+
+// Thrown by logout() when there are offline-created members that haven't
+// synced yet. The UI should catch this, warn the user, and call
+// logout(force: true) if they confirm they want to proceed anyway.
+class UnsyncedDataException implements Exception {
+  final int count;
+  const UnsyncedDataException(this.count);
 }
 
 final authApiProvider = Provider<AuthApi>(
@@ -74,7 +83,17 @@ class AuthController extends Notifier<AuthState> {
 
   void applyUser(AuthUser user) => state = AuthAuthenticated(user);
 
-  Future<void> logout() async {
+  Future<void> logout({bool force = false}) async {
+    final db = ref.read(dbProvider);
+
+    if (!force) {
+      final dirtyCount = await db.countDirtyMembers();
+      if (dirtyCount > 0) {
+        throw UnsyncedDataException(dirtyCount);
+      }
+    }
+
+    await db.clearAllData();
     await ref.read(authRepositoryProvider).logout();
     state = const AuthUnauthenticated();
   }

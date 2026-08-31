@@ -11,8 +11,10 @@ import '../../features/auth/providers/auth_providers.dart';
 import '../../features/auth/screens/login_screen.dart';
 import '../../features/auth/screens/set_password_screen.dart';
 import '../../features/onboarding/screens/setup_screen.dart';
+import '../../features/settings/screens/staff_list_screen.dart';
+import '../../features/settings/screens/staff_create_screen.dart';
 import '../../features/shell/screens/home_placeholder_screen.dart';
-import '../../features/shell/screens/settings_screen.dart';
+import '../../features/settings/screens/settings_screen.dart';
 import '../../features/shell/app_shell.dart';
 import '../../features/checkin/checkin_placeholder_screen.dart';
 import '../../features/inventory/inventory_placeholder_screen.dart';
@@ -86,9 +88,6 @@ class _ChangePasswordRouteState extends ConsumerState<_ChangePasswordRoute> {
   }
 }
 
-// TODO: assumes `user.gym` has an `id` field, matching the pattern already
-// used for `user.gym.needsSetup` below. If the field is named differently,
-// adjust the one line inside build().
 class _MembersRoute extends ConsumerWidget {
   const _MembersRoute();
 
@@ -100,7 +99,14 @@ class _MembersRoute extends ConsumerWidget {
   }
 }
 
-final _shellNavigatorKey = GlobalKey<NavigatorState>();
+// One key per tab, required by StatefulShellRoute so each branch keeps
+// its own independent Navigator (and therefore its own state/scroll
+// position) instead of being torn down on every tab switch.
+final _homeNavigatorKey = GlobalKey<NavigatorState>();
+final _membersNavigatorKey = GlobalKey<NavigatorState>();
+final _checkinNavigatorKey = GlobalKey<NavigatorState>();
+final _posNavigatorKey = GlobalKey<NavigatorState>();
+final _inventoryNavigatorKey = GlobalKey<NavigatorState>();
 
 final appRouterProvider = Provider<GoRouter>((ref) {
   final refreshNotifier = ValueNotifier<int>(0);
@@ -129,6 +135,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           if (user.gym.needsSetup) {
             return loc == '/setup' ? null : '/setup';
           }
+          // Belt-and-braces guard: the Settings screen already hides the
+          // entry point from staff, but this stops a deep link from
+          // reaching the screen at all.
+          if (loc.startsWith('/settings/staff') &&
+              user.role != UserRole.owner) {
+            return '/settings';
+          }
           if (loc == '/login' ||
               loc == '/splash' ||
               loc == '/change-password' ||
@@ -152,11 +165,19 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/setup', builder: (context, state) => const SetupScreen()),
 
       // Reached via the persistent gear icon in AppShell (context.push),
-      // not a bottom-nav tab — so it stays outside the ShellRoute and
+      // not a bottom-nav tab — so it stays outside the shell and
       // shows without the pill nav underneath it.
       GoRoute(
         path: '/settings',
         builder: (context, state) => const SettingsScreen(),
+      ),
+      GoRoute(
+        path: '/settings/staff',
+        builder: (context, state) => const StaffListScreen(),
+      ),
+      GoRoute(
+        path: '/settings/staff/create',
+        builder: (context, state) => const StaffCreateScreen(),
       ),
 
       // Detail/create/manage flows stay as plain top-level routes, same
@@ -182,31 +203,61 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ),
 
       // Main tabs, wrapped in the persistent shell (floating pill nav).
-      // Add any future top-level screen as a sibling GoRoute inside this
-      // ShellRoute, not as a standalone route above.
-      ShellRoute(
-        navigatorKey: _shellNavigatorKey,
-        builder: (context, state, child) => AppShell(child: child),
-        routes: [
-          GoRoute(
-            path: '/home',
-            builder: (context, state) => const HomePlaceholderScreen(),
+      // StatefulShellRoute.indexedStack keeps each tab's own Navigator
+      // (and its state/scroll position) alive in the background when
+      // you switch tabs, instead of rebuilding the branch from scratch
+      // like a plain ShellRoute does.
+      //
+      // Add any future tab as a new StatefulShellBranch below, not as
+      // a standalone route above.
+      StatefulShellRoute.indexedStack(
+        builder: (context, state, navigationShell) =>
+            AppShell(navigationShell: navigationShell),
+        branches: [
+          StatefulShellBranch(
+            navigatorKey: _homeNavigatorKey,
+            routes: [
+              GoRoute(
+                path: '/home',
+                builder: (context, state) => const HomePlaceholderScreen(),
+              ),
+            ],
           ),
-          GoRoute(
-            path: '/members',
-            builder: (context, state) => const _MembersRoute(),
+          StatefulShellBranch(
+            navigatorKey: _membersNavigatorKey,
+            routes: [
+              GoRoute(
+                path: '/members',
+                builder: (context, state) => const _MembersRoute(),
+              ),
+            ],
           ),
-          GoRoute(
-            path: '/checkin',
-            builder: (context, state) => const CheckInPlaceholderScreen(),
+          StatefulShellBranch(
+            navigatorKey: _checkinNavigatorKey,
+            routes: [
+              GoRoute(
+                path: '/checkin',
+                builder: (context, state) => const CheckInPlaceholderScreen(),
+              ),
+            ],
           ),
-          GoRoute(
-            path: '/pos',
-            builder: (context, state) => const PosPlaceholderScreen(),
+          StatefulShellBranch(
+            navigatorKey: _posNavigatorKey,
+            routes: [
+              GoRoute(
+                path: '/pos',
+                builder: (context, state) => const PosPlaceholderScreen(),
+              ),
+            ],
           ),
-          GoRoute(
-            path: '/inventory',
-            builder: (context, state) => const InventoryPlaceholderScreen(),
+          StatefulShellBranch(
+            navigatorKey: _inventoryNavigatorKey,
+            routes: [
+              GoRoute(
+                path: '/inventory',
+                builder: (context, state) => const InventoryPlaceholderScreen(),
+              ),
+            ],
           ),
         ],
       ),

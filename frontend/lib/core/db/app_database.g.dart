@@ -195,6 +195,17 @@ class $MembersTable extends Members with TableInfo<$MembersTable, Member> {
     ),
     defaultValue: const Constant(false),
   );
+  static const VerificationMeta _pendingPayloadMeta = const VerificationMeta(
+    'pendingPayload',
+  );
+  @override
+  late final GeneratedColumn<String> pendingPayload = GeneratedColumn<String>(
+    'pending_payload',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -214,6 +225,7 @@ class $MembersTable extends Members with TableInfo<$MembersTable, Member> {
     updatedAt,
     archivedAt,
     isDirty,
+    pendingPayload,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -352,6 +364,15 @@ class $MembersTable extends Members with TableInfo<$MembersTable, Member> {
         isDirty.isAcceptableOrUnknown(data['is_dirty']!, _isDirtyMeta),
       );
     }
+    if (data.containsKey('pending_payload')) {
+      context.handle(
+        _pendingPayloadMeta,
+        pendingPayload.isAcceptableOrUnknown(
+          data['pending_payload']!,
+          _pendingPayloadMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -429,6 +450,10 @@ class $MembersTable extends Members with TableInfo<$MembersTable, Member> {
         DriftSqlType.bool,
         data['${effectivePrefix}is_dirty'],
       )!,
+      pendingPayload: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}pending_payload'],
+      ),
     );
   }
 
@@ -456,6 +481,7 @@ class Member extends DataClass implements Insertable<Member> {
   final DateTime updatedAt;
   final DateTime? archivedAt;
   final bool isDirty;
+  final String? pendingPayload;
   const Member({
     required this.id,
     required this.gymId,
@@ -474,6 +500,7 @@ class Member extends DataClass implements Insertable<Member> {
     required this.updatedAt,
     this.archivedAt,
     required this.isDirty,
+    this.pendingPayload,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -503,6 +530,9 @@ class Member extends DataClass implements Insertable<Member> {
       map['archived_at'] = Variable<DateTime>(archivedAt);
     }
     map['is_dirty'] = Variable<bool>(isDirty);
+    if (!nullToAbsent || pendingPayload != null) {
+      map['pending_payload'] = Variable<String>(pendingPayload);
+    }
     return map;
   }
 
@@ -533,6 +563,9 @@ class Member extends DataClass implements Insertable<Member> {
           ? const Value.absent()
           : Value(archivedAt),
       isDirty: Value(isDirty),
+      pendingPayload: pendingPayload == null && nullToAbsent
+          ? const Value.absent()
+          : Value(pendingPayload),
     );
   }
 
@@ -561,6 +594,7 @@ class Member extends DataClass implements Insertable<Member> {
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
       archivedAt: serializer.fromJson<DateTime?>(json['archivedAt']),
       isDirty: serializer.fromJson<bool>(json['isDirty']),
+      pendingPayload: serializer.fromJson<String?>(json['pendingPayload']),
     );
   }
   @override
@@ -584,6 +618,7 @@ class Member extends DataClass implements Insertable<Member> {
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
       'archivedAt': serializer.toJson<DateTime?>(archivedAt),
       'isDirty': serializer.toJson<bool>(isDirty),
+      'pendingPayload': serializer.toJson<String?>(pendingPayload),
     };
   }
 
@@ -605,6 +640,7 @@ class Member extends DataClass implements Insertable<Member> {
     DateTime? updatedAt,
     Value<DateTime?> archivedAt = const Value.absent(),
     bool? isDirty,
+    Value<String?> pendingPayload = const Value.absent(),
   }) => Member(
     id: id ?? this.id,
     gymId: gymId ?? this.gymId,
@@ -627,6 +663,9 @@ class Member extends DataClass implements Insertable<Member> {
     updatedAt: updatedAt ?? this.updatedAt,
     archivedAt: archivedAt.present ? archivedAt.value : this.archivedAt,
     isDirty: isDirty ?? this.isDirty,
+    pendingPayload: pendingPayload.present
+        ? pendingPayload.value
+        : this.pendingPayload,
   );
   Member copyWithCompanion(MembersCompanion data) {
     return Member(
@@ -661,6 +700,9 @@ class Member extends DataClass implements Insertable<Member> {
           ? data.archivedAt.value
           : this.archivedAt,
       isDirty: data.isDirty.present ? data.isDirty.value : this.isDirty,
+      pendingPayload: data.pendingPayload.present
+          ? data.pendingPayload.value
+          : this.pendingPayload,
     );
   }
 
@@ -683,7 +725,8 @@ class Member extends DataClass implements Insertable<Member> {
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('archivedAt: $archivedAt, ')
-          ..write('isDirty: $isDirty')
+          ..write('isDirty: $isDirty, ')
+          ..write('pendingPayload: $pendingPayload')
           ..write(')'))
         .toString();
   }
@@ -707,6 +750,7 @@ class Member extends DataClass implements Insertable<Member> {
     updatedAt,
     archivedAt,
     isDirty,
+    pendingPayload,
   );
   @override
   bool operator ==(Object other) =>
@@ -728,7 +772,8 @@ class Member extends DataClass implements Insertable<Member> {
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
           other.archivedAt == this.archivedAt &&
-          other.isDirty == this.isDirty);
+          other.isDirty == this.isDirty &&
+          other.pendingPayload == this.pendingPayload);
 }
 
 class MembersCompanion extends UpdateCompanion<Member> {
@@ -749,6 +794,7 @@ class MembersCompanion extends UpdateCompanion<Member> {
   final Value<DateTime> updatedAt;
   final Value<DateTime?> archivedAt;
   final Value<bool> isDirty;
+  final Value<String?> pendingPayload;
   final Value<int> rowid;
   const MembersCompanion({
     this.id = const Value.absent(),
@@ -768,6 +814,7 @@ class MembersCompanion extends UpdateCompanion<Member> {
     this.updatedAt = const Value.absent(),
     this.archivedAt = const Value.absent(),
     this.isDirty = const Value.absent(),
+    this.pendingPayload = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   MembersCompanion.insert({
@@ -788,6 +835,7 @@ class MembersCompanion extends UpdateCompanion<Member> {
     required DateTime updatedAt,
     this.archivedAt = const Value.absent(),
     this.isDirty = const Value.absent(),
+    this.pendingPayload = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        gymId = Value(gymId),
@@ -814,6 +862,7 @@ class MembersCompanion extends UpdateCompanion<Member> {
     Expression<DateTime>? updatedAt,
     Expression<DateTime>? archivedAt,
     Expression<bool>? isDirty,
+    Expression<String>? pendingPayload,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -835,6 +884,7 @@ class MembersCompanion extends UpdateCompanion<Member> {
       if (updatedAt != null) 'updated_at': updatedAt,
       if (archivedAt != null) 'archived_at': archivedAt,
       if (isDirty != null) 'is_dirty': isDirty,
+      if (pendingPayload != null) 'pending_payload': pendingPayload,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -857,6 +907,7 @@ class MembersCompanion extends UpdateCompanion<Member> {
     Value<DateTime>? updatedAt,
     Value<DateTime?>? archivedAt,
     Value<bool>? isDirty,
+    Value<String?>? pendingPayload,
     Value<int>? rowid,
   }) {
     return MembersCompanion(
@@ -877,6 +928,7 @@ class MembersCompanion extends UpdateCompanion<Member> {
       updatedAt: updatedAt ?? this.updatedAt,
       archivedAt: archivedAt ?? this.archivedAt,
       isDirty: isDirty ?? this.isDirty,
+      pendingPayload: pendingPayload ?? this.pendingPayload,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -937,6 +989,9 @@ class MembersCompanion extends UpdateCompanion<Member> {
     if (isDirty.present) {
       map['is_dirty'] = Variable<bool>(isDirty.value);
     }
+    if (pendingPayload.present) {
+      map['pending_payload'] = Variable<String>(pendingPayload.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -963,6 +1018,7 @@ class MembersCompanion extends UpdateCompanion<Member> {
           ..write('updatedAt: $updatedAt, ')
           ..write('archivedAt: $archivedAt, ')
           ..write('isDirty: $isDirty, ')
+          ..write('pendingPayload: $pendingPayload, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -1729,6 +1785,7 @@ typedef $$MembersTableCreateCompanionBuilder =
       required DateTime updatedAt,
       Value<DateTime?> archivedAt,
       Value<bool> isDirty,
+      Value<String?> pendingPayload,
       Value<int> rowid,
     });
 typedef $$MembersTableUpdateCompanionBuilder =
@@ -1750,6 +1807,7 @@ typedef $$MembersTableUpdateCompanionBuilder =
       Value<DateTime> updatedAt,
       Value<DateTime?> archivedAt,
       Value<bool> isDirty,
+      Value<String?> pendingPayload,
       Value<int> rowid,
     });
 
@@ -1844,6 +1902,11 @@ class $$MembersTableFilterComposer
 
   ColumnFilters<bool> get isDirty => $composableBuilder(
     column: $table.isDirty,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get pendingPayload => $composableBuilder(
+    column: $table.pendingPayload,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -1941,6 +2004,11 @@ class $$MembersTableOrderingComposer
     column: $table.isDirty,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get pendingPayload => $composableBuilder(
+    column: $table.pendingPayload,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$MembersTableAnnotationComposer
@@ -2016,6 +2084,11 @@ class $$MembersTableAnnotationComposer
 
   GeneratedColumn<bool> get isDirty =>
       $composableBuilder(column: $table.isDirty, builder: (column) => column);
+
+  GeneratedColumn<String> get pendingPayload => $composableBuilder(
+    column: $table.pendingPayload,
+    builder: (column) => column,
+  );
 }
 
 class $$MembersTableTableManager
@@ -2063,6 +2136,7 @@ class $$MembersTableTableManager
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<DateTime?> archivedAt = const Value.absent(),
                 Value<bool> isDirty = const Value.absent(),
+                Value<String?> pendingPayload = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => MembersCompanion(
                 id: id,
@@ -2082,6 +2156,7 @@ class $$MembersTableTableManager
                 updatedAt: updatedAt,
                 archivedAt: archivedAt,
                 isDirty: isDirty,
+                pendingPayload: pendingPayload,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -2103,6 +2178,7 @@ class $$MembersTableTableManager
                 required DateTime updatedAt,
                 Value<DateTime?> archivedAt = const Value.absent(),
                 Value<bool> isDirty = const Value.absent(),
+                Value<String?> pendingPayload = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => MembersCompanion.insert(
                 id: id,
@@ -2122,6 +2198,7 @@ class $$MembersTableTableManager
                 updatedAt: updatedAt,
                 archivedAt: archivedAt,
                 isDirty: isDirty,
+                pendingPayload: pendingPayload,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

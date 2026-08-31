@@ -1,9 +1,10 @@
 import 'dart:io';
 
-import 'package:drift/drift.dart';
+import 'package:drift/drift.dart' hide isNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
+import 'package:sqlite3/sqlite3.dart' as sqlite3;
 import 'package:uuid/uuid.dart';
 
 import 'package:flexdesk/core/db/app_database.dart';
@@ -57,6 +58,60 @@ Map<String, dynamic> _memberJson({
     'created_at': now,
     'updated_at': now,
   };
+}
+
+// --- Migration-test helpers ---
+// These build a raw v1-era sqlite file by hand, bypassing Drift entirely,
+// so we can set PRAGMA user_version ourselves and force the real
+// onUpgrade() path to run when AppDatabase opens it. This is the only way
+// to exercise a v1 device's migration, since every real device in testing
+// is already on v2 or v3.
+
+void _createV1MembersTable(sqlite3.Database raw) {
+  raw.execute('''
+    CREATE TABLE members (
+      id TEXT NOT NULL PRIMARY KEY,
+      gym_id TEXT NOT NULL,
+      home_location_id TEXT NOT NULL,
+      member_code TEXT NOT NULL DEFAULT '',
+      first_name TEXT NOT NULL,
+      last_name TEXT NOT NULL DEFAULT '',
+      phone TEXT NOT NULL DEFAULT '',
+      email TEXT NOT NULL DEFAULT '',
+      date_of_birth INTEGER,
+      member_type TEXT NOT NULL,
+      notes TEXT NOT NULL DEFAULT '',
+      current_end_date INTEGER,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      archived_at INTEGER,
+      is_dirty INTEGER NOT NULL DEFAULT 0
+    );
+  ''');
+  raw.execute('''
+    CREATE UNIQUE INDEX uniq_member_code_per_gym
+    ON members (gym_id, member_code)
+    WHERE member_code != '';
+  ''');
+}
+
+void _createV1PlansTable(sqlite3.Database raw) {
+  raw.execute('''
+    CREATE TABLE membership_plans (
+      id TEXT NOT NULL PRIMARY KEY,
+      gym_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      category TEXT NOT NULL DEFAULT '',
+      duration_value INTEGER NOT NULL DEFAULT 1,
+      duration_unit TEXT NOT NULL DEFAULT 'MONTH',
+      price INTEGER NOT NULL,
+      is_day_pass INTEGER NOT NULL DEFAULT 0,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      updated_at INTEGER NOT NULL,
+      is_dirty INTEGER NOT NULL DEFAULT 0
+    );
+  ''');
 }
 
 void main() {
@@ -224,4 +279,149 @@ void main() {
     expect(centavosToDecimalString(5), '0.05');
     expect(centavosToDecimalString(-1050), '-10.50');
   });
+
+  // --- Migration: v1 device jumps straight to v3 ---
+  // Every real test device has been on v2 or v3 the whole time, so this
+  // path — a v1 device that never saw the v2 release — was completely
+  // untested until now. Confirms both addColumn steps run in sequence
+  // (not skipped) and a dirty row survives the jump intact.
+  test('v1 to v3 migration adds new columns, dirty row survives', () async {
+    final dbFile = File(
+      p.join(Directory.systemTemp.path, '${_uuid.v4()}_v1.sqlite'),
+    );
+    addTearDown(() {
+      if (dbFile.existsSync()) dbFile.deleteSync();
+    });
+
+    final memberId = _uuid.v4();
+    final locationId = _uuid.v4();
+    final nowSeconds = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+
+    final raw = sqlite3.sqlite3.open(dbFile.path);
+    _createV1MembersTable(raw);
+    _createV1PlansTable(raw);
+    raw.execute('PRAGMA user_version = 1;');
+    raw.execute(
+      '''
+      INSERT INTO members (
+        id, gym_id, home_location_id, member_code, first_name, last_name,
+        phone, email, date_of_birth, member_type, notes, current_end_date,
+        created_at, updated_at, archived_at, is_dirty
+      ) VALUES (?, ?, ?, '', 'Juan', 'Dela Cruz', '', '', NULL, 'MEMBER',
+        '', NULL, ?, ?, NULL, 1);
+      ''',
+      [memberId, gymId, locationId, nowSeconds, nowSeconds],
+    );
+    raw.dispose();
+
+    // Opening through the real AppDatabase triggers the actual onUpgrade
+    // path — both `if (from < 2)` and `if (from < 3)` should fire in
+    // sequence for a v1 device, not just one of them.
+    final db = AppDatabase.forTesting(
+      NativeDatabase(dbFile),
+      rethrowMigrationErrors: true, // want the normal path, not recovery
+    );
+    addTearDown(db.close);
+
+    final members = await db.visibleMembers(gymId);
+    expect(members, hasLength(1));
+    expect(members.first.id, memberId);
+    expect(members.first.isDirty, true);
+    // Both new columns exist and are queryable post-migration — a v1
+    // device landing on v3 doesn't crash on either one.
+    expect(members.first.currentPlanCategory, isNull);
+    expect(members.first.pendingPayload, isNull);
+  });
+
+  // --- Recovery path: this is the exact bug the review caught ---
+  // Forces the migration's catch/recovery branch to run (by pre-creating
+  // a column addColumn will collide with), then checks that a dirty
+  // row's pendingPayload and dateOfBirth survive the rescue. Before the
+  // fix, the rescue companion omitted both fields — the row survived but
+  // came back permanently unsyncable with the user's data silently gone.
+  test(
+    'recovery path preserves pendingPayload and dateOfBirth on a dirty row',
+    () async {
+      final dbFile = File(
+        p.join(Directory.systemTemp.path, '${_uuid.v4()}_recovery.sqlite'),
+      );
+      addTearDown(() {
+        if (dbFile.existsSync()) dbFile.deleteSync();
+      });
+
+      final memberId = _uuid.v4();
+      final locationId = _uuid.v4();
+      final nowSeconds = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      final dobSeconds = DateTime(2000, 5, 14).millisecondsSinceEpoch ~/ 1000;
+      const payload = '{"first_name":"Juan","plan_id":"deleted-plan"}';
+
+      // Table already has the v2/v3 columns, but user_version claims 1 —
+      // so onUpgrade tries addColumn(currentPlanCategory) against a
+      // column that already exists, which throws and triggers recovery.
+      final raw = sqlite3.sqlite3.open(dbFile.path);
+      raw.execute('''
+        CREATE TABLE members (
+          id TEXT NOT NULL PRIMARY KEY,
+          gym_id TEXT NOT NULL,
+          home_location_id TEXT NOT NULL,
+          member_code TEXT NOT NULL DEFAULT '',
+          first_name TEXT NOT NULL,
+          last_name TEXT NOT NULL DEFAULT '',
+          phone TEXT NOT NULL DEFAULT '',
+          email TEXT NOT NULL DEFAULT '',
+          date_of_birth INTEGER,
+          member_type TEXT NOT NULL,
+          notes TEXT NOT NULL DEFAULT '',
+          current_end_date INTEGER,
+          current_plan_category TEXT,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          archived_at INTEGER,
+          is_dirty INTEGER NOT NULL DEFAULT 0,
+          pending_payload TEXT
+        );
+      ''');
+      _createV1PlansTable(raw);
+      raw.execute('PRAGMA user_version = 1;');
+      raw.execute(
+        '''
+        INSERT INTO members (
+          id, gym_id, home_location_id, member_code, first_name, last_name,
+          phone, email, date_of_birth, member_type, notes, current_end_date,
+          current_plan_category, created_at, updated_at, archived_at,
+          is_dirty, pending_payload
+        ) VALUES (?, ?, ?, '', 'Juan', 'Dela Cruz', '', '', ?, 'MEMBER', '',
+          NULL, NULL, ?, ?, NULL, 1, ?);
+        ''',
+        [
+          memberId,
+          gymId,
+          locationId,
+          dobSeconds,
+          nowSeconds,
+          nowSeconds,
+          payload,
+        ],
+      );
+      raw.dispose();
+
+      final db = AppDatabase.forTesting(
+        NativeDatabase(dbFile),
+        rethrowMigrationErrors: false, // exercise the recovery branch
+      );
+      addTearDown(db.close);
+
+      final members = await db.visibleMembers(gymId);
+      expect(members, hasLength(1));
+      expect(members.first.id, memberId);
+      expect(members.first.isDirty, true);
+      // This is the exact bug the recovery companion had before the fix:
+      // pendingPayload and dateOfBirth were dropped during rescue,
+      // leaving the row permanently stuck — isDirty forever, unsyncable,
+      // since syncPendingMembers only retries rows where
+      // pendingPayload.isNotNull().
+      expect(members.first.pendingPayload, payload);
+      expect(members.first.dateOfBirth, DateTime(2000, 5, 14));
+    },
+  );
 }

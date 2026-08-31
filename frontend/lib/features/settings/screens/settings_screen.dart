@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
+import 'package:go_router/go_router.dart';
 import '../../auth/providers/auth_providers.dart';
 
 class SettingsScreen extends ConsumerWidget {
@@ -21,6 +21,17 @@ class SettingsScreen extends ConsumerWidget {
             subtitle: const Text('Signed in'),
           ),
           const Divider(),
+          if (authState is AuthAuthenticated &&
+              authState.user.role == UserRole.owner) ...[
+            ListTile(
+              leading: const Icon(Icons.badge_outlined),
+              title: const Text('Staff'),
+              subtitle: const Text('Manage staff accounts'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => context.push('/settings/staff'),
+            ),
+            const Divider(),
+          ],
           ListTile(
             leading: const Icon(Icons.logout, color: Colors.red),
             title: const Text('Log out', style: TextStyle(color: Colors.red)),
@@ -50,10 +61,49 @@ class SettingsScreen extends ConsumerWidget {
       ),
     );
 
-    if (confirmed == true) {
+    if (confirmed != true) return;
+    if (!context.mounted) return;
+
+    await _performLogout(context, ref, force: false);
+  }
+
+  Future<void> _performLogout(
+    BuildContext context,
+    WidgetRef ref, {
+    required bool force,
+  }) async {
+    try {
       // No manual navigation needed — logout() sets AuthUnauthenticated,
       // and the router's redirect already sends that state to /login.
-      await ref.read(authControllerProvider.notifier).logout();
+      await ref.read(authControllerProvider.notifier).logout(force: force);
+    } on UnsyncedDataException catch (e) {
+      if (!context.mounted) return;
+
+      final proceedAnyway = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Unsynced members'),
+          content: Text(
+            '${e.count} member${e.count == 1 ? '' : 's'} '
+            "haven't synced yet. Connect to wifi and try again, "
+            'or log out anyway and lose that data.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Log out anyway'),
+            ),
+          ],
+        ),
+      );
+
+      if (proceedAnyway == true && context.mounted) {
+        await _performLogout(context, ref, force: true);
+      }
     }
   }
 }

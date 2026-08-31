@@ -66,6 +66,10 @@ class Members extends Table {
   DateTimeColumn get updatedAt => dateTime()();
   DateTimeColumn get archivedAt => dateTime().nullable()();
   BoolColumn get isDirty => boolean().withDefault(const Constant(false))();
+  // Holds the full JSON body for an offline-created member that hasn't
+  // reached the server yet — null once synced. Lets syncPendingMembers()
+  // replay the exact request (including the chosen plan) later.
+  TextColumn get pendingPayload => text().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};

@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -11,35 +9,33 @@ import '../../core/theme/colors.dart';
 /// Color values live in core/theme/colors.dart (currently placeholders —
 /// see that file's doc comment).
 class AppShell extends StatelessWidget {
-  final Widget child;
+  final StatefulNavigationShell navigationShell;
 
-  const AppShell({super.key, required this.child});
+  const AppShell({super.key, required this.navigationShell});
+
+  // Total vertical space the floating pill nav occupies at the bottom of
+  // the screen (its own height + the offset that lifts it off the edge).
+  // Every scrollable screen inside the shell should reserve this much
+  // bottom padding so its last item/button isn't hidden underneath it.
+  static const double reservedNavHeight = 64 + 12;
 
   static const _tabs = [
-    (path: '/home', icon: Icons.home_outlined, label: 'Home'),
-    (path: '/members', icon: Icons.people_outline, label: 'Members'),
-    (path: '/checkin', icon: Icons.qr_code_scanner_outlined, label: 'Check-In'),
-    (path: '/pos', icon: Icons.point_of_sale_outlined, label: 'POS'),
-    (path: '/inventory', icon: Icons.inventory_2_outlined, label: 'Inventory'),
+    (icon: Icons.home_outlined, label: 'Home'),
+    (icon: Icons.people_outline, label: 'Members'),
+    (icon: Icons.qr_code_scanner_outlined, label: 'Check-In'),
+    (icon: Icons.point_of_sale_outlined, label: 'POS'),
+    (icon: Icons.inventory_2_outlined, label: 'Inventory'),
   ];
-
-  int _currentIndex(BuildContext context) {
-    final location = GoRouterState.of(context).matchedLocation;
-    for (var i = 0; i < _tabs.length; i++) {
-      if (location.startsWith(_tabs[i].path)) return i;
-    }
-    return 0;
-  }
 
   @override
   Widget build(BuildContext context) {
-    final currentIndex = _currentIndex(context);
+    final currentIndex = navigationShell.currentIndex;
 
     return Scaffold(
       extendBody: true, // lets content scroll behind the floating pill nav
       body: Stack(
         children: [
-          child,
+          navigationShell,
 
           // Persistent settings gear — floats above every screen in the
           // shell, so logout/settings is always one tap away regardless
@@ -60,31 +56,29 @@ class AppShell extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(32),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-              child: Container(
-                height: 64,
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.55),
-                  borderRadius: BorderRadius.circular(32),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.08),
-                  ),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    for (var i = 0; i < _tabs.length; i++)
-                      _NavIcon(
-                        icon: _tabs[i].icon,
-                        active: i == currentIndex,
-                        activeColor: AppColors.navActiveHighlight,
-                        onTap: () {
-                          if (i != currentIndex) context.go(_tabs[i].path);
-                        },
-                      ),
-                  ],
-                ),
+            child: Container(
+              height: 64,
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.75),
+                borderRadius: BorderRadius.circular(32),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  for (var i = 0; i < _tabs.length; i++)
+                    _NavIcon(
+                      icon: _tabs[i].icon,
+                      active: i == currentIndex,
+                      activeColor: AppColors.navActiveHighlight,
+                      onTap: () {
+                        navigationShell.goBranch(
+                          i,
+                          initialLocation: i == navigationShell.currentIndex,
+                        );
+                      },
+                    ),
+                ],
               ),
             ),
           ),
@@ -143,21 +137,18 @@ class _GlassIconButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(20),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-        child: Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.45),
-            shape: BoxShape.circle,
-            border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
-          ),
-          child: IconButton(
-            icon: Icon(icon, color: Colors.white, size: 20),
-            onPressed: onTap,
-            padding: EdgeInsets.zero,
-          ),
+      child: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.65),
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+        ),
+        child: IconButton(
+          icon: Icon(icon, color: Colors.white, size: 20),
+          onPressed: onTap,
+          padding: EdgeInsets.zero,
         ),
       ),
     );

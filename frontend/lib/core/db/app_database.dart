@@ -31,7 +31,7 @@ class AppDatabase extends _$AppDatabase {
        super(executor);
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -51,6 +51,12 @@ class AppDatabase extends _$AppDatabase {
         // fills it in from the server.
         if (from < 2) {
           await m.addColumn(members, members.currentPlanCategory);
+        }
+        // v2 -> v3: added Members.pendingPayload, storing the full create
+        // request JSON for an offline-created member so it can be replayed
+        // later by syncPendingMembers(). Also a fresh nullable column.
+        if (from < 3) {
+          await m.addColumn(members, members.pendingPayload);
         }
       } catch (e) {
         if (_rethrowMigrationErrors) rethrow; // fail loudly while building
@@ -104,6 +110,17 @@ class AppDatabase extends _$AppDatabase {
                 email: Value(row['email'] as String? ?? ''),
                 notes: Value(row['notes'] as String? ?? ''),
                 isDirty: const Value(true), // still unsynced, keep flagged
+                // Absent on a v1 table (column didn't exist before this
+                // migration), so this is null-safe by construction: a
+                // missing map key just reads as null.
+                pendingPayload: Value(row['pending_payload'] as String?),
+                dateOfBirth: Value(
+                  row['date_of_birth'] != null
+                      ? DateTime.fromMillisecondsSinceEpoch(
+                          (row['date_of_birth'] as int) * 1000,
+                        )
+                      : null,
+                ),
               ),
               mode: InsertMode.insertOrReplace,
             );
@@ -151,6 +168,31 @@ class AppDatabase extends _$AppDatabase {
         (p) => OrderingTerm(expression: p.name),
       ]);
     return query.get();
+  }
+
+  // Counts members that were created/edited offline and haven't been
+  // synced to the server yet. If this is > 0 on logout, that data only
+  // exists on this device — wiping the database would lose it forever.
+  //
+  // Uses a SQL COUNT instead of fetching full rows just to read .length —
+  // runs on every logout, so no reason to pull whole rows off disk for it.
+  Future<int> countDirtyMembers() async {
+    final countExp = members.id.count();
+    final query = selectOnly(members)
+      ..addColumns([countExp])
+      ..where(members.isDirty.equals(true));
+    final row = await query.getSingle();
+    return row.read(countExp) ?? 0;
+  }
+
+  // Wipes all locally cached data. Call this on logout (after confirming
+  // there's nothing unsynced) so the next gym to log in on this device
+  // doesn't inherit the previous gym's member list.
+  Future<void> clearAllData() async {
+    await transaction(() async {
+      await delete(members).go();
+      await delete(membershipPlans).go();
+    });
   }
 }
 

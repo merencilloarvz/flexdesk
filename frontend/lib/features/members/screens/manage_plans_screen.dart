@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/db/app_database.dart';
 import '../providers/plans_provider.dart';
+import '../../../core/api/api_exception.dart';
 
 const Color _cPageBg = Color(0xFFEDEFF0);
 const Color _cInk = Color(0xFF0E1A13);
@@ -330,11 +331,33 @@ class _PlanFormSheetState extends ConsumerState<_PlanFormSheet> {
         );
       }
       if (mounted) Navigator.of(context).pop();
+    } on ApiException catch (e) {
+      if (mounted) {
+        setState(() {
+          _isSubmitting = false;
+          // Prefer the backend's specific field error (e.g. the
+          // duplicate-name message from MembershipPlanSerializer) over
+          // the generic fallback, since it tells the user exactly what
+          // to fix.
+          String? specificMessage;
+          final fieldErrors = e.fieldErrors;
+          if (fieldErrors != null && fieldErrors.isNotEmpty) {
+            final firstList = fieldErrors.values.first;
+            if (firstList.isNotEmpty) {
+              specificMessage = firstList.first;
+            }
+          }
+          _error =
+              specificMessage ??
+              e.message ??
+              "Couldn't save — check the fields and try again.";
+        });
+      }
     } catch (e) {
       if (mounted) {
         setState(() {
           _isSubmitting = false;
-          _error = "Couldn't save — check the fields and your connection.";
+          _error = "Couldn't save — check your connection and try again.";
         });
       }
     }
