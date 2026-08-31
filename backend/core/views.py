@@ -39,6 +39,14 @@ class MembershipPlanViewSet(GymScopedViewSet):
     serializer_class = MembershipPlanSerializer
     permission_classes = [IsGymStaff, IsOwnerOrReadOnly]
 
+    def create(self, request, *args, **kwargs):
+        try:
+            return super().create(request, *args, **kwargs)
+        except IntegrityError:
+            raise ValidationError(
+                {"name": "A plan with this name and category already exists."}
+            )
+
 
 class MemberViewSet(GymScopedViewSet):
     queryset = Member.objects.all()

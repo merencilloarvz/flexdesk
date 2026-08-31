@@ -48,7 +48,22 @@ class MembershipPlanSerializer(serializers.ModelSerializer):
     class Meta:
         model = MembershipPlan
         fields = ["id", "name","category", "duration_value", "duration_unit", "price",
-                  "is_day_pass", "is_active", "sort_order"]
+                  "is_day_pass", "is_active", "sort_order",'updated_at']
+
+    def validate(self, attrs):
+        gym = self.context.get("gym")
+        name = attrs.get("name", getattr(self.instance, "name", None))
+        category = attrs.get("category", getattr(self.instance, "category", ""))
+
+        if gym and name is not None:
+            qs = MembershipPlan.objects.filter(gym=gym, name=name, category=category)
+            if self.instance:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError(
+                    {"name": f'A plan named "{name}" already exists for this category.'}
+                )
+        return attrs
 
 
 class MembershipSerializer(serializers.ModelSerializer):
@@ -63,14 +78,16 @@ class MemberSerializer(serializers.ModelSerializer):
     full_name = serializers.CharField(read_only=True)
     membership_status = serializers.CharField(read_only=True)
     current_end_date = serializers.DateField(read_only=True)
+    current_plan_category = serializers.CharField(read_only=True)
     days_remaining = serializers.SerializerMethodField()
 
     class Meta:
         model = Member
         fields = ["id", "first_name", "last_name", "full_name", "phone", "email",
                   "member_code", "member_type", "home_location", "date_of_birth",
-                  "notes", "membership_status", "current_end_date", "days_remaining",
-                  "created_at", "updated_at"]
+                  "notes", "membership_status", "current_end_date",
+                  "current_plan_category", "days_remaining",
+                  "created_at", "updated_at",'archived_at']
 
     def get_days_remaining(self, obj):
         end = getattr(obj, "current_end_date", None)

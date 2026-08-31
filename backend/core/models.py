@@ -188,14 +188,21 @@ class MemberQuerySet(models.QuerySet):
         return self.filter(member_type=Member.PROSPECT)
 
     def with_status(self, today, expiring_within_days=7):
-        latest_end = (
+        # Both current_end_date and current_plan_category come from the
+        # same "latest non-canceled membership" row, so they share one
+        # base subquery rather than each re-filtering/re-ordering from
+        # scratch — keeps the two guaranteed to describe the same
+        # Membership row, not two different ones if timing ever mattered.
+        latest_membership = (
             Membership.objects
             .filter(member=OuterRef("pk"), canceled_at__isnull=True)
             .order_by("-end_date")
-            .values("end_date")[:1]
         )
         return self.annotate(
-            current_end_date=Subquery(latest_end),
+            current_end_date=Subquery(latest_membership.values("end_date")[:1]),
+            current_plan_category=Subquery(
+                latest_membership.values("plan__category")[:1]
+            ),
         ).annotate(
             membership_status=Case(
                 When(current_end_date__isnull=True, then=Value("no_membership")),
