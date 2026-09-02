@@ -82,9 +82,9 @@ class SettingsScreen extends ConsumerWidget {
       final proceedAnyway = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
-          title: const Text('Unsynced members'),
+          title: const Text('Unsynced records'),
           content: Text(
-            '${e.count} member${e.count == 1 ? '' : 's'} '
+            '${e.count} record${e.count == 1 ? '' : 's'} '
             "haven't synced yet. Connect to wifi and try again, "
             'or log out anyway and lose that data.',
           ),

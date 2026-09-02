@@ -63,7 +63,8 @@ class MembersRepository {
               (m) =>
                   m.gymId.equals(gymId) &
                   m.isDirty.equals(true) &
-                  m.pendingPayload.isNotNull(),
+                  m.pendingPayload.isNotNull() &
+                  m.syncError.isNull(),
             ))
             .get();
 
@@ -99,10 +100,19 @@ class MembersRepository {
               pendingPayload: Value(null),
             ),
           );
+        } else {
+          // Permanently rejected. isDirty stays true — it's still
+          // unsynced — but syncError being set excludes it from future
+          // automatic retries and is what the failed-sync banner reads.
+          await (_db.update(
+            _db.members,
+          )..where((m) => m.id.equals(member.id))).write(
+            MembersCompanion(
+              syncError: Value(e.message ?? 'Rejected by server.'),
+              syncFailedAt: Value(DateTime.now()),
+            ),
+          );
         }
-        // Any other rejection: leave it dirty. It'll show up in the
-        // logout warning, which is the correct signal that it needs
-        // manual attention.
       } catch (_) {
         // A corrupt/unparseable stored payload (e.g. jsonDecode failure)
         // must not take down the whole refresh — skip this row and let
@@ -111,6 +121,22 @@ class MembersRepository {
         continue;
       }
     }
+  }
+
+  /// Clears a row's recorded failure so the next syncPendingMembers() pass
+  /// picks it up again — for use after staff have fixed whatever the
+  /// server was rejecting it for (e.g. picked a different plan).
+  Future<void> retryPending(String memberId) {
+    return (_db.update(_db.members)..where((m) => m.id.equals(memberId))).write(
+      const MembersCompanion(syncError: Value(null), syncFailedAt: Value(null)),
+    );
+  }
+
+  /// Deletes a locally-created member that will never sync. This is the
+  /// only copy of that data anywhere — there's no server record to fall
+  /// back on — so the UI must confirm with the user before calling this.
+  Future<void> discardPending(String memberId) {
+    return (_db.delete(_db.members)..where((m) => m.id.equals(memberId))).go();
   }
 
   Stream<List<Member>> watchVisibleMembers(String gymId) =>

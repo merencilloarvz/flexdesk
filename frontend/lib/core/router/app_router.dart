@@ -13,10 +13,10 @@ import '../../features/auth/screens/set_password_screen.dart';
 import '../../features/onboarding/screens/setup_screen.dart';
 import '../../features/settings/screens/staff_list_screen.dart';
 import '../../features/settings/screens/staff_create_screen.dart';
-import '../../features/shell/screens/home_placeholder_screen.dart';
+import '../../features/dashboard/screens/home_screen.dart';
 import '../../features/settings/screens/settings_screen.dart';
 import '../../features/shell/app_shell.dart';
-import '../../features/checkin/checkin_placeholder_screen.dart';
+import '../../features/checkin/check_in_screen.dart';
 import '../../features/inventory/inventory_placeholder_screen.dart';
 import '../../features/pos/pos_placeholder_screen.dart';
 
@@ -96,6 +96,17 @@ class _MembersRoute extends ConsumerWidget {
     final authState = ref.watch(authControllerProvider);
     final gymId = authState is AuthAuthenticated ? authState.user.gym.id : '';
     return MembersListScreen(gymId: gymId);
+  }
+}
+
+class _CheckInRoute extends ConsumerWidget {
+  const _CheckInRoute();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final authState = ref.watch(authControllerProvider);
+    final gymId = authState is AuthAuthenticated ? authState.user.gym.id : '';
+    return CheckInScreen(gymId: gymId);
   }
 }
 
@@ -219,7 +230,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             routes: [
               GoRoute(
                 path: '/home',
-                builder: (context, state) => const HomePlaceholderScreen(),
+                builder: (context, state) => const HomeScreen(),
               ),
             ],
           ),
@@ -237,7 +248,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             routes: [
               GoRoute(
                 path: '/checkin',
-                builder: (context, state) => const CheckInPlaceholderScreen(),
+                builder: (context, state) => const _CheckInRoute(),
               ),
             ],
           ),

@@ -34,3 +34,15 @@ String centavosToDecimalString(int cents) {
 //   parseCentavos("-10.50")  == -1050
 //   centavosToDecimalString(150000) == "1500.00"
 //   centavosToDecimalString(-1050)  == "-10.50"
+/// Maps a gym's currency code to its display symbol. PHP is the only
+/// currency FlexDesk supports as of Stage 3.11 — extend this map if that
+/// changes. Falls back to the code itself (e.g. "USD") for anything
+/// unmapped, rather than guessing a symbol.
+String currencySymbol(String currencyCode) {
+  switch (currencyCode) {
+    case 'PHP':
+      return '₱';
+    default:
+      return currencyCode;
+  }
+}

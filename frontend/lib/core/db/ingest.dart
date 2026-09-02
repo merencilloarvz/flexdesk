@@ -65,3 +65,35 @@ MembersCompanion memberFromJson(Map<String, dynamic> json, String gymId) {
     ),
   );
 }
+
+/// Maps a `/check-ins/` JSON object into an insertable row.
+CheckInsCompanion checkInFromJson(Map<String, dynamic> json, String gymId) {
+  return CheckInsCompanion.insert(
+    id: json['id'] as String,
+    gymId: gymId,
+    visitType: json['visit_type'] as String,
+    memberId: Value(json['member'] as String?),
+    locationId: json['location'] as String,
+    checkedInAt: DateTime.parse(json['checked_in_at'] as String),
+    membershipStatus: Value(json['membership_status'] as String? ?? ''),
+    membershipEndDate: Value(
+      json['membership_end_date'] != null
+          ? DateTime.parse(json['membership_end_date'] as String)
+          : null,
+    ),
+    visitorName: Value(json['visitor_name'] as String? ?? ''),
+    category: Value(json['category'] as String? ?? ''),
+    amountChargedCentavos: Value(
+      json['amount_charged'] != null
+          ? parseCentavos(json['amount_charged'] as String)
+          : null,
+    ),
+    voidedAt: Value(
+      json['voided_at'] != null
+          ? DateTime.parse(json['voided_at'] as String)
+          : null,
+    ),
+    createdAt: DateTime.parse(json['created_at'] as String),
+    updatedAt: DateTime.parse(json['updated_at'] as String),
+  );
+}

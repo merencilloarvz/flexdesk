@@ -87,7 +87,8 @@ class AuthController extends Notifier<AuthState> {
     final db = ref.read(dbProvider);
 
     if (!force) {
-      final dirtyCount = await db.countDirtyMembers();
+      final dirtyCount =
+          await db.countDirtyMembers() + await db.countDirtyCheckIns();
       if (dirtyCount > 0) {
         throw UnsyncedDataException(dirtyCount);
       }

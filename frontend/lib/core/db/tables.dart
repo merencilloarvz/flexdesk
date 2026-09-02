@@ -71,6 +71,51 @@ class Members extends Table {
   // replay the exact request (including the chosen plan) later.
   TextColumn get pendingPayload => text().nullable()();
 
+  // Set when syncPendingMembers() gets a rejection it can't recover from
+  // on its own (not a network failure, not an idempotent duplicate) — e.g.
+  // the plan this member was created against got deleted before the
+  // tablet reconnected. isDirty stays true (still unsynced) but syncError
+  // being non-null means "already judged" — it's excluded from automatic
+  // retries until the user taps Retry, which clears both fields.
+  TextColumn get syncError => text().nullable()();
+  DateTimeColumn get syncFailedAt => dateTime().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// Mirrors `CheckIn` in `backend/core/models.py`.
+///
+/// - `visitType` splits MEMBER vs WALKIN rows, same split as the backend
+///   model — see its own comments for why they share one table.
+/// - `memberId` is null for walk-ins, matching the backend's nullable FK.
+/// - `amountChargedCentavos` is parsed from the wire's decimal string via
+///   `parseCentavos`, same convention as MembershipPlans.priceCentavos —
+///   never through double. Null for member check-ins, and for walk-ins
+///   where staff skipped entering a price.
+/// - `isDirty` / `pendingPayload` / `syncError` / `syncFailedAt` mirror the
+///   offline-write pattern added to Members in 3.10b.
+class CheckIns extends Table {
+  TextColumn get id => text()();
+  TextColumn get gymId => text()(); // not in the serializer — stamp on ingest
+  TextColumn get visitType => text()(); // MEMBER | WALKIN
+  TextColumn get memberId => text().nullable()();
+  TextColumn get locationId => text()();
+  DateTimeColumn get checkedInAt => dateTime()();
+  TextColumn get membershipStatus => text().withDefault(const Constant(''))();
+  DateTimeColumn get membershipEndDate => dateTime().nullable()();
+  TextColumn get visitorName => text().withDefault(const Constant(''))();
+  TextColumn get category =>
+      text().withDefault(const Constant(''))(); // regular | student
+  IntColumn get amountChargedCentavos => integer().nullable()();
+  DateTimeColumn get voidedAt => dateTime().nullable()();
+  DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt => dateTime()();
+  BoolColumn get isDirty => boolean().withDefault(const Constant(false))();
+  TextColumn get pendingPayload => text().nullable()();
+  TextColumn get syncError => text().nullable()();
+  DateTimeColumn get syncFailedAt => dateTime().nullable()();
+
   @override
   Set<Column> get primaryKey => {id};
 }

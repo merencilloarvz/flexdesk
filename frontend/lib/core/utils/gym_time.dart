@@ -31,4 +31,32 @@ class GymTime {
     final gymNow = DateTime.now().toUtc().add(_gymOffset);
     return DateTime(gymNow.year, gymNow.month, gymNow.day);
   }
+
+  /// The real UTC instant that marks the START of [gymLocalDay] (a
+  /// date-only value, e.g. from `today()`) in the gym's local timezone.
+  ///
+  /// Built with `DateTime.utc(...)` rather than the device's local
+  /// `DateTime(...)` constructor so this never depends on what timezone
+  /// the phone itself is set to — only on the gym's fixed +8 offset.
+  ///
+  /// Use this (never a naive `DateTime(y, m, d)`) whenever comparing
+  /// against `checkedInAt`, which is always stored as a real UTC instant.
+  /// Comparing a naive local-calendar date against a UTC timestamp is
+  /// comparing two different clocks — it silently drifts by a day right
+  /// around midnight.
+  static DateTime startOfDay(DateTime gymLocalDay) {
+    final utcMidnightOfThatCalendarDate = DateTime.utc(
+      gymLocalDay.year,
+      gymLocalDay.month,
+      gymLocalDay.day,
+    );
+    return utcMidnightOfThatCalendarDate.subtract(_gymOffset);
+  }
+
+  /// The UTC instant marking the START of the NEXT gym-local day — i.e.
+  /// the exclusive upper bound for "this day". Pair with [startOfDay] for
+  /// a `>= start AND < end` range query.
+  static DateTime endOfDay(DateTime gymLocalDay) {
+    return startOfDay(gymLocalDay).add(const Duration(days: 1));
+  }
 }

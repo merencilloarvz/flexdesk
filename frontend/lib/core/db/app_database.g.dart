@@ -206,6 +206,28 @@ class $MembersTable extends Members with TableInfo<$MembersTable, Member> {
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _syncErrorMeta = const VerificationMeta(
+    'syncError',
+  );
+  @override
+  late final GeneratedColumn<String> syncError = GeneratedColumn<String>(
+    'sync_error',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _syncFailedAtMeta = const VerificationMeta(
+    'syncFailedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> syncFailedAt = GeneratedColumn<DateTime>(
+    'sync_failed_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -226,6 +248,8 @@ class $MembersTable extends Members with TableInfo<$MembersTable, Member> {
     archivedAt,
     isDirty,
     pendingPayload,
+    syncError,
+    syncFailedAt,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -373,6 +397,21 @@ class $MembersTable extends Members with TableInfo<$MembersTable, Member> {
         ),
       );
     }
+    if (data.containsKey('sync_error')) {
+      context.handle(
+        _syncErrorMeta,
+        syncError.isAcceptableOrUnknown(data['sync_error']!, _syncErrorMeta),
+      );
+    }
+    if (data.containsKey('sync_failed_at')) {
+      context.handle(
+        _syncFailedAtMeta,
+        syncFailedAt.isAcceptableOrUnknown(
+          data['sync_failed_at']!,
+          _syncFailedAtMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -454,6 +493,14 @@ class $MembersTable extends Members with TableInfo<$MembersTable, Member> {
         DriftSqlType.string,
         data['${effectivePrefix}pending_payload'],
       ),
+      syncError: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}sync_error'],
+      ),
+      syncFailedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}sync_failed_at'],
+      ),
     );
   }
 
@@ -482,6 +529,8 @@ class Member extends DataClass implements Insertable<Member> {
   final DateTime? archivedAt;
   final bool isDirty;
   final String? pendingPayload;
+  final String? syncError;
+  final DateTime? syncFailedAt;
   const Member({
     required this.id,
     required this.gymId,
@@ -501,6 +550,8 @@ class Member extends DataClass implements Insertable<Member> {
     this.archivedAt,
     required this.isDirty,
     this.pendingPayload,
+    this.syncError,
+    this.syncFailedAt,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -532,6 +583,12 @@ class Member extends DataClass implements Insertable<Member> {
     map['is_dirty'] = Variable<bool>(isDirty);
     if (!nullToAbsent || pendingPayload != null) {
       map['pending_payload'] = Variable<String>(pendingPayload);
+    }
+    if (!nullToAbsent || syncError != null) {
+      map['sync_error'] = Variable<String>(syncError);
+    }
+    if (!nullToAbsent || syncFailedAt != null) {
+      map['sync_failed_at'] = Variable<DateTime>(syncFailedAt);
     }
     return map;
   }
@@ -566,6 +623,12 @@ class Member extends DataClass implements Insertable<Member> {
       pendingPayload: pendingPayload == null && nullToAbsent
           ? const Value.absent()
           : Value(pendingPayload),
+      syncError: syncError == null && nullToAbsent
+          ? const Value.absent()
+          : Value(syncError),
+      syncFailedAt: syncFailedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(syncFailedAt),
     );
   }
 
@@ -595,6 +658,8 @@ class Member extends DataClass implements Insertable<Member> {
       archivedAt: serializer.fromJson<DateTime?>(json['archivedAt']),
       isDirty: serializer.fromJson<bool>(json['isDirty']),
       pendingPayload: serializer.fromJson<String?>(json['pendingPayload']),
+      syncError: serializer.fromJson<String?>(json['syncError']),
+      syncFailedAt: serializer.fromJson<DateTime?>(json['syncFailedAt']),
     );
   }
   @override
@@ -619,6 +684,8 @@ class Member extends DataClass implements Insertable<Member> {
       'archivedAt': serializer.toJson<DateTime?>(archivedAt),
       'isDirty': serializer.toJson<bool>(isDirty),
       'pendingPayload': serializer.toJson<String?>(pendingPayload),
+      'syncError': serializer.toJson<String?>(syncError),
+      'syncFailedAt': serializer.toJson<DateTime?>(syncFailedAt),
     };
   }
 
@@ -641,6 +708,8 @@ class Member extends DataClass implements Insertable<Member> {
     Value<DateTime?> archivedAt = const Value.absent(),
     bool? isDirty,
     Value<String?> pendingPayload = const Value.absent(),
+    Value<String?> syncError = const Value.absent(),
+    Value<DateTime?> syncFailedAt = const Value.absent(),
   }) => Member(
     id: id ?? this.id,
     gymId: gymId ?? this.gymId,
@@ -666,6 +735,8 @@ class Member extends DataClass implements Insertable<Member> {
     pendingPayload: pendingPayload.present
         ? pendingPayload.value
         : this.pendingPayload,
+    syncError: syncError.present ? syncError.value : this.syncError,
+    syncFailedAt: syncFailedAt.present ? syncFailedAt.value : this.syncFailedAt,
   );
   Member copyWithCompanion(MembersCompanion data) {
     return Member(
@@ -703,6 +774,10 @@ class Member extends DataClass implements Insertable<Member> {
       pendingPayload: data.pendingPayload.present
           ? data.pendingPayload.value
           : this.pendingPayload,
+      syncError: data.syncError.present ? data.syncError.value : this.syncError,
+      syncFailedAt: data.syncFailedAt.present
+          ? data.syncFailedAt.value
+          : this.syncFailedAt,
     );
   }
 
@@ -726,7 +801,9 @@ class Member extends DataClass implements Insertable<Member> {
           ..write('updatedAt: $updatedAt, ')
           ..write('archivedAt: $archivedAt, ')
           ..write('isDirty: $isDirty, ')
-          ..write('pendingPayload: $pendingPayload')
+          ..write('pendingPayload: $pendingPayload, ')
+          ..write('syncError: $syncError, ')
+          ..write('syncFailedAt: $syncFailedAt')
           ..write(')'))
         .toString();
   }
@@ -751,6 +828,8 @@ class Member extends DataClass implements Insertable<Member> {
     archivedAt,
     isDirty,
     pendingPayload,
+    syncError,
+    syncFailedAt,
   );
   @override
   bool operator ==(Object other) =>
@@ -773,7 +852,9 @@ class Member extends DataClass implements Insertable<Member> {
           other.updatedAt == this.updatedAt &&
           other.archivedAt == this.archivedAt &&
           other.isDirty == this.isDirty &&
-          other.pendingPayload == this.pendingPayload);
+          other.pendingPayload == this.pendingPayload &&
+          other.syncError == this.syncError &&
+          other.syncFailedAt == this.syncFailedAt);
 }
 
 class MembersCompanion extends UpdateCompanion<Member> {
@@ -795,6 +876,8 @@ class MembersCompanion extends UpdateCompanion<Member> {
   final Value<DateTime?> archivedAt;
   final Value<bool> isDirty;
   final Value<String?> pendingPayload;
+  final Value<String?> syncError;
+  final Value<DateTime?> syncFailedAt;
   final Value<int> rowid;
   const MembersCompanion({
     this.id = const Value.absent(),
@@ -815,6 +898,8 @@ class MembersCompanion extends UpdateCompanion<Member> {
     this.archivedAt = const Value.absent(),
     this.isDirty = const Value.absent(),
     this.pendingPayload = const Value.absent(),
+    this.syncError = const Value.absent(),
+    this.syncFailedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   MembersCompanion.insert({
@@ -836,6 +921,8 @@ class MembersCompanion extends UpdateCompanion<Member> {
     this.archivedAt = const Value.absent(),
     this.isDirty = const Value.absent(),
     this.pendingPayload = const Value.absent(),
+    this.syncError = const Value.absent(),
+    this.syncFailedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        gymId = Value(gymId),
@@ -863,6 +950,8 @@ class MembersCompanion extends UpdateCompanion<Member> {
     Expression<DateTime>? archivedAt,
     Expression<bool>? isDirty,
     Expression<String>? pendingPayload,
+    Expression<String>? syncError,
+    Expression<DateTime>? syncFailedAt,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -885,6 +974,8 @@ class MembersCompanion extends UpdateCompanion<Member> {
       if (archivedAt != null) 'archived_at': archivedAt,
       if (isDirty != null) 'is_dirty': isDirty,
       if (pendingPayload != null) 'pending_payload': pendingPayload,
+      if (syncError != null) 'sync_error': syncError,
+      if (syncFailedAt != null) 'sync_failed_at': syncFailedAt,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -908,6 +999,8 @@ class MembersCompanion extends UpdateCompanion<Member> {
     Value<DateTime?>? archivedAt,
     Value<bool>? isDirty,
     Value<String?>? pendingPayload,
+    Value<String?>? syncError,
+    Value<DateTime?>? syncFailedAt,
     Value<int>? rowid,
   }) {
     return MembersCompanion(
@@ -929,6 +1022,8 @@ class MembersCompanion extends UpdateCompanion<Member> {
       archivedAt: archivedAt ?? this.archivedAt,
       isDirty: isDirty ?? this.isDirty,
       pendingPayload: pendingPayload ?? this.pendingPayload,
+      syncError: syncError ?? this.syncError,
+      syncFailedAt: syncFailedAt ?? this.syncFailedAt,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -992,6 +1087,12 @@ class MembersCompanion extends UpdateCompanion<Member> {
     if (pendingPayload.present) {
       map['pending_payload'] = Variable<String>(pendingPayload.value);
     }
+    if (syncError.present) {
+      map['sync_error'] = Variable<String>(syncError.value);
+    }
+    if (syncFailedAt.present) {
+      map['sync_failed_at'] = Variable<DateTime>(syncFailedAt.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -1019,6 +1120,8 @@ class MembersCompanion extends UpdateCompanion<Member> {
           ..write('archivedAt: $archivedAt, ')
           ..write('isDirty: $isDirty, ')
           ..write('pendingPayload: $pendingPayload, ')
+          ..write('syncError: $syncError, ')
+          ..write('syncFailedAt: $syncFailedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -1749,6 +1852,1048 @@ class MembershipPlansCompanion extends UpdateCompanion<MembershipPlan> {
   }
 }
 
+class $CheckInsTable extends CheckIns with TableInfo<$CheckInsTable, CheckIn> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $CheckInsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _gymIdMeta = const VerificationMeta('gymId');
+  @override
+  late final GeneratedColumn<String> gymId = GeneratedColumn<String>(
+    'gym_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _visitTypeMeta = const VerificationMeta(
+    'visitType',
+  );
+  @override
+  late final GeneratedColumn<String> visitType = GeneratedColumn<String>(
+    'visit_type',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _memberIdMeta = const VerificationMeta(
+    'memberId',
+  );
+  @override
+  late final GeneratedColumn<String> memberId = GeneratedColumn<String>(
+    'member_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _locationIdMeta = const VerificationMeta(
+    'locationId',
+  );
+  @override
+  late final GeneratedColumn<String> locationId = GeneratedColumn<String>(
+    'location_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _checkedInAtMeta = const VerificationMeta(
+    'checkedInAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> checkedInAt = GeneratedColumn<DateTime>(
+    'checked_in_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _membershipStatusMeta = const VerificationMeta(
+    'membershipStatus',
+  );
+  @override
+  late final GeneratedColumn<String> membershipStatus = GeneratedColumn<String>(
+    'membership_status',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _membershipEndDateMeta = const VerificationMeta(
+    'membershipEndDate',
+  );
+  @override
+  late final GeneratedColumn<DateTime> membershipEndDate =
+      GeneratedColumn<DateTime>(
+        'membership_end_date',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _visitorNameMeta = const VerificationMeta(
+    'visitorName',
+  );
+  @override
+  late final GeneratedColumn<String> visitorName = GeneratedColumn<String>(
+    'visitor_name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _categoryMeta = const VerificationMeta(
+    'category',
+  );
+  @override
+  late final GeneratedColumn<String> category = GeneratedColumn<String>(
+    'category',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _amountChargedCentavosMeta =
+      const VerificationMeta('amountChargedCentavos');
+  @override
+  late final GeneratedColumn<int> amountChargedCentavos = GeneratedColumn<int>(
+    'amount_charged_centavos',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _voidedAtMeta = const VerificationMeta(
+    'voidedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> voidedAt = GeneratedColumn<DateTime>(
+    'voided_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _isDirtyMeta = const VerificationMeta(
+    'isDirty',
+  );
+  @override
+  late final GeneratedColumn<bool> isDirty = GeneratedColumn<bool>(
+    'is_dirty',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_dirty" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _pendingPayloadMeta = const VerificationMeta(
+    'pendingPayload',
+  );
+  @override
+  late final GeneratedColumn<String> pendingPayload = GeneratedColumn<String>(
+    'pending_payload',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _syncErrorMeta = const VerificationMeta(
+    'syncError',
+  );
+  @override
+  late final GeneratedColumn<String> syncError = GeneratedColumn<String>(
+    'sync_error',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _syncFailedAtMeta = const VerificationMeta(
+    'syncFailedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> syncFailedAt = GeneratedColumn<DateTime>(
+    'sync_failed_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    gymId,
+    visitType,
+    memberId,
+    locationId,
+    checkedInAt,
+    membershipStatus,
+    membershipEndDate,
+    visitorName,
+    category,
+    amountChargedCentavos,
+    voidedAt,
+    createdAt,
+    updatedAt,
+    isDirty,
+    pendingPayload,
+    syncError,
+    syncFailedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'check_ins';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<CheckIn> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('gym_id')) {
+      context.handle(
+        _gymIdMeta,
+        gymId.isAcceptableOrUnknown(data['gym_id']!, _gymIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_gymIdMeta);
+    }
+    if (data.containsKey('visit_type')) {
+      context.handle(
+        _visitTypeMeta,
+        visitType.isAcceptableOrUnknown(data['visit_type']!, _visitTypeMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_visitTypeMeta);
+    }
+    if (data.containsKey('member_id')) {
+      context.handle(
+        _memberIdMeta,
+        memberId.isAcceptableOrUnknown(data['member_id']!, _memberIdMeta),
+      );
+    }
+    if (data.containsKey('location_id')) {
+      context.handle(
+        _locationIdMeta,
+        locationId.isAcceptableOrUnknown(data['location_id']!, _locationIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_locationIdMeta);
+    }
+    if (data.containsKey('checked_in_at')) {
+      context.handle(
+        _checkedInAtMeta,
+        checkedInAt.isAcceptableOrUnknown(
+          data['checked_in_at']!,
+          _checkedInAtMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_checkedInAtMeta);
+    }
+    if (data.containsKey('membership_status')) {
+      context.handle(
+        _membershipStatusMeta,
+        membershipStatus.isAcceptableOrUnknown(
+          data['membership_status']!,
+          _membershipStatusMeta,
+        ),
+      );
+    }
+    if (data.containsKey('membership_end_date')) {
+      context.handle(
+        _membershipEndDateMeta,
+        membershipEndDate.isAcceptableOrUnknown(
+          data['membership_end_date']!,
+          _membershipEndDateMeta,
+        ),
+      );
+    }
+    if (data.containsKey('visitor_name')) {
+      context.handle(
+        _visitorNameMeta,
+        visitorName.isAcceptableOrUnknown(
+          data['visitor_name']!,
+          _visitorNameMeta,
+        ),
+      );
+    }
+    if (data.containsKey('category')) {
+      context.handle(
+        _categoryMeta,
+        category.isAcceptableOrUnknown(data['category']!, _categoryMeta),
+      );
+    }
+    if (data.containsKey('amount_charged_centavos')) {
+      context.handle(
+        _amountChargedCentavosMeta,
+        amountChargedCentavos.isAcceptableOrUnknown(
+          data['amount_charged_centavos']!,
+          _amountChargedCentavosMeta,
+        ),
+      );
+    }
+    if (data.containsKey('voided_at')) {
+      context.handle(
+        _voidedAtMeta,
+        voidedAt.isAcceptableOrUnknown(data['voided_at']!, _voidedAtMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    if (data.containsKey('is_dirty')) {
+      context.handle(
+        _isDirtyMeta,
+        isDirty.isAcceptableOrUnknown(data['is_dirty']!, _isDirtyMeta),
+      );
+    }
+    if (data.containsKey('pending_payload')) {
+      context.handle(
+        _pendingPayloadMeta,
+        pendingPayload.isAcceptableOrUnknown(
+          data['pending_payload']!,
+          _pendingPayloadMeta,
+        ),
+      );
+    }
+    if (data.containsKey('sync_error')) {
+      context.handle(
+        _syncErrorMeta,
+        syncError.isAcceptableOrUnknown(data['sync_error']!, _syncErrorMeta),
+      );
+    }
+    if (data.containsKey('sync_failed_at')) {
+      context.handle(
+        _syncFailedAtMeta,
+        syncFailedAt.isAcceptableOrUnknown(
+          data['sync_failed_at']!,
+          _syncFailedAtMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  CheckIn map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return CheckIn(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      gymId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}gym_id'],
+      )!,
+      visitType: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}visit_type'],
+      )!,
+      memberId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}member_id'],
+      ),
+      locationId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}location_id'],
+      )!,
+      checkedInAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}checked_in_at'],
+      )!,
+      membershipStatus: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}membership_status'],
+      )!,
+      membershipEndDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}membership_end_date'],
+      ),
+      visitorName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}visitor_name'],
+      )!,
+      category: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}category'],
+      )!,
+      amountChargedCentavos: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}amount_charged_centavos'],
+      ),
+      voidedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}voided_at'],
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+      isDirty: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_dirty'],
+      )!,
+      pendingPayload: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}pending_payload'],
+      ),
+      syncError: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}sync_error'],
+      ),
+      syncFailedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}sync_failed_at'],
+      ),
+    );
+  }
+
+  @override
+  $CheckInsTable createAlias(String alias) {
+    return $CheckInsTable(attachedDatabase, alias);
+  }
+}
+
+class CheckIn extends DataClass implements Insertable<CheckIn> {
+  final String id;
+  final String gymId;
+  final String visitType;
+  final String? memberId;
+  final String locationId;
+  final DateTime checkedInAt;
+  final String membershipStatus;
+  final DateTime? membershipEndDate;
+  final String visitorName;
+  final String category;
+  final int? amountChargedCentavos;
+  final DateTime? voidedAt;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final bool isDirty;
+  final String? pendingPayload;
+  final String? syncError;
+  final DateTime? syncFailedAt;
+  const CheckIn({
+    required this.id,
+    required this.gymId,
+    required this.visitType,
+    this.memberId,
+    required this.locationId,
+    required this.checkedInAt,
+    required this.membershipStatus,
+    this.membershipEndDate,
+    required this.visitorName,
+    required this.category,
+    this.amountChargedCentavos,
+    this.voidedAt,
+    required this.createdAt,
+    required this.updatedAt,
+    required this.isDirty,
+    this.pendingPayload,
+    this.syncError,
+    this.syncFailedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['gym_id'] = Variable<String>(gymId);
+    map['visit_type'] = Variable<String>(visitType);
+    if (!nullToAbsent || memberId != null) {
+      map['member_id'] = Variable<String>(memberId);
+    }
+    map['location_id'] = Variable<String>(locationId);
+    map['checked_in_at'] = Variable<DateTime>(checkedInAt);
+    map['membership_status'] = Variable<String>(membershipStatus);
+    if (!nullToAbsent || membershipEndDate != null) {
+      map['membership_end_date'] = Variable<DateTime>(membershipEndDate);
+    }
+    map['visitor_name'] = Variable<String>(visitorName);
+    map['category'] = Variable<String>(category);
+    if (!nullToAbsent || amountChargedCentavos != null) {
+      map['amount_charged_centavos'] = Variable<int>(amountChargedCentavos);
+    }
+    if (!nullToAbsent || voidedAt != null) {
+      map['voided_at'] = Variable<DateTime>(voidedAt);
+    }
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    map['is_dirty'] = Variable<bool>(isDirty);
+    if (!nullToAbsent || pendingPayload != null) {
+      map['pending_payload'] = Variable<String>(pendingPayload);
+    }
+    if (!nullToAbsent || syncError != null) {
+      map['sync_error'] = Variable<String>(syncError);
+    }
+    if (!nullToAbsent || syncFailedAt != null) {
+      map['sync_failed_at'] = Variable<DateTime>(syncFailedAt);
+    }
+    return map;
+  }
+
+  CheckInsCompanion toCompanion(bool nullToAbsent) {
+    return CheckInsCompanion(
+      id: Value(id),
+      gymId: Value(gymId),
+      visitType: Value(visitType),
+      memberId: memberId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(memberId),
+      locationId: Value(locationId),
+      checkedInAt: Value(checkedInAt),
+      membershipStatus: Value(membershipStatus),
+      membershipEndDate: membershipEndDate == null && nullToAbsent
+          ? const Value.absent()
+          : Value(membershipEndDate),
+      visitorName: Value(visitorName),
+      category: Value(category),
+      amountChargedCentavos: amountChargedCentavos == null && nullToAbsent
+          ? const Value.absent()
+          : Value(amountChargedCentavos),
+      voidedAt: voidedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(voidedAt),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+      isDirty: Value(isDirty),
+      pendingPayload: pendingPayload == null && nullToAbsent
+          ? const Value.absent()
+          : Value(pendingPayload),
+      syncError: syncError == null && nullToAbsent
+          ? const Value.absent()
+          : Value(syncError),
+      syncFailedAt: syncFailedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(syncFailedAt),
+    );
+  }
+
+  factory CheckIn.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return CheckIn(
+      id: serializer.fromJson<String>(json['id']),
+      gymId: serializer.fromJson<String>(json['gymId']),
+      visitType: serializer.fromJson<String>(json['visitType']),
+      memberId: serializer.fromJson<String?>(json['memberId']),
+      locationId: serializer.fromJson<String>(json['locationId']),
+      checkedInAt: serializer.fromJson<DateTime>(json['checkedInAt']),
+      membershipStatus: serializer.fromJson<String>(json['membershipStatus']),
+      membershipEndDate: serializer.fromJson<DateTime?>(
+        json['membershipEndDate'],
+      ),
+      visitorName: serializer.fromJson<String>(json['visitorName']),
+      category: serializer.fromJson<String>(json['category']),
+      amountChargedCentavos: serializer.fromJson<int?>(
+        json['amountChargedCentavos'],
+      ),
+      voidedAt: serializer.fromJson<DateTime?>(json['voidedAt']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+      isDirty: serializer.fromJson<bool>(json['isDirty']),
+      pendingPayload: serializer.fromJson<String?>(json['pendingPayload']),
+      syncError: serializer.fromJson<String?>(json['syncError']),
+      syncFailedAt: serializer.fromJson<DateTime?>(json['syncFailedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'gymId': serializer.toJson<String>(gymId),
+      'visitType': serializer.toJson<String>(visitType),
+      'memberId': serializer.toJson<String?>(memberId),
+      'locationId': serializer.toJson<String>(locationId),
+      'checkedInAt': serializer.toJson<DateTime>(checkedInAt),
+      'membershipStatus': serializer.toJson<String>(membershipStatus),
+      'membershipEndDate': serializer.toJson<DateTime?>(membershipEndDate),
+      'visitorName': serializer.toJson<String>(visitorName),
+      'category': serializer.toJson<String>(category),
+      'amountChargedCentavos': serializer.toJson<int?>(amountChargedCentavos),
+      'voidedAt': serializer.toJson<DateTime?>(voidedAt),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+      'isDirty': serializer.toJson<bool>(isDirty),
+      'pendingPayload': serializer.toJson<String?>(pendingPayload),
+      'syncError': serializer.toJson<String?>(syncError),
+      'syncFailedAt': serializer.toJson<DateTime?>(syncFailedAt),
+    };
+  }
+
+  CheckIn copyWith({
+    String? id,
+    String? gymId,
+    String? visitType,
+    Value<String?> memberId = const Value.absent(),
+    String? locationId,
+    DateTime? checkedInAt,
+    String? membershipStatus,
+    Value<DateTime?> membershipEndDate = const Value.absent(),
+    String? visitorName,
+    String? category,
+    Value<int?> amountChargedCentavos = const Value.absent(),
+    Value<DateTime?> voidedAt = const Value.absent(),
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    bool? isDirty,
+    Value<String?> pendingPayload = const Value.absent(),
+    Value<String?> syncError = const Value.absent(),
+    Value<DateTime?> syncFailedAt = const Value.absent(),
+  }) => CheckIn(
+    id: id ?? this.id,
+    gymId: gymId ?? this.gymId,
+    visitType: visitType ?? this.visitType,
+    memberId: memberId.present ? memberId.value : this.memberId,
+    locationId: locationId ?? this.locationId,
+    checkedInAt: checkedInAt ?? this.checkedInAt,
+    membershipStatus: membershipStatus ?? this.membershipStatus,
+    membershipEndDate: membershipEndDate.present
+        ? membershipEndDate.value
+        : this.membershipEndDate,
+    visitorName: visitorName ?? this.visitorName,
+    category: category ?? this.category,
+    amountChargedCentavos: amountChargedCentavos.present
+        ? amountChargedCentavos.value
+        : this.amountChargedCentavos,
+    voidedAt: voidedAt.present ? voidedAt.value : this.voidedAt,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+    isDirty: isDirty ?? this.isDirty,
+    pendingPayload: pendingPayload.present
+        ? pendingPayload.value
+        : this.pendingPayload,
+    syncError: syncError.present ? syncError.value : this.syncError,
+    syncFailedAt: syncFailedAt.present ? syncFailedAt.value : this.syncFailedAt,
+  );
+  CheckIn copyWithCompanion(CheckInsCompanion data) {
+    return CheckIn(
+      id: data.id.present ? data.id.value : this.id,
+      gymId: data.gymId.present ? data.gymId.value : this.gymId,
+      visitType: data.visitType.present ? data.visitType.value : this.visitType,
+      memberId: data.memberId.present ? data.memberId.value : this.memberId,
+      locationId: data.locationId.present
+          ? data.locationId.value
+          : this.locationId,
+      checkedInAt: data.checkedInAt.present
+          ? data.checkedInAt.value
+          : this.checkedInAt,
+      membershipStatus: data.membershipStatus.present
+          ? data.membershipStatus.value
+          : this.membershipStatus,
+      membershipEndDate: data.membershipEndDate.present
+          ? data.membershipEndDate.value
+          : this.membershipEndDate,
+      visitorName: data.visitorName.present
+          ? data.visitorName.value
+          : this.visitorName,
+      category: data.category.present ? data.category.value : this.category,
+      amountChargedCentavos: data.amountChargedCentavos.present
+          ? data.amountChargedCentavos.value
+          : this.amountChargedCentavos,
+      voidedAt: data.voidedAt.present ? data.voidedAt.value : this.voidedAt,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      isDirty: data.isDirty.present ? data.isDirty.value : this.isDirty,
+      pendingPayload: data.pendingPayload.present
+          ? data.pendingPayload.value
+          : this.pendingPayload,
+      syncError: data.syncError.present ? data.syncError.value : this.syncError,
+      syncFailedAt: data.syncFailedAt.present
+          ? data.syncFailedAt.value
+          : this.syncFailedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CheckIn(')
+          ..write('id: $id, ')
+          ..write('gymId: $gymId, ')
+          ..write('visitType: $visitType, ')
+          ..write('memberId: $memberId, ')
+          ..write('locationId: $locationId, ')
+          ..write('checkedInAt: $checkedInAt, ')
+          ..write('membershipStatus: $membershipStatus, ')
+          ..write('membershipEndDate: $membershipEndDate, ')
+          ..write('visitorName: $visitorName, ')
+          ..write('category: $category, ')
+          ..write('amountChargedCentavos: $amountChargedCentavos, ')
+          ..write('voidedAt: $voidedAt, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('isDirty: $isDirty, ')
+          ..write('pendingPayload: $pendingPayload, ')
+          ..write('syncError: $syncError, ')
+          ..write('syncFailedAt: $syncFailedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    gymId,
+    visitType,
+    memberId,
+    locationId,
+    checkedInAt,
+    membershipStatus,
+    membershipEndDate,
+    visitorName,
+    category,
+    amountChargedCentavos,
+    voidedAt,
+    createdAt,
+    updatedAt,
+    isDirty,
+    pendingPayload,
+    syncError,
+    syncFailedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is CheckIn &&
+          other.id == this.id &&
+          other.gymId == this.gymId &&
+          other.visitType == this.visitType &&
+          other.memberId == this.memberId &&
+          other.locationId == this.locationId &&
+          other.checkedInAt == this.checkedInAt &&
+          other.membershipStatus == this.membershipStatus &&
+          other.membershipEndDate == this.membershipEndDate &&
+          other.visitorName == this.visitorName &&
+          other.category == this.category &&
+          other.amountChargedCentavos == this.amountChargedCentavos &&
+          other.voidedAt == this.voidedAt &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt &&
+          other.isDirty == this.isDirty &&
+          other.pendingPayload == this.pendingPayload &&
+          other.syncError == this.syncError &&
+          other.syncFailedAt == this.syncFailedAt);
+}
+
+class CheckInsCompanion extends UpdateCompanion<CheckIn> {
+  final Value<String> id;
+  final Value<String> gymId;
+  final Value<String> visitType;
+  final Value<String?> memberId;
+  final Value<String> locationId;
+  final Value<DateTime> checkedInAt;
+  final Value<String> membershipStatus;
+  final Value<DateTime?> membershipEndDate;
+  final Value<String> visitorName;
+  final Value<String> category;
+  final Value<int?> amountChargedCentavos;
+  final Value<DateTime?> voidedAt;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  final Value<bool> isDirty;
+  final Value<String?> pendingPayload;
+  final Value<String?> syncError;
+  final Value<DateTime?> syncFailedAt;
+  final Value<int> rowid;
+  const CheckInsCompanion({
+    this.id = const Value.absent(),
+    this.gymId = const Value.absent(),
+    this.visitType = const Value.absent(),
+    this.memberId = const Value.absent(),
+    this.locationId = const Value.absent(),
+    this.checkedInAt = const Value.absent(),
+    this.membershipStatus = const Value.absent(),
+    this.membershipEndDate = const Value.absent(),
+    this.visitorName = const Value.absent(),
+    this.category = const Value.absent(),
+    this.amountChargedCentavos = const Value.absent(),
+    this.voidedAt = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.isDirty = const Value.absent(),
+    this.pendingPayload = const Value.absent(),
+    this.syncError = const Value.absent(),
+    this.syncFailedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  CheckInsCompanion.insert({
+    required String id,
+    required String gymId,
+    required String visitType,
+    this.memberId = const Value.absent(),
+    required String locationId,
+    required DateTime checkedInAt,
+    this.membershipStatus = const Value.absent(),
+    this.membershipEndDate = const Value.absent(),
+    this.visitorName = const Value.absent(),
+    this.category = const Value.absent(),
+    this.amountChargedCentavos = const Value.absent(),
+    this.voidedAt = const Value.absent(),
+    required DateTime createdAt,
+    required DateTime updatedAt,
+    this.isDirty = const Value.absent(),
+    this.pendingPayload = const Value.absent(),
+    this.syncError = const Value.absent(),
+    this.syncFailedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       gymId = Value(gymId),
+       visitType = Value(visitType),
+       locationId = Value(locationId),
+       checkedInAt = Value(checkedInAt),
+       createdAt = Value(createdAt),
+       updatedAt = Value(updatedAt);
+  static Insertable<CheckIn> custom({
+    Expression<String>? id,
+    Expression<String>? gymId,
+    Expression<String>? visitType,
+    Expression<String>? memberId,
+    Expression<String>? locationId,
+    Expression<DateTime>? checkedInAt,
+    Expression<String>? membershipStatus,
+    Expression<DateTime>? membershipEndDate,
+    Expression<String>? visitorName,
+    Expression<String>? category,
+    Expression<int>? amountChargedCentavos,
+    Expression<DateTime>? voidedAt,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+    Expression<bool>? isDirty,
+    Expression<String>? pendingPayload,
+    Expression<String>? syncError,
+    Expression<DateTime>? syncFailedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (gymId != null) 'gym_id': gymId,
+      if (visitType != null) 'visit_type': visitType,
+      if (memberId != null) 'member_id': memberId,
+      if (locationId != null) 'location_id': locationId,
+      if (checkedInAt != null) 'checked_in_at': checkedInAt,
+      if (membershipStatus != null) 'membership_status': membershipStatus,
+      if (membershipEndDate != null) 'membership_end_date': membershipEndDate,
+      if (visitorName != null) 'visitor_name': visitorName,
+      if (category != null) 'category': category,
+      if (amountChargedCentavos != null)
+        'amount_charged_centavos': amountChargedCentavos,
+      if (voidedAt != null) 'voided_at': voidedAt,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (isDirty != null) 'is_dirty': isDirty,
+      if (pendingPayload != null) 'pending_payload': pendingPayload,
+      if (syncError != null) 'sync_error': syncError,
+      if (syncFailedAt != null) 'sync_failed_at': syncFailedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  CheckInsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? gymId,
+    Value<String>? visitType,
+    Value<String?>? memberId,
+    Value<String>? locationId,
+    Value<DateTime>? checkedInAt,
+    Value<String>? membershipStatus,
+    Value<DateTime?>? membershipEndDate,
+    Value<String>? visitorName,
+    Value<String>? category,
+    Value<int?>? amountChargedCentavos,
+    Value<DateTime?>? voidedAt,
+    Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
+    Value<bool>? isDirty,
+    Value<String?>? pendingPayload,
+    Value<String?>? syncError,
+    Value<DateTime?>? syncFailedAt,
+    Value<int>? rowid,
+  }) {
+    return CheckInsCompanion(
+      id: id ?? this.id,
+      gymId: gymId ?? this.gymId,
+      visitType: visitType ?? this.visitType,
+      memberId: memberId ?? this.memberId,
+      locationId: locationId ?? this.locationId,
+      checkedInAt: checkedInAt ?? this.checkedInAt,
+      membershipStatus: membershipStatus ?? this.membershipStatus,
+      membershipEndDate: membershipEndDate ?? this.membershipEndDate,
+      visitorName: visitorName ?? this.visitorName,
+      category: category ?? this.category,
+      amountChargedCentavos:
+          amountChargedCentavos ?? this.amountChargedCentavos,
+      voidedAt: voidedAt ?? this.voidedAt,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      isDirty: isDirty ?? this.isDirty,
+      pendingPayload: pendingPayload ?? this.pendingPayload,
+      syncError: syncError ?? this.syncError,
+      syncFailedAt: syncFailedAt ?? this.syncFailedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (gymId.present) {
+      map['gym_id'] = Variable<String>(gymId.value);
+    }
+    if (visitType.present) {
+      map['visit_type'] = Variable<String>(visitType.value);
+    }
+    if (memberId.present) {
+      map['member_id'] = Variable<String>(memberId.value);
+    }
+    if (locationId.present) {
+      map['location_id'] = Variable<String>(locationId.value);
+    }
+    if (checkedInAt.present) {
+      map['checked_in_at'] = Variable<DateTime>(checkedInAt.value);
+    }
+    if (membershipStatus.present) {
+      map['membership_status'] = Variable<String>(membershipStatus.value);
+    }
+    if (membershipEndDate.present) {
+      map['membership_end_date'] = Variable<DateTime>(membershipEndDate.value);
+    }
+    if (visitorName.present) {
+      map['visitor_name'] = Variable<String>(visitorName.value);
+    }
+    if (category.present) {
+      map['category'] = Variable<String>(category.value);
+    }
+    if (amountChargedCentavos.present) {
+      map['amount_charged_centavos'] = Variable<int>(
+        amountChargedCentavos.value,
+      );
+    }
+    if (voidedAt.present) {
+      map['voided_at'] = Variable<DateTime>(voidedAt.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (isDirty.present) {
+      map['is_dirty'] = Variable<bool>(isDirty.value);
+    }
+    if (pendingPayload.present) {
+      map['pending_payload'] = Variable<String>(pendingPayload.value);
+    }
+    if (syncError.present) {
+      map['sync_error'] = Variable<String>(syncError.value);
+    }
+    if (syncFailedAt.present) {
+      map['sync_failed_at'] = Variable<DateTime>(syncFailedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CheckInsCompanion(')
+          ..write('id: $id, ')
+          ..write('gymId: $gymId, ')
+          ..write('visitType: $visitType, ')
+          ..write('memberId: $memberId, ')
+          ..write('locationId: $locationId, ')
+          ..write('checkedInAt: $checkedInAt, ')
+          ..write('membershipStatus: $membershipStatus, ')
+          ..write('membershipEndDate: $membershipEndDate, ')
+          ..write('visitorName: $visitorName, ')
+          ..write('category: $category, ')
+          ..write('amountChargedCentavos: $amountChargedCentavos, ')
+          ..write('voidedAt: $voidedAt, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('isDirty: $isDirty, ')
+          ..write('pendingPayload: $pendingPayload, ')
+          ..write('syncError: $syncError, ')
+          ..write('syncFailedAt: $syncFailedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -1756,6 +2901,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $MembershipPlansTable membershipPlans = $MembershipPlansTable(
     this,
   );
+  late final $CheckInsTable checkIns = $CheckInsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -1763,6 +2909,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   List<DatabaseSchemaEntity> get allSchemaEntities => [
     members,
     membershipPlans,
+    checkIns,
   ];
 }
 
@@ -1786,6 +2933,8 @@ typedef $$MembersTableCreateCompanionBuilder =
       Value<DateTime?> archivedAt,
       Value<bool> isDirty,
       Value<String?> pendingPayload,
+      Value<String?> syncError,
+      Value<DateTime?> syncFailedAt,
       Value<int> rowid,
     });
 typedef $$MembersTableUpdateCompanionBuilder =
@@ -1808,6 +2957,8 @@ typedef $$MembersTableUpdateCompanionBuilder =
       Value<DateTime?> archivedAt,
       Value<bool> isDirty,
       Value<String?> pendingPayload,
+      Value<String?> syncError,
+      Value<DateTime?> syncFailedAt,
       Value<int> rowid,
     });
 
@@ -1907,6 +3058,16 @@ class $$MembersTableFilterComposer
 
   ColumnFilters<String> get pendingPayload => $composableBuilder(
     column: $table.pendingPayload,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get syncError => $composableBuilder(
+    column: $table.syncError,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get syncFailedAt => $composableBuilder(
+    column: $table.syncFailedAt,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -2009,6 +3170,16 @@ class $$MembersTableOrderingComposer
     column: $table.pendingPayload,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get syncError => $composableBuilder(
+    column: $table.syncError,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get syncFailedAt => $composableBuilder(
+    column: $table.syncFailedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$MembersTableAnnotationComposer
@@ -2089,6 +3260,14 @@ class $$MembersTableAnnotationComposer
     column: $table.pendingPayload,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get syncError =>
+      $composableBuilder(column: $table.syncError, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get syncFailedAt => $composableBuilder(
+    column: $table.syncFailedAt,
+    builder: (column) => column,
+  );
 }
 
 class $$MembersTableTableManager
@@ -2137,6 +3316,8 @@ class $$MembersTableTableManager
                 Value<DateTime?> archivedAt = const Value.absent(),
                 Value<bool> isDirty = const Value.absent(),
                 Value<String?> pendingPayload = const Value.absent(),
+                Value<String?> syncError = const Value.absent(),
+                Value<DateTime?> syncFailedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => MembersCompanion(
                 id: id,
@@ -2157,6 +3338,8 @@ class $$MembersTableTableManager
                 archivedAt: archivedAt,
                 isDirty: isDirty,
                 pendingPayload: pendingPayload,
+                syncError: syncError,
+                syncFailedAt: syncFailedAt,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -2179,6 +3362,8 @@ class $$MembersTableTableManager
                 Value<DateTime?> archivedAt = const Value.absent(),
                 Value<bool> isDirty = const Value.absent(),
                 Value<String?> pendingPayload = const Value.absent(),
+                Value<String?> syncError = const Value.absent(),
+                Value<DateTime?> syncFailedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => MembersCompanion.insert(
                 id: id,
@@ -2199,6 +3384,8 @@ class $$MembersTableTableManager
                 archivedAt: archivedAt,
                 isDirty: isDirty,
                 pendingPayload: pendingPayload,
+                syncError: syncError,
+                syncFailedAt: syncFailedAt,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -2568,6 +3755,463 @@ typedef $$MembershipPlansTableProcessedTableManager =
       MembershipPlan,
       PrefetchHooks Function()
     >;
+typedef $$CheckInsTableCreateCompanionBuilder =
+    CheckInsCompanion Function({
+      required String id,
+      required String gymId,
+      required String visitType,
+      Value<String?> memberId,
+      required String locationId,
+      required DateTime checkedInAt,
+      Value<String> membershipStatus,
+      Value<DateTime?> membershipEndDate,
+      Value<String> visitorName,
+      Value<String> category,
+      Value<int?> amountChargedCentavos,
+      Value<DateTime?> voidedAt,
+      required DateTime createdAt,
+      required DateTime updatedAt,
+      Value<bool> isDirty,
+      Value<String?> pendingPayload,
+      Value<String?> syncError,
+      Value<DateTime?> syncFailedAt,
+      Value<int> rowid,
+    });
+typedef $$CheckInsTableUpdateCompanionBuilder =
+    CheckInsCompanion Function({
+      Value<String> id,
+      Value<String> gymId,
+      Value<String> visitType,
+      Value<String?> memberId,
+      Value<String> locationId,
+      Value<DateTime> checkedInAt,
+      Value<String> membershipStatus,
+      Value<DateTime?> membershipEndDate,
+      Value<String> visitorName,
+      Value<String> category,
+      Value<int?> amountChargedCentavos,
+      Value<DateTime?> voidedAt,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<bool> isDirty,
+      Value<String?> pendingPayload,
+      Value<String?> syncError,
+      Value<DateTime?> syncFailedAt,
+      Value<int> rowid,
+    });
+
+class $$CheckInsTableFilterComposer
+    extends Composer<_$AppDatabase, $CheckInsTable> {
+  $$CheckInsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get gymId => $composableBuilder(
+    column: $table.gymId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get visitType => $composableBuilder(
+    column: $table.visitType,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get memberId => $composableBuilder(
+    column: $table.memberId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get locationId => $composableBuilder(
+    column: $table.locationId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get checkedInAt => $composableBuilder(
+    column: $table.checkedInAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get membershipStatus => $composableBuilder(
+    column: $table.membershipStatus,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get membershipEndDate => $composableBuilder(
+    column: $table.membershipEndDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get visitorName => $composableBuilder(
+    column: $table.visitorName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get category => $composableBuilder(
+    column: $table.category,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get amountChargedCentavos => $composableBuilder(
+    column: $table.amountChargedCentavos,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get voidedAt => $composableBuilder(
+    column: $table.voidedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isDirty => $composableBuilder(
+    column: $table.isDirty,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get pendingPayload => $composableBuilder(
+    column: $table.pendingPayload,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get syncError => $composableBuilder(
+    column: $table.syncError,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get syncFailedAt => $composableBuilder(
+    column: $table.syncFailedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$CheckInsTableOrderingComposer
+    extends Composer<_$AppDatabase, $CheckInsTable> {
+  $$CheckInsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get gymId => $composableBuilder(
+    column: $table.gymId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get visitType => $composableBuilder(
+    column: $table.visitType,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get memberId => $composableBuilder(
+    column: $table.memberId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get locationId => $composableBuilder(
+    column: $table.locationId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get checkedInAt => $composableBuilder(
+    column: $table.checkedInAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get membershipStatus => $composableBuilder(
+    column: $table.membershipStatus,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get membershipEndDate => $composableBuilder(
+    column: $table.membershipEndDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get visitorName => $composableBuilder(
+    column: $table.visitorName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get category => $composableBuilder(
+    column: $table.category,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get amountChargedCentavos => $composableBuilder(
+    column: $table.amountChargedCentavos,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get voidedAt => $composableBuilder(
+    column: $table.voidedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isDirty => $composableBuilder(
+    column: $table.isDirty,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get pendingPayload => $composableBuilder(
+    column: $table.pendingPayload,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get syncError => $composableBuilder(
+    column: $table.syncError,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get syncFailedAt => $composableBuilder(
+    column: $table.syncFailedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$CheckInsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $CheckInsTable> {
+  $$CheckInsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get gymId =>
+      $composableBuilder(column: $table.gymId, builder: (column) => column);
+
+  GeneratedColumn<String> get visitType =>
+      $composableBuilder(column: $table.visitType, builder: (column) => column);
+
+  GeneratedColumn<String> get memberId =>
+      $composableBuilder(column: $table.memberId, builder: (column) => column);
+
+  GeneratedColumn<String> get locationId => $composableBuilder(
+    column: $table.locationId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get checkedInAt => $composableBuilder(
+    column: $table.checkedInAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get membershipStatus => $composableBuilder(
+    column: $table.membershipStatus,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get membershipEndDate => $composableBuilder(
+    column: $table.membershipEndDate,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get visitorName => $composableBuilder(
+    column: $table.visitorName,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get category =>
+      $composableBuilder(column: $table.category, builder: (column) => column);
+
+  GeneratedColumn<int> get amountChargedCentavos => $composableBuilder(
+    column: $table.amountChargedCentavos,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get voidedAt =>
+      $composableBuilder(column: $table.voidedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<bool> get isDirty =>
+      $composableBuilder(column: $table.isDirty, builder: (column) => column);
+
+  GeneratedColumn<String> get pendingPayload => $composableBuilder(
+    column: $table.pendingPayload,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get syncError =>
+      $composableBuilder(column: $table.syncError, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get syncFailedAt => $composableBuilder(
+    column: $table.syncFailedAt,
+    builder: (column) => column,
+  );
+}
+
+class $$CheckInsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $CheckInsTable,
+          CheckIn,
+          $$CheckInsTableFilterComposer,
+          $$CheckInsTableOrderingComposer,
+          $$CheckInsTableAnnotationComposer,
+          $$CheckInsTableCreateCompanionBuilder,
+          $$CheckInsTableUpdateCompanionBuilder,
+          (CheckIn, BaseReferences<_$AppDatabase, $CheckInsTable, CheckIn>),
+          CheckIn,
+          PrefetchHooks Function()
+        > {
+  $$CheckInsTableTableManager(_$AppDatabase db, $CheckInsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$CheckInsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$CheckInsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$CheckInsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> gymId = const Value.absent(),
+                Value<String> visitType = const Value.absent(),
+                Value<String?> memberId = const Value.absent(),
+                Value<String> locationId = const Value.absent(),
+                Value<DateTime> checkedInAt = const Value.absent(),
+                Value<String> membershipStatus = const Value.absent(),
+                Value<DateTime?> membershipEndDate = const Value.absent(),
+                Value<String> visitorName = const Value.absent(),
+                Value<String> category = const Value.absent(),
+                Value<int?> amountChargedCentavos = const Value.absent(),
+                Value<DateTime?> voidedAt = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<bool> isDirty = const Value.absent(),
+                Value<String?> pendingPayload = const Value.absent(),
+                Value<String?> syncError = const Value.absent(),
+                Value<DateTime?> syncFailedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => CheckInsCompanion(
+                id: id,
+                gymId: gymId,
+                visitType: visitType,
+                memberId: memberId,
+                locationId: locationId,
+                checkedInAt: checkedInAt,
+                membershipStatus: membershipStatus,
+                membershipEndDate: membershipEndDate,
+                visitorName: visitorName,
+                category: category,
+                amountChargedCentavos: amountChargedCentavos,
+                voidedAt: voidedAt,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                isDirty: isDirty,
+                pendingPayload: pendingPayload,
+                syncError: syncError,
+                syncFailedAt: syncFailedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String gymId,
+                required String visitType,
+                Value<String?> memberId = const Value.absent(),
+                required String locationId,
+                required DateTime checkedInAt,
+                Value<String> membershipStatus = const Value.absent(),
+                Value<DateTime?> membershipEndDate = const Value.absent(),
+                Value<String> visitorName = const Value.absent(),
+                Value<String> category = const Value.absent(),
+                Value<int?> amountChargedCentavos = const Value.absent(),
+                Value<DateTime?> voidedAt = const Value.absent(),
+                required DateTime createdAt,
+                required DateTime updatedAt,
+                Value<bool> isDirty = const Value.absent(),
+                Value<String?> pendingPayload = const Value.absent(),
+                Value<String?> syncError = const Value.absent(),
+                Value<DateTime?> syncFailedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => CheckInsCompanion.insert(
+                id: id,
+                gymId: gymId,
+                visitType: visitType,
+                memberId: memberId,
+                locationId: locationId,
+                checkedInAt: checkedInAt,
+                membershipStatus: membershipStatus,
+                membershipEndDate: membershipEndDate,
+                visitorName: visitorName,
+                category: category,
+                amountChargedCentavos: amountChargedCentavos,
+                voidedAt: voidedAt,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                isDirty: isDirty,
+                pendingPayload: pendingPayload,
+                syncError: syncError,
+                syncFailedAt: syncFailedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$CheckInsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $CheckInsTable,
+      CheckIn,
+      $$CheckInsTableFilterComposer,
+      $$CheckInsTableOrderingComposer,
+      $$CheckInsTableAnnotationComposer,
+      $$CheckInsTableCreateCompanionBuilder,
+      $$CheckInsTableUpdateCompanionBuilder,
+      (CheckIn, BaseReferences<_$AppDatabase, $CheckInsTable, CheckIn>),
+      CheckIn,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -2576,4 +4220,6 @@ class $AppDatabaseManager {
       $$MembersTableTableManager(_db, _db.members);
   $$MembershipPlansTableTableManager get membershipPlans =>
       $$MembershipPlansTableTableManager(_db, _db.membershipPlans);
+  $$CheckInsTableTableManager get checkIns =>
+      $$CheckInsTableTableManager(_db, _db.checkIns);
 }

@@ -10,7 +10,7 @@ import 'tables.dart';
 
 part 'app_database.g.dart';
 
-@DriftDatabase(tables: [Members, MembershipPlans])
+@DriftDatabase(tables: [Members, MembershipPlans, CheckIns])
 class AppDatabase extends _$AppDatabase {
   // Normally mirrors kDebugMode: fail loudly while developing, recover
   // quietly in release. Overridable so tests can force recovery-path
@@ -31,7 +31,7 @@ class AppDatabase extends _$AppDatabase {
        super(executor);
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -55,8 +55,13 @@ class AppDatabase extends _$AppDatabase {
         // v2 -> v3: added Members.pendingPayload, storing the full create
         // request JSON for an offline-created member so it can be replayed
         // later by syncPendingMembers(). Also a fresh nullable column.
-        if (from < 3) {
-          await m.addColumn(members, members.pendingPayload);
+        if (from < 4) {
+          await m.addColumn(members, members.syncError);
+          await m.addColumn(members, members.syncFailedAt);
+        }
+        // v4 -> v5: added the check_ins table entirely (Stage 3.10).
+        if (from < 5) {
+          await m.createTable(checkIns);
         }
       } catch (e) {
         if (_rethrowMigrationErrors) rethrow; // fail loudly while building
@@ -85,6 +90,13 @@ class AppDatabase extends _$AppDatabase {
           'ON members (gym_id, member_code) '
           "WHERE member_code != '';",
         );
+        // createAll() above already creates check_ins for a fresh table
+        // set, but guard anyway in case this fallback is ever reached for
+        // a reason unrelated to check_ins itself — never let an
+        // already-exists error here stop the member-row rescue below.
+        try {
+          await m.createTable(checkIns);
+        } catch (_) {}
 
         // Best-effort re-insert. A row missing a field it used to have is
         // recoverable; a missing member is not — so one bad row must never
@@ -118,6 +130,17 @@ class AppDatabase extends _$AppDatabase {
                   row['date_of_birth'] != null
                       ? DateTime.fromMillisecondsSinceEpoch(
                           (row['date_of_birth'] as int) * 1000,
+                        )
+                      : null,
+                ),
+                // Same null-safe-by-construction reasoning as pendingPayload
+                // above: absent on a table that hadn't reached v4 yet, so a
+                // missing map key just reads as null rather than throwing.
+                syncError: Value(row['sync_error'] as String?),
+                syncFailedAt: Value(
+                  row['sync_failed_at'] != null
+                      ? DateTime.fromMillisecondsSinceEpoch(
+                          (row['sync_failed_at'] as int) * 1000,
                         )
                       : null,
                 ),
@@ -185,6 +208,19 @@ class AppDatabase extends _$AppDatabase {
     return row.read(countExp) ?? 0;
   }
 
+  // Counts check-ins created offline that haven't reached the server yet.
+  // Same reasoning as countDirtyMembers(): these rows are the only copy
+  // that exists anywhere. Logout must not wipe the database while this
+  // is > 0 without warning first.
+  Future<int> countDirtyCheckIns() async {
+    final countExp = checkIns.id.count();
+    final query = selectOnly(checkIns)
+      ..addColumns([countExp])
+      ..where(checkIns.isDirty.equals(true));
+    final row = await query.getSingle();
+    return row.read(countExp) ?? 0;
+  }
+
   // Wipes all locally cached data. Call this on logout (after confirming
   // there's nothing unsynced) so the next gym to log in on this device
   // doesn't inherit the previous gym's member list.
@@ -192,6 +228,7 @@ class AppDatabase extends _$AppDatabase {
     await transaction(() async {
       await delete(members).go();
       await delete(membershipPlans).go();
+      await delete(checkIns).go();
     });
   }
 }
