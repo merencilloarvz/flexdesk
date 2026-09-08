@@ -21,21 +21,37 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/6.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-from decouple import config
+from decouple import config, Csv
 
 SECRET_KEY = config('SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+# Defaults to False — a missing DEBUG variable on the host must fail
+# closed, not serve source code and settings to whoever triggers an
+# error. Local dev sets DEBUG=True in .env.
+DEBUG = config("DEBUG", default=False, cast=bool)
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', '192.168.68.227', '192.168.100.33','192.168.100.35']
-if DEBUG:
-    CORS_ALLOW_ALL_ORIGINS = True
-else:
-    CORS_ALLOWED_ORIGINS = [
-        # add your real Railway domain here once deployed, e.g.:
-        # "https://flexdesk.up.railway.app",
-    ]
+ALLOWED_HOSTS = config("ALLOWED_HOSTS", default="", cast=Csv())
+CSRF_TRUSTED_ORIGINS = config("CSRF_TRUSTED_ORIGINS", default="", cast=Csv())
+
+# CORS only applies to browsers — the Flutter app sends no Origin header
+# and isn't subject to it. Empty by default; add an origin only if a
+# web admin gets built later.
+CORS_ALLOWED_ORIGINS = config("CORS_ALLOWED_ORIGINS", default="", cast=Csv())
+
+# Railway terminates TLS in front of the app, so Django sees plain HTTP
+# unless told otherwise. SECURE_PROXY_SSL_HEADER and SECURE_SSL_REDIRECT
+# must go together — without the first, the second creates an infinite
+# redirect loop. HSTS starts at an hour (browsers remember it and it's
+# awkward to undo) — raise it once things are stable.
+if not DEBUG:
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_HSTS_SECONDS = 3600
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+
 # Application definition
 
 INSTALLED_APPS = [
@@ -48,6 +64,7 @@ INSTALLED_APPS = [
     'corsheaders',
     "rest_framework",
     "django_filters",
+    "rest_framework_simplejwt.token_blacklist",
     'core',
 ]
 
@@ -59,18 +76,20 @@ REST_FRAMEWORK = {
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 50,
     "DEFAULT_THROTTLE_CLASSES": ("rest_framework.throttling.ScopedRateThrottle",),
-    "DEFAULT_THROTTLE_RATES": {"signup": "5/hour"},
+        "DEFAULT_THROTTLE_RATES": {"signup": "5/hour", "login": "20/hour","claim": "10/hour"},
     "DEFAULT_FILTER_BACKENDS": (
         "django_filters.rest_framework.DjangoFilterBackend",
         "rest_framework.filters.SearchFilter",
         "rest_framework.filters.OrderingFilter",
     ),
+        "EXCEPTION_HANDLER": "core.exceptions.flexdesk_exception_handler",
 }
 
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(hours=12),
+    "ACCESS_TOKEN_LIFETIME": timedelta(hours=1),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=60),
     "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
 }
 
 AUTH_USER_MODEL = "core.User"
@@ -78,6 +97,7 @@ AUTH_USER_MODEL = "core.User"
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -110,13 +130,25 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # https://docs.djangoproject.com/en/6.1/ref/settings/#databases
 
 import dj_database_url
-from decouple import config
 
 DATABASES = {
     "default": dj_database_url.config(
         default=config("DATABASE_URL"),
         conn_max_age=600,
+        conn_health_checks=True,
     )
+}
+
+# Throttle cache — Django's default in-memory cache lives inside each
+# worker process. With multiple Gunicorn workers, "10/hour" becomes
+# 10/hour PER WORKER, silently. Database-backed avoids that without
+# adding a service. Run `python manage.py createcachetable` after this
+# — it generates a migration, commit it.
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.db.DatabaseCache",
+        "LOCATION": "flexdesk_cache",
+    }
 }
 
 # Password validation
@@ -154,6 +186,8 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.1/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / "staticfiles"
+STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
 
 # Email
