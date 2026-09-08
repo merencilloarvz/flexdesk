@@ -46,6 +46,7 @@ dependencies:
   uuid: ^4.6.0
   intl: ^0.20.3
   sqlite3: ^3.0.0
+  fl_chart: ^0.69.0
 
 
 dev_dependencies:

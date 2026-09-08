@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../../core/api/api_exception.dart';
 import '../providers/auth_providers.dart';
 
+enum AuthRole { owner, member }
+
 class LoginScreen extends ConsumerStatefulWidget {
-  const LoginScreen({super.key});
+  const LoginScreen({super.key, required this.role});
+
+  final AuthRole role;
 
   @override
   ConsumerState<LoginScreen> createState() => _LoginScreenState();
@@ -38,9 +43,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
     try {
       await ref.read(authControllerProvider.notifier).login(email, password);
-      // Success flips AuthState to authenticated. main.dart (and 3.4's
-      // router later) reacts to that by watching state — no
-      // navigation call belongs here.
+      // Success flips AuthState to authenticated; the router reacts to
+      // that and sends the person to the right shell for their
+      // account_type. No navigation call belongs here.
     } on ApiException catch (e) {
       setState(() => _errorMessage = e.message);
     } finally {
@@ -52,7 +57,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isOwner = widget.role == AuthRole.owner;
+
     return Scaffold(
+      appBar: AppBar(),
       body: SafeArea(
         child: Center(
           child: Padding(
@@ -64,7 +72,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
-                    'FlexDesk',
+                    isOwner ? 'Owner sign in' : 'Member sign in',
                     style: Theme.of(context).textTheme.headlineMedium,
                     textAlign: TextAlign.center,
                   ),
@@ -106,6 +114,32 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           )
                         : const Text('Log in'),
                   ),
+                  const SizedBox(height: 24),
+                  // Deliberately different secondary action per role, and
+                  // visually distinct from each other — this is the
+                  // guard against a member accidentally hitting "create
+                  // a gym" and an owner accidentally hitting "claim a
+                  // code". See RolePickerScreen's doc comment.
+                  if (isOwner)
+                    TextButton(
+                      onPressed: _isSubmitting
+                          ? null
+                          : () => context.push('/signup'),
+                      child: const Text(
+                        "Don't have a gym account yet? "
+                        'Create one',
+                      ),
+                    )
+                  else
+                    TextButton(
+                      onPressed: _isSubmitting
+                          ? null
+                          : () => context.push('/claim'),
+                      child: const Text(
+                        'Have a code from your gym? '
+                        'Set up your account',
+                      ),
+                    ),
                 ],
               ),
             ),

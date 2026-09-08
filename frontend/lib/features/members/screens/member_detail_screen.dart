@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/api/api_exception.dart';
 import '../../../core/db/app_database.dart';
 import '../../../core/utils/gym_time.dart';
 import '../../../core/utils/member_status.dart';
 import '../../auth/providers/auth_providers.dart';
 import '../providers/members_providers.dart';
 import '../providers/plans_provider.dart';
+import '../providers/member_visit_stats_provider.dart';
 
 const Color _cPageBg = Color(0xFFEDEFF0);
 const Color _cInk = Color(0xFF0E1A13);
@@ -16,7 +19,9 @@ const Color _cSubtle = Color(0xFF6B7570);
 const Color _cMuted = Color(0xFF8A938E);
 const Color _cCardBg = Colors.white;
 const Color _cFieldBg = Color(0xFFF5F6F7);
-const Color _cAccentTeal = Color(0xFF0F6E56);
+const Color _cAccentBlue = Color(0xFF2F6FE4);
+const Color _cAccentBlueBg = Color(0xFFEAF1FE);
+const Color _cGradientEnd = Color(0xFF7C5CFC);
 const Color _cErrorText = Color(0xFF9E3125);
 const Color _cErrorBg = Color(0xFFFCEBE8);
 const Color _cDisabledBg = Color(0xFFE2E5E3);
@@ -42,6 +47,74 @@ class MemberDetailScreen extends ConsumerStatefulWidget {
 class _MemberDetailScreenState extends ConsumerState<MemberDetailScreen> {
   bool _isArchiving = false;
   String? _archiveError;
+
+  bool? _hasAccount;
+  bool _isCheckingAccount = true;
+  bool _isIssuingCode = false;
+  String? _claimError;
+  Map<String, dynamic>? _issuedCode;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkHasAccount());
+  }
+
+  Future<void> _checkHasAccount() async {
+    try {
+      final hasAccount = await ref
+          .read(membersRepositoryProvider)
+          .fetchHasAccount(widget.memberId);
+      if (mounted) {
+        setState(() {
+          _hasAccount = hasAccount;
+          _isCheckingAccount = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isCheckingAccount = false);
+    }
+  }
+
+  void _refreshAll() {
+    ref.invalidate(memberByIdProvider(widget.memberId));
+    ref.invalidate(membershipHistoryProvider(widget.memberId));
+    ref.invalidate(memberVisitStatsProvider(widget.memberId));
+    setState(() => _isCheckingAccount = true);
+    _checkHasAccount();
+  }
+
+  Future<void> _issueClaimCode() async {
+    setState(() {
+      _isIssuingCode = true;
+      _claimError = null;
+    });
+    try {
+      final result = await ref
+          .read(membersRepositoryProvider)
+          .issueClaimCode(widget.memberId);
+      if (mounted) {
+        setState(() {
+          _issuedCode = result;
+          _isIssuingCode = false;
+        });
+      }
+    } on ApiException catch (e) {
+      if (mounted) {
+        setState(() {
+          _isIssuingCode = false;
+          _claimError = e.message;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _isIssuingCode = false;
+          _claimError = "Couldn't reach the server. Check your connection.";
+        });
+      }
+    }
+  }
 
   Future<void> _confirmAndArchive() async {
     final confirmed = await showDialog<bool>(
@@ -98,9 +171,6 @@ class _MemberDetailScreenState extends ConsumerState<MemberDetailScreen> {
         child: _RenewSheet(memberId: widget.memberId, gymId: gymId),
       ),
     );
-    // The sheet already refreshes the member on success; the history
-    // section is a separate one-shot fetch that doesn't know a new
-    // Membership was just created, so it needs an explicit nudge.
     ref.invalidate(membershipHistoryProvider(widget.memberId));
   }
 
@@ -118,10 +188,17 @@ class _MemberDetailScreenState extends ConsumerState<MemberDetailScreen> {
         backgroundColor: _cPageBg,
         elevation: 0,
         title: const Text(
-          'Member',
-          style: TextStyle(color: _cInk, fontWeight: FontWeight.w500),
+          'Member Details',
+          style: TextStyle(color: _cInk, fontWeight: FontWeight.w600),
         ),
         iconTheme: const IconThemeData(color: _cInk),
+        actions: [
+          IconButton(
+            onPressed: _refreshAll,
+            icon: const Icon(Icons.refresh, size: 20),
+          ),
+          const SizedBox(width: 4),
+        ],
       ),
       body: memberAsync.when(
         data: (member) {
@@ -140,6 +217,12 @@ class _MemberDetailScreenState extends ConsumerState<MemberDetailScreen> {
             archiveError: _archiveError,
             onArchive: _confirmAndArchive,
             onRenew: () => _openRenewSheet(gymId),
+            hasAccount: _hasAccount,
+            isCheckingAccount: _isCheckingAccount,
+            isIssuingCode: _isIssuingCode,
+            claimError: _claimError,
+            issuedCode: _issuedCode,
+            onIssueCode: _issueClaimCode,
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
@@ -150,7 +233,7 @@ class _MemberDetailScreenState extends ConsumerState<MemberDetailScreen> {
   }
 }
 
-class _MemberDetailBody extends StatelessWidget {
+class _MemberDetailBody extends ConsumerWidget {
   const _MemberDetailBody({
     required this.member,
     required this.isOwner,
@@ -158,6 +241,12 @@ class _MemberDetailBody extends StatelessWidget {
     required this.archiveError,
     required this.onArchive,
     required this.onRenew,
+    required this.hasAccount,
+    required this.isCheckingAccount,
+    required this.isIssuingCode,
+    required this.claimError,
+    required this.issuedCode,
+    required this.onIssueCode,
   });
 
   final Member member;
@@ -166,13 +255,28 @@ class _MemberDetailBody extends StatelessWidget {
   final String? archiveError;
   final VoidCallback onArchive;
   final VoidCallback onRenew;
+  final bool? hasAccount;
+  final bool isCheckingAccount;
+  final bool isIssuingCode;
+  final String? claimError;
+  final Map<String, dynamic>? issuedCode;
+  final VoidCallback onIssueCode;
+
+  void _copyToClipboard(BuildContext context, String value, String label) {
+    if (value.isEmpty) return;
+    Clipboard.setData(ClipboardData(text: value));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('$label copied')));
+  }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final today = GymTime.today();
     final status = statusFor(member.currentEndDate, today);
     final remaining = daysRemaining(member.currentEndDate, today);
     final fullName = '${member.firstName} ${member.lastName}'.trim();
+    final statsAsync = ref.watch(memberVisitStatsProvider(member.id));
 
     final (avatarBg, avatarIcon) = switch (status) {
       MembershipStatus.active => (_cActiveBg, _cActiveIcon),
@@ -180,7 +284,15 @@ class _MemberDetailBody extends StatelessWidget {
       MembershipStatus.expired => (_cExpiredBg, _cExpiredIcon),
       MembershipStatus.noMembership => (_cNoMembershipBg, _cNoMembershipIcon),
     };
-    final pillBg = avatarBg;
+    final (pillBg, pillText) = switch (status) {
+      MembershipStatus.active => (_cActiveIcon, _cActiveBg),
+      MembershipStatus.expiring => (_cExpiringIcon, _cExpiringBg),
+      MembershipStatus.expired => (_cExpiredIcon, _cExpiredBg),
+      MembershipStatus.noMembership => (
+        const Color(0xFFEDEEEE),
+        _cNoMembershipBg,
+      ),
+    };
 
     return Column(
       children: [
@@ -191,14 +303,37 @@ class _MemberDetailBody extends StatelessWidget {
               Center(
                 child: Column(
                   children: [
-                    Container(
-                      width: 64,
-                      height: 64,
-                      decoration: BoxDecoration(
-                        color: avatarBg,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(Icons.person, size: 28, color: avatarIcon),
+                    Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        Container(
+                          width: 76,
+                          height: 76,
+                          decoration: BoxDecoration(
+                            color: avatarBg,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.person,
+                            size: 32,
+                            color: avatarIcon,
+                          ),
+                        ),
+                        if (hasAccount == true)
+                          Positioned(
+                            right: 2,
+                            bottom: 2,
+                            child: Container(
+                              width: 16,
+                              height: 16,
+                              decoration: BoxDecoration(
+                                color: _cActiveBg,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: _cCardBg, width: 2),
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                     const SizedBox(height: 10),
                     Text(
@@ -221,7 +356,7 @@ class _MemberDetailBody extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 12,
-                        vertical: 5,
+                        vertical: 6,
                       ),
                       decoration: BoxDecoration(
                         color: pillBg,
@@ -229,18 +364,59 @@ class _MemberDetailBody extends StatelessWidget {
                       ),
                       child: Text(
                         _statusLabel(status, remaining),
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                          color: pillText,
                         ),
                       ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 20),
 
+              Row(
+                children: [
+                  Expanded(
+                    child: _StatCard(
+                      icon: Icons.bolt,
+                      label: 'Visits',
+                      sublabel: 'This month',
+                      value: statsAsync.when(
+                        data: (s) => '${s.visitsThisMonth}',
+                        loading: () => '—',
+                        error: (_, _) => '—',
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _StatCard(
+                      icon: Icons.access_time,
+                      label: 'Last in',
+                      sublabel: statsAsync.when(
+                        data: (s) => s.lastCheckInAt == null
+                            ? 'No visits yet'
+                            : DateFormat(
+                                'h:mm a',
+                              ).format(s.lastCheckInAt!.toLocal()),
+                        loading: () => '',
+                        error: (_, _) => '',
+                      ),
+                      value: statsAsync.when(
+                        data: (s) => s.lastCheckInAt == null
+                            ? '—'
+                            : _relativeDay(s.lastCheckInAt!.toLocal()),
+                        loading: () => '—',
+                        error: (_, _) => '—',
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 16),
               Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 16,
@@ -253,27 +429,54 @@ class _MemberDetailBody extends StatelessWidget {
                 child: Column(
                   children: [
                     _InfoRow(
-                      icon: Icons.badge_outlined,
-                      label: 'Member code',
-                      value: member.memberCode.isEmpty
-                          ? 'Not assigned'
-                          : member.memberCode,
-                    ),
-                    const Divider(height: 1, color: _cFieldBg),
-                    _InfoRow(
                       icon: Icons.call_outlined,
                       label: 'Phone',
                       value: member.phone,
+                      onCopy: member.phone.isEmpty
+                          ? null
+                          : () => _copyToClipboard(
+                              context,
+                              member.phone,
+                              'Phone',
+                            ),
                     ),
                     const Divider(height: 1, color: _cFieldBg),
                     _InfoRow(
                       icon: Icons.mail_outline,
                       label: 'Email',
                       value: member.email,
+                      onCopy: member.email.isEmpty
+                          ? null
+                          : () => _copyToClipboard(
+                              context,
+                              member.email,
+                              'Email',
+                            ),
                     ),
                   ],
                 ),
               ),
+
+              if (isOwner) ...[
+                const SizedBox(height: 20),
+                const Text(
+                  'App access',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: _cInk,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                _ClaimAccessSection(
+                  hasAccount: hasAccount,
+                  isCheckingAccount: isCheckingAccount,
+                  isIssuingCode: isIssuingCode,
+                  claimError: claimError,
+                  issuedCode: issuedCode,
+                  onIssueCode: onIssueCode,
+                ),
+              ],
 
               const SizedBox(height: 20),
               const Text(
@@ -300,8 +503,6 @@ class _MemberDetailBody extends StatelessWidget {
           ),
         ),
 
-        // Pinned below the scrolling content — however long the history
-        // list gets, Renew and Archive stay reachable without scrolling.
         Container(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
           decoration: const BoxDecoration(
@@ -314,20 +515,40 @@ class _MemberDetailBody extends StatelessWidget {
               children: [
                 SizedBox(
                   width: double.infinity,
-                  child: FilledButton(
-                    onPressed: onRenew,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: _cAccentTeal,
-                      padding: const EdgeInsets.symmetric(vertical: 15),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(999),
+                  height: 54,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [_cAccentBlue, _cGradientEnd],
                       ),
+                      borderRadius: BorderRadius.circular(999),
                     ),
-                    child: const Text(
-                      'Renew membership',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w500,
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(999),
+                        onTap: onRenew,
+                        child: const Center(
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.autorenew,
+                                size: 18,
+                                color: Colors.white,
+                              ),
+                              SizedBox(width: 8),
+                              Text(
+                                'Renew membership',
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -366,7 +587,7 @@ class _MemberDetailBody extends StatelessWidget {
                                 ),
                                 SizedBox(width: 6),
                                 Text(
-                                  'Archive',
+                                  'Archive member',
                                   style: TextStyle(
                                     fontSize: 13,
                                     fontWeight: FontWeight.w500,
@@ -399,6 +620,241 @@ class _MemberDetailBody extends StatelessWidget {
         return 'No membership';
     }
   }
+
+  String _relativeDay(DateTime when) {
+    final today = DateTime.now();
+    final isToday =
+        when.year == today.year &&
+        when.month == today.month &&
+        when.day == today.day;
+    if (isToday) return 'Today';
+    final yesterday = today.subtract(const Duration(days: 1));
+    final isYesterday =
+        when.year == yesterday.year &&
+        when.month == yesterday.month &&
+        when.day == yesterday.day;
+    if (isYesterday) return 'Yesterday';
+    return DateFormat('MMM d').format(when);
+  }
+}
+
+class _StatCard extends StatelessWidget {
+  const _StatCard({
+    required this.icon,
+    required this.label,
+    required this.sublabel,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String sublabel;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: _cCardBg,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(label, style: const TextStyle(fontSize: 12, color: _cMuted)),
+              Icon(icon, size: 15, color: _cAccentBlue),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+              color: _cInk,
+            ),
+          ),
+          if (sublabel.isNotEmpty)
+            Text(
+              sublabel,
+              style: const TextStyle(fontSize: 11, color: _cMuted),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ClaimAccessSection extends StatelessWidget {
+  const _ClaimAccessSection({
+    required this.hasAccount,
+    required this.isCheckingAccount,
+    required this.isIssuingCode,
+    required this.claimError,
+    required this.issuedCode,
+    required this.onIssueCode,
+  });
+
+  final bool? hasAccount;
+  final bool isCheckingAccount;
+  final bool isIssuingCode;
+  final String? claimError;
+  final Map<String, dynamic>? issuedCode;
+  final VoidCallback onIssueCode;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: _cCardBg,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: _content(context),
+    );
+  }
+
+  Widget _content(BuildContext context) {
+    if (isCheckingAccount) {
+      return const Row(
+        children: [
+          SizedBox(
+            height: 16,
+            width: 16,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          SizedBox(width: 10),
+          Text(
+            'Checking account status…',
+            style: TextStyle(fontSize: 13, color: _cMuted),
+          ),
+        ],
+      );
+    }
+
+    if (hasAccount == true) {
+      return const Row(
+        children: [
+          Icon(Icons.check_circle, size: 18, color: _cActiveBg),
+          SizedBox(width: 8),
+          Text(
+            'This member has set up their account.',
+            style: TextStyle(fontSize: 13, color: _cInk),
+          ),
+        ],
+      );
+    }
+
+    if (issuedCode != null) {
+      final code = issuedCode!['claim_code'] as String? ?? '';
+      final expiresAt = DateTime.tryParse(
+        issuedCode!['expires_at'] as String? ?? '',
+      );
+      final expiryText = expiresAt != null
+          ? 'Expires ${DateFormat('MMM d, yyyy').format(expiresAt)}'
+          : '';
+
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text(
+            'Give this code to the member',
+            style: TextStyle(fontSize: 13, color: _cMuted),
+          ),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            decoration: BoxDecoration(
+              color: _cFieldBg,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              code,
+              style: const TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 4,
+                color: _cInk,
+              ),
+            ),
+          ),
+          if (expiryText.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              expiryText,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 12, color: _cMuted),
+            ),
+          ],
+          const SizedBox(height: 10),
+          Text(
+            'It\'s one-time use — the member sets their own password with it. '
+            "This screen won't show it again once you leave.",
+            style: const TextStyle(fontSize: 11, color: _cMuted),
+          ),
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Text(
+          "This member hasn't set up app access yet.",
+          style: TextStyle(fontSize: 13, color: _cMuted),
+        ),
+        if (claimError != null) ...[
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: _cErrorBg,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(
+              claimError!,
+              style: const TextStyle(color: _cErrorText, fontSize: 12),
+            ),
+          ),
+        ],
+        const SizedBox(height: 10),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton(
+            onPressed: isIssuingCode ? null : onIssueCode,
+            style: FilledButton.styleFrom(
+              backgroundColor: _cAccentBlue,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ),
+            child: isIssuingCode
+                ? const SizedBox(
+                    height: 16,
+                    width: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Text(
+                    'Set up app access',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 class _InfoRow extends StatelessWidget {
@@ -406,11 +862,13 @@ class _InfoRow extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.value,
+    this.onCopy,
   });
 
   final IconData icon;
   final String label;
   final String value;
+  final VoidCallback? onCopy;
 
   @override
   Widget build(BuildContext context) {
@@ -430,6 +888,17 @@ class _InfoRow extends StatelessWidget {
             value.isEmpty ? '—' : value,
             style: const TextStyle(fontSize: 13, color: _cInk),
           ),
+          if (onCopy != null) ...[
+            const SizedBox(width: 6),
+            InkWell(
+              onTap: onCopy,
+              borderRadius: BorderRadius.circular(6),
+              child: const Padding(
+                padding: EdgeInsets.all(2),
+                child: Icon(Icons.copy_outlined, size: 14, color: _cAccentBlue),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -669,7 +1138,7 @@ class _RenewSheetState extends ConsumerState<_RenewSheet> {
             child: ElevatedButton(
               onPressed: _isSubmitting ? null : _confirm,
               style: ElevatedButton.styleFrom(
-                backgroundColor: _cAccentTeal,
+                backgroundColor: _cAccentBlue,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(999),

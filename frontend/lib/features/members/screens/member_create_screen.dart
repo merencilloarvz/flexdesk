@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../auth/providers/auth_providers.dart';
+import '../../dashboard/providers/analytics_providers.dart';
 import '../providers/members_providers.dart';
 import '../providers/plans_provider.dart';
 
@@ -13,7 +14,8 @@ const Color _cSubtle = Color(0xFF6B7570);
 const Color _cMuted = Color(0xFF8A938E);
 const Color _cFieldBg = Color(0xFFF5F6F7);
 const Color _cCardBg = Colors.white;
-const Color _cAccentTeal = Color(0xFF0F6E56);
+const Color _cAccentBlue = Color(0xFF2F6FE4);
+const Color _cAccentBlueBg = Color(0xFFEAF1FE);
 const Color _cErrorBg = Color(0xFFFCEBE8);
 const Color _cErrorText = Color(0xFF9E3125);
 const Color _cDisabledBg = Color(0xFFE2E5E3);
@@ -50,11 +52,6 @@ class _MemberCreateScreenState extends ConsumerState<MemberCreateScreen> {
     return errors == null || errors.isEmpty ? null : errors.first;
   }
 
-  // The backend still splits a member into first_name/last_name, but one
-  // combined "Name" field is simpler for the person typing. Everything
-  // after the first space becomes the last name — good enough for
-  // "Juan Dela Cruz" (first: Juan, last: Dela Cruz); a single-word name
-  // just leaves last_name blank, which the backend already allows.
   (String, String) _splitName(String fullName) {
     final parts = fullName.trim().split(RegExp(r'\s+'));
     final first = parts.isNotEmpty ? parts.first : '';
@@ -62,17 +59,68 @@ class _MemberCreateScreenState extends ConsumerState<MemberCreateScreen> {
     return (first, last);
   }
 
+  Future<void> _showAddedDialog({required bool offline}) {
+    return showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        icon: Container(
+          width: 48,
+          height: 48,
+          decoration: const BoxDecoration(
+            color: _cAccentBlueBg,
+            shape: BoxShape.circle,
+          ),
+          child: const Icon(Icons.check, color: _cAccentBlue, size: 26),
+        ),
+        title: const Text(
+          'Member added',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontWeight: FontWeight.w600, color: _cInk),
+        ),
+        content: Text(
+          offline
+              ? "Saved on this device — it'll sync to the server once "
+                    "you're back online."
+              : 'The new member has been saved.',
+          textAlign: TextAlign.center,
+          style: const TextStyle(fontSize: 13, color: _cMuted),
+        ),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              style: FilledButton.styleFrom(
+                backgroundColor: _cAccentBlue,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+              child: const Text('Done'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _submit({
     required String gymId,
     required String homeLocationId,
   }) async {
     if (_isSubmitting) return;
+
+    final missingFieldErrors = <String, List<String>>{};
     if (_nameCtrl.text.trim().isEmpty) {
-      setState(() {
-        _fieldErrors = {
-          'first_name': ['Name is required.'],
-        };
-      });
+      missingFieldErrors['first_name'] = ['Name is required.'];
+    }
+    if (_emailCtrl.text.trim().isEmpty) {
+      missingFieldErrors['email'] = ['Email is required.'];
+    }
+    if (missingFieldErrors.isNotEmpty) {
+      setState(() => _fieldErrors = missingFieldErrors);
       return;
     }
 
@@ -103,12 +151,12 @@ class _MemberCreateScreenState extends ConsumerState<MemberCreateScreen> {
 
     switch (result.outcome) {
       case CreateMemberOutcome.synced:
-        context.pop();
+        ref.invalidate(analyticsProvider);
+        await _showAddedDialog(offline: false);
+        if (mounted) context.pop();
       case CreateMemberOutcome.queuedOffline:
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Saved — will sync when back online.')),
-        );
-        context.pop();
+        await _showAddedDialog(offline: true);
+        if (mounted) context.pop();
       case CreateMemberOutcome.rejected:
         setState(() {
           _isSubmitting = false;
@@ -135,21 +183,30 @@ class _MemberCreateScreenState extends ConsumerState<MemberCreateScreen> {
 
     return Scaffold(
       backgroundColor: _cPageBg,
-      appBar: AppBar(
-        backgroundColor: _cPageBg,
-        elevation: 0,
-        title: const Text(
-          'Add Member',
-          style: TextStyle(color: _cInk, fontWeight: FontWeight.w500),
-        ),
-        iconTheme: const IconThemeData(color: _cInk),
-      ),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              Row(
+                children: [
+                  IconButton(
+                    onPressed: () => context.pop(),
+                    icon: const Icon(Icons.arrow_back, color: _cInk),
+                  ),
+                  const Text(
+                    'Add Member',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w600,
+                      color: _cInk,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+
               if (homeLocationId == null) ...[
                 _banner(
                   'No location assigned — ask your gym owner.',
@@ -162,42 +219,36 @@ class _MemberCreateScreenState extends ConsumerState<MemberCreateScreen> {
                 const SizedBox(height: 16),
               ],
 
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: _cCardBg,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _textField(
-                      label: 'Name',
-                      hint: 'Juan Dela Cruz',
-                      controller: _nameCtrl,
-                      error: _errorFor('first_name') ?? _errorFor('last_name'),
-                    ),
-                    const SizedBox(height: 16),
-                    _textField(
-                      label: 'Phone (optional)',
-                      hint: '0912 345 6789',
-                      controller: _phoneCtrl,
-                      keyboardType: TextInputType.phone,
-                      error: _errorFor('phone'),
-                    ),
-                    const SizedBox(height: 16),
-                    _textField(
-                      label: 'Email (optional)',
-                      hint: 'juan@example.com',
-                      controller: _emailCtrl,
-                      keyboardType: TextInputType.emailAddress,
-                      error: _errorFor('email'),
-                    ),
-                    const SizedBox(height: 16),
-                    _planField(plansAsync),
-                  ],
+              _fieldCard(
+                label: 'FULL NAME',
+                required: true,
+                hint: 'e.g. Juan Dela Cruz',
+                controller: _nameCtrl,
+                error: _errorFor('first_name') ?? _errorFor('last_name'),
+              ),
+              const SizedBox(height: 12),
+              _fieldCard(
+                label: 'MOBILE NUMBER',
+                hint: '912 345 6789',
+                controller: _phoneCtrl,
+                keyboardType: TextInputType.phone,
+                error: _errorFor('phone'),
+                trailing: const Text(
+                  'Optional',
+                  style: TextStyle(fontSize: 11, color: _cMuted),
                 ),
               ),
+              const SizedBox(height: 12),
+              _fieldCard(
+                label: 'EMAIL ADDRESS',
+                hint: 'juan@example.com',
+                controller: _emailCtrl,
+                keyboardType: TextInputType.emailAddress,
+                error: _errorFor('email'),
+                prefixIcon: Icons.mail_outline,
+              ),
+              const SizedBox(height: 12),
+              _planCard(plansAsync),
 
               const SizedBox(height: 24),
               _saveButton(
@@ -225,151 +276,199 @@ class _MemberCreateScreenState extends ConsumerState<MemberCreateScreen> {
     );
   }
 
-  Widget _label(String text) => Text(
-    text,
-    style: const TextStyle(
-      fontSize: 13,
-      fontWeight: FontWeight.w600,
-      color: _cSubtle,
-    ),
-  );
-
-  Widget _textField({
+  Widget _fieldCard({
     required String label,
     required TextEditingController controller,
+    bool required = false,
     String? hint,
     TextInputType? keyboardType,
     String? error,
+    IconData? prefixIcon,
+    Widget? trailing,
   }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _label(label),
-        const SizedBox(height: 6),
-        Container(
-          decoration: BoxDecoration(
-            color: _cFieldBg,
-            borderRadius: BorderRadius.circular(12),
-            border: error != null ? Border.all(color: _cErrorText) : null,
-          ),
-          child: TextField(
-            controller: controller,
-            keyboardType: keyboardType,
-            enabled: !_isSubmitting,
-            style: const TextStyle(fontSize: 15),
-            decoration: InputDecoration(
-              hintText: hint,
-              hintStyle: const TextStyle(color: _cMuted, fontSize: 15),
-              border: InputBorder.none,
-              isDense: true,
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 14,
-                vertical: 14,
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: _cCardBg,
+        borderRadius: BorderRadius.circular(14),
+        border: error != null ? Border.all(color: _cErrorText) : null,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.4,
+                  color: _cSubtle,
+                ),
               ),
-            ),
+              if (required)
+                const Text(
+                  ' *',
+                  style: TextStyle(color: _cErrorText, fontSize: 11),
+                ),
+              const Spacer(),
+              if (trailing != null) trailing,
+            ],
           ),
-        ),
-        if (error != null) ...[
-          const SizedBox(height: 4),
-          Text(error, style: const TextStyle(fontSize: 12, color: _cErrorText)),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              if (prefixIcon != null) ...[
+                Icon(prefixIcon, size: 18, color: _cMuted),
+                const SizedBox(width: 8),
+              ],
+              Expanded(
+                child: TextField(
+                  controller: controller,
+                  keyboardType: keyboardType,
+                  enabled: !_isSubmitting,
+                  style: const TextStyle(fontSize: 15, color: _cInk),
+                  decoration: InputDecoration(
+                    hintText: hint,
+                    hintStyle: const TextStyle(color: _cMuted, fontSize: 15),
+                    border: InputBorder.none,
+                    isDense: true,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (error != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              error,
+              style: const TextStyle(fontSize: 12, color: _cErrorText),
+            ),
+          ],
         ],
-      ],
+      ),
     );
   }
 
-  Widget _planField(AsyncValue plansAsync) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            _label('Plan'),
-            GestureDetector(
-              onTap: () => context.push('/plans/manage'),
-              child: const Text(
-                'Manage plans',
+  Widget _planCard(AsyncValue plansAsync) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: _cCardBg,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'MEMBERSHIP PLAN',
                 style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: _cAccentTeal,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.4,
+                  color: _cSubtle,
                 ),
               ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 6),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14),
-          decoration: BoxDecoration(
-            color: _cFieldBg,
-            borderRadius: BorderRadius.circular(12),
+              GestureDetector(
+                onTap: () => context.push('/plans/manage'),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Manage plans',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: _cAccentBlue,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-          child: plansAsync.when(
-            data: (plans) {
-              final items = <DropdownMenuItem<String?>>[
-                const DropdownMenuItem(value: null, child: Text('No plan')),
-                ...plans.map(
-                  (p) => DropdownMenuItem(
-                    value: p.id as String,
-                    child: Text(
-                      p.category.isEmpty
-                          ? p.name as String
-                          : '${p.name} (${p.category})',
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(
+              color: _cFieldBg,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: plansAsync.when(
+              data: (plans) {
+                final items = <DropdownMenuItem<String?>>[
+                  const DropdownMenuItem(value: null, child: Text('No plan')),
+                  ...plans.map(
+                    (p) => DropdownMenuItem(
+                      value: p.id as String,
+                      child: Text(
+                        p.category.isEmpty
+                            ? p.name as String
+                            : '${p.name} (${p.category})',
+                      ),
                     ),
                   ),
+                ];
+                return DropdownButtonHideUnderline(
+                  child: DropdownButton<String?>(
+                    value: _planId,
+                    isExpanded: true,
+                    icon: const Icon(
+                      Icons.keyboard_arrow_down,
+                      color: _cAccentBlue,
+                    ),
+                    items: items,
+                    onChanged: _isSubmitting
+                        ? null
+                        : (v) => setState(() => _planId = v),
+                  ),
+                );
+              },
+              loading: () => const Padding(
+                padding: EdgeInsets.symmetric(vertical: 12),
+                child: SizedBox(
+                  height: 16,
+                  width: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
                 ),
-              ];
-              return DropdownButtonHideUnderline(
-                child: DropdownButton<String?>(
-                  value: _planId,
-                  isExpanded: true,
-                  items: items,
-                  onChanged: _isSubmitting
-                      ? null
-                      : (v) => setState(() => _planId = v),
-                ),
-              );
-            },
-            loading: () => const Padding(
-              padding: EdgeInsets.symmetric(vertical: 12),
-              child: SizedBox(
-                height: 16,
-                width: 16,
-                child: CircularProgressIndicator(strokeWidth: 2),
               ),
-            ),
-            error: (_, _) => const Padding(
-              padding: EdgeInsets.symmetric(vertical: 12),
-              child: Text(
-                "Couldn't load plans",
-                style: TextStyle(color: _cMuted, fontSize: 14),
-              ),
-            ),
-          ),
-        ),
-        if (_planId != null)
-          plansAsync.maybeWhen(
-            data: (plans) {
-              final selected = (plans as List).cast<dynamic>().firstWhere(
-                (p) => p.id == _planId,
-                orElse: () => null,
-              );
-              if (selected == null) return const SizedBox.shrink();
-              final pesos = (selected.priceCentavos as int) / 100;
-              return Padding(
-                padding: const EdgeInsets.only(top: 6),
+              error: (_, _) => const Padding(
+                padding: EdgeInsets.symmetric(vertical: 12),
                 child: Text(
-                  '₱${pesos.toStringAsFixed(2)} / ${selected.durationValue} '
-                  '${(selected.durationUnit as String).toLowerCase()}'
-                  '${selected.durationValue == 1 ? '' : 's'}',
-                  style: const TextStyle(fontSize: 12, color: _cMuted),
+                  "Couldn't load plans",
+                  style: TextStyle(color: _cMuted, fontSize: 14),
                 ),
-              );
-            },
-            orElse: () => const SizedBox.shrink(),
+              ),
+            ),
           ),
-      ],
+          if (_planId != null)
+            plansAsync.maybeWhen(
+              data: (plans) {
+                final selected = (plans as List).cast<dynamic>().firstWhere(
+                  (p) => p.id == _planId,
+                  orElse: () => null,
+                );
+                if (selected == null) return const SizedBox.shrink();
+                final pesos = (selected.priceCentavos as int) / 100;
+                return Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(
+                    '₱${pesos.toStringAsFixed(2)} / ${selected.durationValue} '
+                    '${(selected.durationUnit as String).toLowerCase()}'
+                    '${selected.durationValue == 1 ? '' : 's'}',
+                    style: const TextStyle(fontSize: 12, color: _cMuted),
+                  ),
+                );
+              },
+              orElse: () => const SizedBox.shrink(),
+            ),
+        ],
+      ),
     );
   }
 
@@ -378,12 +477,13 @@ class _MemberCreateScreenState extends ConsumerState<MemberCreateScreen> {
     required VoidCallback? onPressed,
   }) {
     return SizedBox(
-      height: 52,
+      height: 54,
       child: ElevatedButton(
         onPressed: (enabled && !_isSubmitting) ? onPressed : null,
         style: ElevatedButton.styleFrom(
-          backgroundColor: enabled ? _cInk : _cDisabledBg,
+          backgroundColor: enabled ? _cAccentBlue : _cDisabledBg,
           foregroundColor: enabled ? Colors.white : _cDisabledLabel,
+          elevation: 0,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(999),
           ),
@@ -397,9 +497,17 @@ class _MemberCreateScreenState extends ConsumerState<MemberCreateScreen> {
                   color: Colors.white,
                 ),
               )
-            : const Text(
-                'Save member',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            : const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.person_add_alt_1_outlined, size: 18),
+                  SizedBox(width: 8),
+                  Text(
+                    'Save Member',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  ),
+                ],
               ),
       ),
     );

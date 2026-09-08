@@ -72,6 +72,36 @@ class AuthController extends Notifier<AuthState> {
     state = AuthAuthenticated(user);
   }
 
+  Future<void> signup({
+    required String gymName,
+    String? locationName,
+    required String fullName,
+    required String email,
+    required String password,
+  }) async {
+    final user = await ref
+        .read(authRepositoryProvider)
+        .signup(
+          gymName: gymName,
+          locationName: locationName,
+          fullName: fullName,
+          email: email,
+          password: password,
+        );
+    state = AuthAuthenticated(user);
+  }
+
+  Future<void> claim({
+    required String email,
+    required String claimCode,
+    required String password,
+  }) async {
+    final user = await ref
+        .read(authRepositoryProvider)
+        .claim(email: email, claimCode: claimCode, password: password);
+    state = AuthAuthenticated(user);
+  }
+
   Future<AuthUser> completePasswordChange(
     String currentPassword,
     String newPassword,
@@ -82,6 +112,13 @@ class AuthController extends Notifier<AuthState> {
   }
 
   void applyUser(AuthUser user) => state = AuthAuthenticated(user);
+
+  Future<void> setClassesEnabled(bool value) async {
+    final user = await ref
+        .read(authApiProvider)
+        .updateGymSettings(classesEnabled: value);
+    state = AuthAuthenticated(user);
+  }
 
   Future<void> logout({bool force = false}) async {
     final db = ref.read(dbProvider);

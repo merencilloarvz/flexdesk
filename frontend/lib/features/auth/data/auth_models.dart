@@ -29,6 +29,7 @@ class Gym {
   final String timezone;
   final String currency;
   final bool needsSetup;
+  final bool classesEnabled;
 
   const Gym({
     required this.id,
@@ -36,16 +37,19 @@ class Gym {
     required this.timezone,
     required this.currency,
     required this.needsSetup,
+    required this.classesEnabled,
   });
 
   factory Gym.fromJson(Map<String, dynamic> json) => Gym(
     id: json['id'].toString(),
     name: json['name'] as String? ?? '',
-    // Defaults, not hard casts: a cache written by the pre-fix toJson()
-    // has no timezone/currency key and must still parse on next launch.
     timezone: json['timezone'] as String? ?? 'Asia/Manila',
     currency: json['currency'] as String? ?? 'PHP',
     needsSetup: json['needs_setup'] as bool? ?? false,
+    // A cached session from before this field existed has no such key —
+    // defaults to false so an old session never shows a Schedule tab
+    // that then 403s.
+    classesEnabled: json['classes_enabled'] as bool? ?? false,
   );
 
   Map<String, dynamic> toJson() => {
@@ -54,7 +58,17 @@ class Gym {
     'timezone': timezone,
     'currency': currency,
     'needs_setup': needsSetup,
+    'classes_enabled': classesEnabled,
   };
+
+  Gym copyWith({bool? classesEnabled}) => Gym(
+    id: id,
+    name: name,
+    timezone: timezone,
+    currency: currency,
+    needsSetup: needsSetup,
+    classesEnabled: classesEnabled ?? this.classesEnabled,
+  );
 }
 
 class AuthUser {
@@ -63,6 +77,7 @@ class AuthUser {
   final String fullName;
   final String? defaultLocationId;
   final UserRole role;
+  final String? accountType;
   final Gym gym;
   final bool mustChangePassword;
 
@@ -72,19 +87,32 @@ class AuthUser {
     required this.fullName,
     required this.defaultLocationId,
     required this.role,
+    required this.accountType,
     required this.gym,
     required this.mustChangePassword,
   });
 
-  factory AuthUser.fromJson(Map<String, dynamic> json) => AuthUser(
-    id: json['id'].toString(),
-    email: json['email'] as String? ?? '',
-    fullName: json['full_name'] as String? ?? '',
-    defaultLocationId: json['default_location_id']?.toString(),
-    role: _parseRole(json['role'] as String?),
-    gym: Gym.fromJson(json['gym'] as Map<String, dynamic>),
-    mustChangePassword: json['must_change_password'] as bool? ?? false,
-  );
+  factory AuthUser.fromJson(Map<String, dynamic> json) {
+    // Sessions cached before account_type existed have no such field. A
+    // staff user always has a non-null role; a member never does. Deriving
+    // here means an existing logged-in owner survives the upgrade without
+    // a forced re-login — which they might not be able to complete if
+    // they're offline. Do NOT tighten this to a hard field requirement.
+    final accountType =
+        json['account_type'] as String? ??
+        (json['role'] != null ? 'staff' : null);
+
+    return AuthUser(
+      id: json['id'].toString(),
+      email: json['email'] as String? ?? '',
+      fullName: json['full_name'] as String? ?? '',
+      defaultLocationId: json['default_location_id']?.toString(),
+      role: _parseRole(json['role'] as String?),
+      accountType: accountType,
+      gym: Gym.fromJson(json['gym'] as Map<String, dynamic>),
+      mustChangePassword: json['must_change_password'] as bool? ?? false,
+    );
+  }
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -92,17 +120,21 @@ class AuthUser {
     'full_name': fullName,
     'default_location_id': defaultLocationId,
     'role': role.name,
+    'account_type': accountType,
     'gym': gym.toJson(),
     'must_change_password': mustChangePassword,
   };
 
-  AuthUser copyWith({bool? mustChangePassword}) => AuthUser(
+  bool get isMember => accountType == 'member';
+
+  AuthUser copyWith({bool? mustChangePassword, Gym? gym}) => AuthUser(
     id: id,
     email: email,
     fullName: fullName,
     defaultLocationId: defaultLocationId,
     role: role,
-    gym: gym,
+    accountType: accountType,
+    gym: gym ?? this.gym,
     mustChangePassword: mustChangePassword ?? this.mustChangePassword,
   );
 }

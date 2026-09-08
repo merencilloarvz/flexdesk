@@ -15,3 +15,12 @@ A few resources to get you started if this is your first Flutter project:
 For help getting started with Flutter development, view the
 [online documentation](https://docs.flutter.dev/), which offers tutorials,
 samples, guidance on mobile development, and a full API reference.
+
+
+
+## Class scheduling
+
+Class booking is built and tested but off by default. Neighbourhood gyms —
+our primary market — have no scarce slots to allocate; members arrive when
+they arrive. Boutique studios do, and for them it's a settings toggle rather
+than a feature request.

@@ -272,4 +272,20 @@ class MembersRepository {
     );
     await refreshMembers(gymId);
   }
+
+  /// Whether [memberId] has already claimed an account — a fresh network
+  /// fetch every time, deliberately not cached in Drift (has_account is
+  /// on the member list JSON, but the detail screen re-fetches it here
+  /// rather than trusting a possibly-stale cached member row).
+  Future<bool> fetchHasAccount(String memberId) async {
+    final member = await _api.fetchMember(memberId);
+    return member['has_account'] as bool? ?? false;
+  }
+
+  /// Issues a fresh claim code. Deliberately never touches Drift — see
+  /// MembersApi.issueClaimCode's doc comment for why a claim code must
+  /// never be cached locally.
+  Future<Map<String, dynamic>> issueClaimCode(String memberId) {
+    return _api.issueClaimCode(memberId);
+  }
 }

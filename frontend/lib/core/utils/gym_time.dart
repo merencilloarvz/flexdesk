@@ -59,4 +59,18 @@ class GymTime {
   static DateTime endOfDay(DateTime gymLocalDay) {
     return startOfDay(gymLocalDay).add(const Duration(days: 1));
   }
+
+  /// Converts a real UTC instant (e.g. `checkedInAt`) into the gym's local
+  /// wall-clock time, for DISPLAY only — showing a date/time to a person,
+  /// never for date-range comparisons against stored UTC instants (use
+  /// [startOfDay]/[endOfDay] for that; comparing a converted-then-naive
+  /// value against a UTC timestamp reintroduces the same drift bug this
+  /// class exists to prevent).
+  ///
+  /// The returned DateTime's fields (hour, day, month...) are correct for
+  /// display, but its `.isUtc` flag stays true — don't feed this into
+  /// further UTC-instant comparisons.
+  static DateTime toGymLocal(DateTime utcInstant) {
+    return utcInstant.toUtc().add(_gymOffset);
+  }
 }

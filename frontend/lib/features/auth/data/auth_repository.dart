@@ -12,6 +12,49 @@ class AuthRepository {
 
   Future<AuthUser> login(String email, String password) async {
     final (tokens, user, rawUserJson) = await _api.login(email, password);
+    return _establishSession(tokens, user, rawUserJson);
+  }
+
+  Future<AuthUser> signup({
+    required String gymName,
+    String? locationName,
+    required String fullName,
+    required String email,
+    required String password,
+  }) async {
+    final (tokens, user, rawUserJson) = await _api.signup(
+      gymName: gymName,
+      locationName: locationName,
+      fullName: fullName,
+      email: email,
+      password: password,
+    );
+    return _establishSession(tokens, user, rawUserJson);
+  }
+
+  /// Redeems a one-time staff-issued code into a real member login.
+  /// Deliberately NOT queueable offline — see AuthApi.claim() for why.
+  Future<AuthUser> claim({
+    required String email,
+    required String claimCode,
+    required String password,
+  }) async {
+    final (tokens, user, rawUserJson) = await _api.claim(
+      email: email,
+      claimCode: claimCode,
+      password: password,
+    );
+    return _establishSession(tokens, user, rawUserJson);
+  }
+
+  /// Shared by login() and claim() — both endpoints return an identical
+  /// {access, refresh, user} shape, so both establish a session the same
+  /// way. Never duplicate this logic at a call site.
+  Future<AuthUser> _establishSession(
+    AuthTokens tokens,
+    AuthUser user,
+    String rawUserJson,
+  ) async {
     await _tokenStorage.saveSession(
       access: tokens.access,
       refresh: tokens.refresh,
@@ -77,7 +120,21 @@ class AuthRepository {
     return user;
   }
 
+  /// Clears the local session immediately, unconditionally. The
+  /// server-side logout call is fired alongside it but never awaited —
+  /// per spec, logout must never fail or hang because of a dead
+  /// connection. If the API call never reaches the server, the refresh
+  /// token stays valid there until it naturally expires; that's an
+  /// accepted trade for a logout that always works locally, offline or
+  /// not. Errors from the fire-and-forget call are deliberately
+  /// swallowed — there's no UI left by the time it might complete, and
+  /// nothing meaningful to do with the result either way.
   Future<void> logout() async {
+    final refresh = await _tokenStorage.readRefresh();
+    if (refresh != null) {
+      // ignore: unawaited_futures
+      _api.logout(refresh).catchError((_) {});
+    }
     await _tokenStorage.clear();
   }
 }

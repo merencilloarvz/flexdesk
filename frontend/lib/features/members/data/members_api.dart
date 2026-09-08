@@ -40,6 +40,17 @@ class MembersApi {
     return all;
   }
 
+  /// Single-member fetch — used by the detail screen to check
+  /// has_account without waiting for a full list refresh.
+  Future<Map<String, dynamic>> fetchMember(String memberId) async {
+    try {
+      final response = await _dio.get('/members/$memberId/');
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw ApiException.from(e);
+    }
+  }
+
   Future<List<Map<String, dynamic>>> fetchMemberHistory(String memberId) async {
     try {
       final response = await _dio.get('/members/$memberId/memberships/');
@@ -82,6 +93,21 @@ class MembersApi {
   Future<Map<String, dynamic>> createMember(Map<String, dynamic> body) async {
     try {
       final response = await _dio.post('/members/', data: body);
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw ApiException.from(e);
+    }
+  }
+
+  /// Issues a fresh claim code for [memberId], via
+  /// `POST /members/{id}/claim-code/`. Server-only — this is a live,
+  /// one-time credential and must never be cached in Drift. If the
+  /// member already has an account, the server rejects this with a 400
+  /// ("account already claimed"), surfaced as ApiException like any
+  /// other validation error.
+  Future<Map<String, dynamic>> issueClaimCode(String memberId) async {
+    try {
+      final response = await _dio.post('/members/$memberId/claim-code/');
       return response.data as Map<String, dynamic>;
     } on DioException catch (e) {
       throw ApiException.from(e);

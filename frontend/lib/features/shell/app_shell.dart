@@ -3,83 +3,123 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/theme/colors.dart';
 
-/// Persistent shell wrapping the main tabs. Every future top-level screen
-/// should be added as a tab here rather than getting its own one-off route.
-///
-/// Color values live in core/theme/colors.dart (currently placeholders —
-/// see that file's doc comment).
 class AppShell extends StatelessWidget {
   final StatefulNavigationShell navigationShell;
+  final List<({IconData icon, String label, int branchIndex})> tabs;
 
-  const AppShell({super.key, required this.navigationShell});
+  // Which branch (if any) gets the raised circular center button. Pass
+  // null for a flat, evenly-spaced bar with no raised button — see the
+  // member shell in app_router.dart. branchIndex, not list position, is
+  // what's compared against — that's what stays correct when `tabs` is a
+  // shorter list than the shell's real branch count (e.g. the member
+  // shell with Schedule hidden).
+  final int? centerBranchIndex;
 
-  // Total vertical space the floating pill nav occupies at the bottom of
-  // the screen (its own height + the offset that lifts it off the edge).
-  // Every scrollable screen inside the shell should reserve this much
-  // bottom padding so its last item/button isn't hidden underneath it.
-  static const double reservedNavHeight = 64 + 12;
+  const AppShell({
+    super.key,
+    required this.navigationShell,
+    required this.tabs,
+    this.centerBranchIndex,
+  });
 
-  static const _tabs = [
-    (icon: Icons.home_outlined, label: 'Home'),
-    (icon: Icons.people_outline, label: 'Members'),
-    (icon: Icons.qr_code_scanner_outlined, label: 'Check-In'),
-    (icon: Icons.point_of_sale_outlined, label: 'POS'),
-    (icon: Icons.inventory_2_outlined, label: 'Inventory'),
-  ];
+  // Bumped from 76 to accommodate the taller labeled bar + the raised
+  // center button's overhang. Every screen that pads for the nav bar
+  // reads this constant (never a hardcoded number), so raising it here
+  // is enough — check_in_screen.dart and members_list_screen.dart pick
+  // it up automatically.
+  static const double _barHeight = 60;
+  static const double _centerOverhang = 20;
+  static const double reservedNavHeight = _barHeight + _centerOverhang + 12;
 
   @override
   Widget build(BuildContext context) {
     final currentIndex = navigationShell.currentIndex;
 
-    return Scaffold(
-      extendBody: true, // lets content scroll behind the floating pill nav
-      body: Stack(
-        children: [
-          navigationShell,
+    // Found by branchIndex, not list position — a shell with fewer tabs
+    // visible than branches (member shell, Schedule hidden) must not
+    // accidentally match centerBranchIndex against the wrong entry.
+    ({IconData icon, String label, int branchIndex})? centerTab;
+    if (centerBranchIndex != null) {
+      for (final tab in tabs) {
+        if (tab.branchIndex == centerBranchIndex) {
+          centerTab = tab;
+          break;
+        }
+      }
+    }
 
-          // Persistent settings gear — floats above every screen in the
-          // shell, so logout/settings is always one tap away regardless
-          // of which tab is active. Uses push (not go) so the back
-          // button returns to whichever tab you came from.
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 8,
-            right: 16,
-            child: _GlassIconButton(
-              icon: Icons.settings_outlined,
-              onTap: () => context.push('/settings'),
-            ),
-          ),
-        ],
-      ),
+    return Scaffold(
+      extendBody: true,
+      body: navigationShell,
       bottomNavigationBar: SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(32),
-            child: Container(
-              height: 64,
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.75),
-                borderRadius: BorderRadius.circular(32),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  for (var i = 0; i < _tabs.length; i++)
-                    _NavIcon(
-                      icon: _tabs[i].icon,
-                      active: i == currentIndex,
-                      activeColor: AppColors.navActiveHighlight,
-                      onTap: () {
-                        navigationShell.goBranch(
-                          i,
-                          initialLocation: i == navigationShell.currentIndex,
-                        );
-                      },
+          child: SizedBox(
+            height: _barHeight + _centerOverhang,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Positioned(
+                  top: _centerOverhang,
+                  left: 0,
+                  right: 0,
+                  height: _barHeight,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: AppColors.cardBg,
+                      borderRadius: BorderRadius.circular(28),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.08),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
                     ),
-                ],
-              ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        for (final tab in tabs)
+                          if (tab.branchIndex == centerBranchIndex)
+                            // Empty slot — the raised center button sits
+                            // visually above this gap, positioned
+                            // separately below.
+                            const SizedBox(width: 56)
+                          else
+                            _NavItem(
+                              icon: tab.icon,
+                              label: tab.label,
+                              active: tab.branchIndex == currentIndex,
+                              onTap: () => navigationShell.goBranch(
+                                tab.branchIndex,
+                                initialLocation:
+                                    tab.branchIndex ==
+                                    navigationShell.currentIndex,
+                              ),
+                            ),
+                      ],
+                    ),
+                  ),
+                ),
+                if (centerTab != null)
+                  Positioned(
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    child: Center(
+                      child: _CenterButton(
+                        icon: centerTab.icon,
+                        active: currentIndex == centerTab.branchIndex,
+                        onTap: () => navigationShell.goBranch(
+                          centerTab!.branchIndex,
+                          initialLocation:
+                              centerTab.branchIndex ==
+                              navigationShell.currentIndex,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
         ),
@@ -88,68 +128,76 @@ class AppShell extends StatelessWidget {
   }
 }
 
-class _NavIcon extends StatelessWidget {
-  final IconData icon;
-  final bool active;
-  final Color activeColor;
-  final VoidCallback onTap;
-
-  const _NavIcon({
+class _NavItem extends StatelessWidget {
+  const _NavItem({
     required this.icon,
+    required this.label,
     required this.active,
-    required this.activeColor,
     required this.onTap,
   });
+
+  final IconData icon;
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = active ? AppColors.accentBlue : AppColors.muted;
+
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 22, color: color),
+          const SizedBox(height: 3),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: active ? FontWeight.w600 : FontWeight.w400,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CenterButton extends StatelessWidget {
+  const _CenterButton({
+    required this.icon,
+    required this.active,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final bool active;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeOut,
-        width: 44,
-        height: 44,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: active ? activeColor : Colors.transparent,
-        ),
-        child: Icon(
-          icon,
-          color: active
-              ? AppColors.navActiveForeground
-              : AppColors.navInactiveForeground,
-          size: 22,
-        ),
-      ),
-    );
-  }
-}
-
-class _GlassIconButton extends StatelessWidget {
-  final IconData icon;
-  final VoidCallback onTap;
-
-  const _GlassIconButton({required this.icon, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
       child: Container(
-        width: 40,
-        height: 40,
+        width: 56,
+        height: 56,
         decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.65),
+          color: AppColors.accentBlue,
           shape: BoxShape.circle,
-          border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.accentBlue.withValues(alpha: 0.35),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
-        child: IconButton(
-          icon: Icon(icon, color: Colors.white, size: 20),
-          onPressed: onTap,
-          padding: EdgeInsets.zero,
-        ),
+        child: Icon(icon, size: 24, color: Colors.white),
       ),
     );
   }
