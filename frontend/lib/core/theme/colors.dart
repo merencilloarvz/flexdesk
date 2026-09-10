@@ -7,7 +7,7 @@ class AppColors {
   // Backgrounds
   // -----------------------------------------------------------------------
 
-  static const pageBg = Color(0xFFEDEFF0);
+  static const pageBg = Color(0xFFF2F7F5);
   static const cardBg = Colors.white;
   static const fieldBg = Color(0xFFF5F6F7);
   static const border = Color(0xFFD8DAD5);
@@ -21,10 +21,11 @@ class AppColors {
   static const muted = Color(0xFF8A938E);
 
   // -----------------------------------------------------------------------
-  // Accent
+  // Accent — teal
   // -----------------------------------------------------------------------
 
   static const accentTeal = Color(0xFF0F6E56);
+  static const accentTealBg = Color(0xFFE1F5EE);
   static const accentGreen = Color(0xFF39C77F);
   static const linkGreen = Color(0xFF1F7A4D);
 
@@ -79,7 +80,6 @@ class AppColors {
   // -----------------------------------------------------------------------
 
   static const categoryChipBg = Color(0xFFF3F1FA);
-
   static const categoryTeal = Color(0xFF17B9C8);
   static const categoryPurple = Color(0xFF7C5CFC);
 }

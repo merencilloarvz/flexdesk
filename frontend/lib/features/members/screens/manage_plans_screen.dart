@@ -165,7 +165,7 @@ class _ManagePlansScreenState extends ConsumerState<ManagePlansScreen> {
               SizedBox(
                 width: double.infinity,
                 child: FilledButton.icon(
-                  onPressed: () => _openPlanForm(context, gymId: widget.gymId),
+                  onPressed: () => openPlanForm(context, gymId: widget.gymId),
                   icon: const Icon(Icons.add, size: 18),
                   label: const Text(
                     'Add Plan',
@@ -231,6 +231,16 @@ class _FilterTab extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Public entry point so other screens (the first-run setup flow) can
+/// open the same add/edit plan sheet without duplicating it.
+void openPlanForm(
+  BuildContext context, {
+  required String gymId,
+  MembershipPlan? existing,
+}) {
+  _openPlanForm(context, gymId: gymId, existing: existing);
 }
 
 void _openPlanForm(

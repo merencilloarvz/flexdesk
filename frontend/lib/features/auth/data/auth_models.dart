@@ -40,6 +40,14 @@ class Gym {
     required this.classesEnabled,
   });
 
+  const Gym.empty()
+    : id = '',
+      name = '',
+      timezone = 'Asia/Manila',
+      currency = 'PHP',
+      needsSetup = false,
+      classesEnabled = false;
+
   factory Gym.fromJson(Map<String, dynamic> json) => Gym(
     id: json['id'].toString(),
     name: json['name'] as String? ?? '',
@@ -109,7 +117,9 @@ class AuthUser {
       defaultLocationId: json['default_location_id']?.toString(),
       role: _parseRole(json['role'] as String?),
       accountType: accountType,
-      gym: Gym.fromJson(json['gym'] as Map<String, dynamic>),
+      gym: json['gym'] is Map<String, dynamic>
+          ? Gym.fromJson(json['gym'] as Map<String, dynamic>)
+          : Gym.empty(),
       mustChangePassword: json['must_change_password'] as bool? ?? false,
     );
   }
