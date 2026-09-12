@@ -88,7 +88,8 @@ REST_FRAMEWORK = {
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 50,
     "DEFAULT_THROTTLE_CLASSES": ("rest_framework.throttling.ScopedRateThrottle",),
-        "DEFAULT_THROTTLE_RATES": {"signup": "5/hour", "login": "20/hour","claim": "10/hour"},
+        "DEFAULT_THROTTLE_RATES": {"signup": "5/hour", "login": "20/hour","claim": "10/hour",
+                                    "qr_secret": "10/hour"},
     "DEFAULT_FILTER_BACKENDS": (
         "django_filters.rest_framework.DjangoFilterBackend",
         "rest_framework.filters.SearchFilter",
