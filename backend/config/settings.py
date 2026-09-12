@@ -58,7 +58,7 @@ PAYMONGO_SUBSCRIPTION_PRICE_CENTAVOS = config(
 if not DEBUG:
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
     SECURE_SSL_REDIRECT = True
-    SECURE_REDIRECT_EXEMPT = [r'^admin/login/$']
+    SECURE_REDIRECT_EXEMPT = [r'^admin/login/$', r'^health/$']
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     SECURE_HSTS_SECONDS = 3600
@@ -211,4 +211,4 @@ MAILERS = {
     },
 }
 
-# trigger redeploy
+# trigger redeployZASDAD
