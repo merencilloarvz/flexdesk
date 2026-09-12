@@ -45,3 +45,5 @@ app.*.map.json
 /android/app/release
 flexdesk-release.jks
 android/key.properties
+# Backup files (contain secrets - never commit)
+backup*.txt
