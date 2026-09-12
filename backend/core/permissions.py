@@ -14,8 +14,15 @@ class SubscriptionRequired(APIException):
 
 class SubscriptionActive(BasePermission):
     """
-    Blocks an owner/staff endpoint once the trial has expired with no
-    active PayMongo subscription behind it.
+    Blocks a WRITE on an owner/staff endpoint once the trial has expired
+    with no active PayMongo subscription behind it. Reads are never
+    blocked here — the agreed design is read-only-with-export, never a
+    full lockout: a lapsed gym must still be able to read its own
+    members, run a report, or export its data. The client already
+    handles the rest on its own (subscription_blocked comes down on
+    every /auth/me/, which is what drives the banner and disables write
+    actions in the UI), so this only has to hold the write boundary
+    server-side.
 
     A member request is ALWAYS let through here, regardless of which
     view it hit — this is what lets it sit on shared viewsets like
@@ -33,6 +40,8 @@ class SubscriptionActive(BasePermission):
     def has_permission(self, request, view):
         user = request.user
         if getattr(user, "member_profile", None) is not None:
+            return True
+        if request.method in SAFE_METHODS:
             return True
         gym = getattr(user, "gym", None)
         subscription = getattr(gym, "subscription", None) if gym else None
