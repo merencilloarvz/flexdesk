@@ -167,13 +167,13 @@ class _EditWalkInPricesSheetState
                 width: 32,
                 height: 32,
                 decoration: BoxDecoration(
-                  color: AppColors.accentBlueBg,
+                  color: AppColors.accentTealBg,
                   borderRadius: BorderRadius.circular(9),
                 ),
                 child: const Icon(
                   Icons.info_outline,
                   size: 16,
-                  color: AppColors.accentBlue,
+                  color: AppColors.accentTeal,
                 ),
               ),
               const SizedBox(width: 10),
@@ -248,7 +248,7 @@ class _EditWalkInPricesSheetState
               FilledButton(
                 onPressed: _saving ? null : _save,
                 style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.accentBlue,
+                  backgroundColor: AppColors.accentTeal,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10),
                   ),

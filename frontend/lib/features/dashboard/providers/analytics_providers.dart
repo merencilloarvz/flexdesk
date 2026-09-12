@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api/dio_client.dart';
 import '../data/analytics_api.dart';
 
-const List<String> analyticsRanges = ['1D', '1W', '1M', '3M'];
+const List<String> analyticsRanges = ['1D', '1W', '1M'];
 
 final analyticsRangeProvider = StateProvider<String>((ref) => '1M');
 

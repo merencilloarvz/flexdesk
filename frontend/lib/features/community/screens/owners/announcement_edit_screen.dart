@@ -242,13 +242,13 @@ class _AnnouncementEditScreenState
                     width: 34,
                     height: 34,
                     decoration: BoxDecoration(
-                      color: AppColors.accentBlueBg,
+                      color: AppColors.accentTealBg,
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: const Icon(
                       Icons.push_pin_outlined,
                       size: 16,
-                      color: AppColors.accentBlue,
+                      color: AppColors.accentTeal,
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -276,7 +276,7 @@ class _AnnouncementEditScreenState
                   ),
                   Switch(
                     value: _isPinned,
-                    activeThumbColor: AppColors.accentBlue,
+                    activeThumbColor: AppColors.accentTeal,
                     onChanged: (v) => setState(() => _isPinned = v),
                   ),
                 ],
@@ -307,7 +307,7 @@ class _AnnouncementEditScreenState
                         _isEditing ? 'Save Changes' : 'Publish Announcement',
                       ),
                 style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.accentBlue,
+                  backgroundColor: AppColors.accentTeal,
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(999),

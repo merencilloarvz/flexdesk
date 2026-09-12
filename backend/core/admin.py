@@ -1,7 +1,8 @@
 from django.contrib import admin
 from django.utils import timezone
 
-from .models import Gym, Location, Member, Membership, MembershipPlan, StaffProfile, User
+from .models import (Gym, Location, Member, Membership, MembershipPlan,
+                     StaffProfile, Subscription, User)
 
 
 @admin.register(Gym)
@@ -57,3 +58,10 @@ class StaffProfileAdmin(admin.ModelAdmin):
 class UserAdmin(admin.ModelAdmin):
     list_display = ["email", "full_name", "is_active", "is_staff"]
     search_fields = ["email", "full_name"]
+
+
+@admin.register(Subscription)
+class SubscriptionAdmin(admin.ModelAdmin):
+    list_display = ["gym", "status", "trial_ends_at", "current_period_end"]
+    list_filter = ["status"]
+    search_fields = ["gym__name"]

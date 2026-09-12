@@ -143,7 +143,7 @@ class _NavItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = active ? AppColors.accentBlue : AppColors.muted;
+    final color = active ? AppColors.accentTeal : AppColors.muted;
 
     return GestureDetector(
       onTap: onTap,
@@ -187,11 +187,11 @@ class _CenterButton extends StatelessWidget {
         width: 56,
         height: 56,
         decoration: BoxDecoration(
-          color: AppColors.accentBlue,
+          color: AppColors.accentTeal,
           shape: BoxShape.circle,
           boxShadow: [
             BoxShadow(
-              color: AppColors.accentBlue.withValues(alpha: 0.35),
+              color: AppColors.accentTeal.withValues(alpha: 0.35),
               blurRadius: 12,
               offset: const Offset(0, 4),
             ),

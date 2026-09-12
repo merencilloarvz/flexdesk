@@ -16,7 +16,11 @@ class SettingsScreen extends ConsumerWidget {
     final isOwner =
         authState is AuthAuthenticated && authState.user.role == UserRole.owner;
     final classesEnabled =
-        authState is AuthAuthenticated && authState.user.gym.classesEnabled;
+        authState is AuthAuthenticated &&
+        (authState.user.gym?.classesEnabled ?? false);
+    final subscriptionStatus = authState is AuthAuthenticated
+        ? authState.user.gym?.subscriptionStatus
+        : null;
 
     final staffAsync = isOwner ? ref.watch(staffListProvider) : null;
     final activeStaffCount = staffAsync?.asData?.value
@@ -67,13 +71,13 @@ class SettingsScreen extends ConsumerWidget {
                     width: 40,
                     height: 40,
                     decoration: BoxDecoration(
-                      color: AppColors.accentBlueBg,
+                      color: AppColors.accentTealBg,
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: const Icon(
                       Icons.person_outline,
                       size: 20,
-                      color: AppColors.accentBlue,
+                      color: AppColors.accentTeal,
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -96,7 +100,7 @@ class SettingsScreen extends ConsumerWidget {
                               width: 6,
                               height: 6,
                               decoration: const BoxDecoration(
-                                color: AppColors.accentBlue,
+                                color: AppColors.accentTeal,
                                 shape: BoxShape.circle,
                               ),
                             ),
@@ -141,6 +145,16 @@ class SettingsScreen extends ConsumerWidget {
                     ? '$activeStaffCount Active'
                     : null,
                 onTap: () => context.push('/settings/staff'),
+              ),
+              const SizedBox(height: 8),
+              _SettingsRow(
+                icon: Icons.credit_card_outlined,
+                title: 'Subscription',
+                subtitle: subscriptionStatus == 'trialing'
+                    ? 'Free trial'
+                    : 'Manage your FlexDesk plan',
+                badge: subscriptionStatus == 'trialing' ? 'Trial' : null,
+                onTap: () => context.push('/subscribe'),
               ),
             ],
 
@@ -248,7 +262,7 @@ class _SectionLabel extends StatelessWidget {
         fontSize: 10,
         fontWeight: FontWeight.w700,
         letterSpacing: 0.5,
-        color: AppColors.accentBlue,
+        color: AppColors.accentTeal,
       ),
     );
   }
@@ -285,10 +299,10 @@ class _SettingsRow extends StatelessWidget {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: AppColors.accentBlueBg,
+                  color: AppColors.accentTealBg,
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Icon(icon, size: 20, color: AppColors.accentBlue),
+                child: Icon(icon, size: 20, color: AppColors.accentTeal),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -320,7 +334,7 @@ class _SettingsRow extends StatelessWidget {
                     vertical: 3,
                   ),
                   decoration: BoxDecoration(
-                    color: AppColors.accentBlueBg,
+                    color: AppColors.accentTealBg,
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: Text(
@@ -328,7 +342,7 @@ class _SettingsRow extends StatelessWidget {
                     style: const TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w600,
-                      color: AppColors.accentBlue,
+                      color: AppColors.accentTeal,
                     ),
                   ),
                 ),
@@ -376,10 +390,10 @@ class _SettingsSwitchRow extends StatelessWidget {
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-              color: AppColors.accentBlueBg,
+              color: AppColors.accentTealBg,
               borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(icon, size: 20, color: AppColors.accentBlue),
+            child: Icon(icon, size: 20, color: AppColors.accentTeal),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -405,7 +419,7 @@ class _SettingsSwitchRow extends StatelessWidget {
           Switch(
             value: value,
             onChanged: onChanged,
-            activeTrackColor: AppColors.accentBlue,
+            activeTrackColor: AppColors.accentTeal,
           ),
         ],
       ),

@@ -5,10 +5,10 @@ import '../../../core/theme/colors.dart';
 import '../../pos/screens/inventory_screen.dart';
 import '../providers/low_stock_alerts_provider.dart';
 
-/// Low-stock block for the owner dashboard (Stage 8, Part D). Renders
-/// nothing at all — not a spinner, not an error banner, not a "not
-/// available" placeholder — in every case except "there's a specific
-/// item that needs attention right now":
+/// Low-stock block for the owner dashboard. Renders nothing at all —
+/// not a spinner, not an error banner, not a "not available"
+/// placeholder — in every case except "there's a specific item that
+/// needs attention right now":
 ///
 /// - Nothing low or out            -> empty slot, not a congratulatory
 ///   card. The dashboard is dense already.
@@ -18,8 +18,11 @@ import '../providers/low_stock_alerts_provider.dart';
 ///   its own error boundary on purpose: a failure here must never
 ///   affect the sales card or anything else on Home.
 ///
-/// Out-of-stock vs low-stock is distinguishable by the words themselves
-/// ("Out of stock" vs "N left"), not just by color.
+/// Stage 9: restyled to be more minimal — the header dropped its own
+/// tinted icon container (it now sits inline, plain), and each row
+/// dropped its filled pill in favor of small colored text. Out-of-stock
+/// vs low-stock is still distinguishable by the words themselves ("Out
+/// of stock" vs "N left"), not just by color — that's unchanged.
 class LowStockAlertCard extends ConsumerWidget {
   const LowStockAlertCard({super.key});
 
@@ -37,78 +40,87 @@ class LowStockAlertCard extends ConsumerWidget {
         // backend — this card only ever shows the top 3 of those.
         final worst = alerts.items.take(3).toList();
 
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: Material(
-            color: AppColors.cardBg,
+        return Material(
+          color: AppColors.cardBg,
+          borderRadius: BorderRadius.circular(16),
+          child: InkWell(
             borderRadius: BorderRadius.circular(16),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(16),
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const InventoryScreen()),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(14),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.inventory_2_outlined,
-                          size: 16,
-                          color: AppColors.expiringBg,
-                        ),
-                        const SizedBox(width: 6),
-                        const Text(
-                          'Stock needs attention',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.ink,
-                          ),
-                        ),
-                        const Spacer(),
-                        const Icon(
-                          Icons.chevron_right,
-                          size: 16,
-                          color: AppColors.muted,
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    for (final item in worst)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 3),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                item.name,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  color: AppColors.ink,
-                                ),
-                              ),
-                            ),
-                            Text(
-                              item.state == 'critical'
-                                  ? 'Out of stock'
-                                  : '${item.stockQuantity} left',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: item.state == 'critical'
-                                    ? AppColors.errorText
-                                    : AppColors.expiringBg,
-                              ),
-                            ),
-                          ],
+            onTap: () => Navigator.of(
+              context,
+            ).push(MaterialPageRoute(builder: (_) => const InventoryScreen())),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 12, 6),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.inventory_2_outlined,
+                        size: 16,
+                        color: AppColors.subtle,
+                      ),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'Stock needs attention',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.ink,
                         ),
                       ),
-                  ],
-                ),
+                      const Spacer(),
+                      const Icon(
+                        Icons.chevron_right,
+                        size: 18,
+                        color: AppColors.muted,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  const Divider(height: 1, color: AppColors.border),
+                  for (final item in worst)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 6,
+                            height: 6,
+                            margin: const EdgeInsets.only(right: 10),
+                            decoration: BoxDecoration(
+                              color: item.state == 'critical'
+                                  ? AppColors.expiredBg
+                                  : AppColors.expiringBg,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          Expanded(
+                            child: Text(
+                              item.name,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                color: AppColors.ink,
+                              ),
+                            ),
+                          ),
+                          Text(
+                            item.state == 'critical'
+                                ? 'Out of stock'
+                                : '${item.stockQuantity} left',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                              color: item.state == 'critical'
+                                  ? AppColors.expiredBg
+                                  : AppColors.expiringBg,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
               ),
             ),
           ),

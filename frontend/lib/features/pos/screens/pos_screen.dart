@@ -5,6 +5,7 @@ import '../../../core/api/api_exception.dart';
 import '../../../core/theme/colors.dart';
 import '../../auth/providers/auth_providers.dart';
 import '../../../core/utils/money_format.dart';
+import '../../dashboard/providers/analytics_providers.dart';
 import '../../shell/app_shell.dart';
 import '../data/pos_repository.dart';
 import '../providers/cart_provider.dart';
@@ -100,6 +101,13 @@ class _PosScreenState extends ConsumerState<PosScreen> {
         onConfirmed: (result) async {
           if (result.outcome == SaleActionOutcome.success) {
             ref.read(cartProvider.notifier).clear();
+            // The dashboard's sales figure derives entirely from this
+            // FutureProvider, keyed by (gymId, range) — recording a
+            // sale doesn't change either key, so nothing re-fetches it
+            // on its own. Invalidate the whole family so every range a
+            // user might have already viewed goes stale, not just the
+            // current one.
+            ref.invalidate(analyticsProvider);
             await _load();
             if (mounted) {
               _showSnack(
@@ -124,7 +132,7 @@ class _PosScreenState extends ConsumerState<PosScreen> {
   Widget build(BuildContext context) {
     final authState = ref.watch(authControllerProvider);
     final currencyCode = authState is AuthAuthenticated
-        ? authState.user.gym.currency
+        ? authState.user.gym?.currency ?? 'PHP'
         : 'PHP';
 
     final cart = ref.watch(cartProvider);
@@ -180,7 +188,7 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                     )
                   : RefreshIndicator(
                       onRefresh: _load,
-                      color: AppColors.accentBlue,
+                      color: AppColors.accentTeal,
                       child: GridView.builder(
                         padding: EdgeInsets.fromLTRB(
                           16,
@@ -281,13 +289,13 @@ class _StockOverviewCard extends StatelessWidget {
             width: 36,
             height: 36,
             decoration: BoxDecoration(
-              color: AppColors.accentBlueBg,
+              color: AppColors.accentTealBg,
               borderRadius: BorderRadius.circular(10),
             ),
             child: const Icon(
               Icons.inventory_2_outlined,
               size: 18,
-              color: AppColors.accentBlue,
+              color: AppColors.accentTeal,
             ),
           ),
           const SizedBox(width: 12),
@@ -316,7 +324,7 @@ class _StockOverviewCard extends StatelessWidget {
           FilledButton(
             onPressed: onManageStock,
             style: FilledButton.styleFrom(
-              backgroundColor: AppColors.accentBlue,
+              backgroundColor: AppColors.accentTeal,
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               shape: RoundedRectangleBorder(
@@ -440,7 +448,7 @@ class _RoundIconButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: onTap == null ? AppColors.disabledBg : AppColors.accentBlue,
+      color: onTap == null ? AppColors.disabledBg : AppColors.accentTeal,
       shape: const CircleBorder(),
       child: InkWell(
         customBorder: const CircleBorder(),
@@ -578,7 +586,7 @@ class _CartSummaryCard extends ConsumerWidget {
                     vertical: 2,
                   ),
                   decoration: BoxDecoration(
-                    color: AppColors.accentBlueBg,
+                    color: AppColors.accentTealBg,
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: Text(
@@ -586,7 +594,7 @@ class _CartSummaryCard extends ConsumerWidget {
                     style: const TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w700,
-                      color: AppColors.accentBlue,
+                      color: AppColors.accentTeal,
                     ),
                   ),
                 ),
@@ -600,7 +608,7 @@ class _CartSummaryCard extends ConsumerWidget {
                   ),
                   child: const Text(
                     'Clear Cart',
-                    style: TextStyle(fontSize: 12, color: AppColors.accentBlue),
+                    style: TextStyle(fontSize: 12, color: AppColors.accentTeal),
                   ),
                 ),
               ],
@@ -648,7 +656,7 @@ class _CartSummaryCard extends ConsumerWidget {
                   style: const TextStyle(
                     fontSize: 17,
                     fontWeight: FontWeight.w800,
-                    color: AppColors.accentBlue,
+                    color: AppColors.accentTeal,
                   ),
                 ),
               ],
@@ -659,7 +667,7 @@ class _CartSummaryCard extends ConsumerWidget {
               child: FilledButton(
                 onPressed: cart.isEmpty ? null : onPayNow,
                 style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.accentBlue,
+                  backgroundColor: AppColors.accentTeal,
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(
@@ -826,7 +834,7 @@ class _ConfirmSheetState extends ConsumerState<_ConfirmSheet> {
                 style: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w700,
-                  color: AppColors.accentBlue,
+                  color: AppColors.accentTeal,
                 ),
               ),
             ],
@@ -883,7 +891,7 @@ class _ConfirmSheetState extends ConsumerState<_ConfirmSheet> {
             child: FilledButton(
               onPressed: _submitting ? null : _confirm,
               style: FilledButton.styleFrom(
-                backgroundColor: AppColors.accentBlue,
+                backgroundColor: AppColors.accentTeal,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 shape: RoundedRectangleBorder(

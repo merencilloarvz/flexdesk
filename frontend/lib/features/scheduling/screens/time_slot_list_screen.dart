@@ -13,7 +13,7 @@ import 'time_slot_edit_screen.dart';
 enum _TimeFilter { all, morning, evening }
 
 const _stripeColors = [
-  AppColors.accentBlue,
+  AppColors.accentTeal,
   AppColors.categoryPurple,
   AppColors.expiringBg,
   AppColors.categoryTeal,
@@ -164,7 +164,7 @@ class _TimeSlotListScreenState extends ConsumerState<TimeSlotListScreen> {
       floatingActionButton: isOwner
           ? FloatingActionButton(
               onPressed: () => _openEdit(),
-              backgroundColor: AppColors.accentBlue,
+              backgroundColor: AppColors.accentTeal,
               child: const Icon(Icons.add),
             )
           : null,
@@ -190,7 +190,7 @@ class _TimeSlotListScreenState extends ConsumerState<TimeSlotListScreen> {
                         icon: const Icon(
                           Icons.chevron_left,
                           size: 20,
-                          color: AppColors.accentBlue,
+                          color: AppColors.accentTeal,
                         ),
                         onPressed: () => _changeWeek(-7),
                       ),
@@ -198,7 +198,7 @@ class _TimeSlotListScreenState extends ConsumerState<TimeSlotListScreen> {
                         icon: const Icon(
                           Icons.chevron_right,
                           size: 20,
-                          color: AppColors.accentBlue,
+                          color: AppColors.accentTeal,
                         ),
                         onPressed: () => _changeWeek(7),
                       ),
@@ -222,7 +222,7 @@ class _TimeSlotListScreenState extends ConsumerState<TimeSlotListScreen> {
                             padding: const EdgeInsets.symmetric(vertical: 8),
                             decoration: BoxDecoration(
                               color: _isSameDay(d, _selectedDate)
-                                  ? AppColors.accentBlue
+                                  ? AppColors.accentTeal
                                   : Colors.transparent,
                               borderRadius: BorderRadius.circular(14),
                             ),
@@ -249,7 +249,7 @@ class _TimeSlotListScreenState extends ConsumerState<TimeSlotListScreen> {
                                     color: _isSameDay(d, _selectedDate)
                                         ? Colors.white
                                         : (_isToday(d)
-                                              ? AppColors.accentBlue
+                                              ? AppColors.accentTeal
                                               : AppColors.ink),
                                   ),
                                 ),
@@ -310,7 +310,7 @@ class _TimeSlotListScreenState extends ConsumerState<TimeSlotListScreen> {
                   ? _EmptyState(isOwner: isOwner, onCreate: () => _openEdit())
                   : RefreshIndicator(
                       onRefresh: _load,
-                      color: AppColors.accentBlue,
+                      color: AppColors.accentTeal,
                       child: ListView(
                         padding: const EdgeInsets.fromLTRB(16, 0, 16, 40),
                         children: [
@@ -419,7 +419,7 @@ class _FilterTab extends StatelessWidget {
           style: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w600,
-            color: selected ? AppColors.accentBlue : AppColors.muted,
+            color: selected ? AppColors.accentTeal : AppColors.muted,
           ),
         ),
       ),
@@ -680,7 +680,7 @@ class _EmptyState extends StatelessWidget {
               width: 64,
               height: 64,
               decoration: BoxDecoration(
-                color: AppColors.accentBlue,
+                color: AppColors.accentTeal,
                 borderRadius: BorderRadius.circular(18),
               ),
               child: const Icon(
@@ -708,7 +708,7 @@ class _EmptyState extends StatelessWidget {
                 child: FilledButton(
                   onPressed: onCreate,
                   style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.accentBlue,
+                    backgroundColor: AppColors.accentTeal,
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(

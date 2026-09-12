@@ -14,7 +14,7 @@ import '../../features/auth/screens/role_picker_screen.dart';
 import '../../features/auth/screens/login_screen.dart';
 import '../../features/auth/screens/set_password_screen.dart';
 import '../../features/auth/screens/claim_screen.dart';
-import '../../features/onboarding/screens/setup_screen.dart';
+import '../../features/auth/screens/no_gym_screen.dart';
 import '../../features/settings/screens/staff_list_screen.dart';
 import '../../features/settings/screens/staff_create_screen.dart';
 import '../../features/dashboard/screens/home_screen.dart';
@@ -30,6 +30,8 @@ import '../../features/members_home/screens/member_settings_screen.dart';
 import '../../features/scheduling/screens/member_schedule_screen.dart';
 import '../../features/scheduling/screens/time_slot_list_screen.dart';
 import '../../features/community/screens/member/community_screen.dart';
+import '../../features/workout_guides/screens/workout_guides_screen.dart';
+import '../../features/subscription/screens/subscribe_screen.dart';
 
 class _SplashScreen extends ConsumerWidget {
   const _SplashScreen();
@@ -105,7 +107,9 @@ class _MembersRoute extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final authState = ref.watch(authControllerProvider);
-    final gymId = authState is AuthAuthenticated ? authState.user.gym.id : '';
+    final gymId = authState is AuthAuthenticated
+        ? authState.user.gym?.id ?? ''
+        : '';
     return MembersListScreen(gymId: gymId);
   }
 }
@@ -117,7 +121,9 @@ class _CheckInRoute extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final authState = ref.watch(authControllerProvider);
-    final gymId = authState is AuthAuthenticated ? authState.user.gym.id : '';
+    final gymId = authState is AuthAuthenticated
+        ? authState.user.gym?.id ?? ''
+        : '';
     return CheckInScreen(gymId: gymId, startOnWalkIn: startOnWalkIn);
   }
 }
@@ -136,23 +142,27 @@ const _ownerTabs = [
 ];
 
 // Member shell tabs. The member StatefulShellRoute's `branches` list
-// below is ALWAYS 4 branches (Home, Schedule, Community, Settings) —
-// that list can't change shape at runtime. What changes is which of
-// these tab entries get shown in the nav bar: when classes are
-// disabled, the Schedule entry (branchIndex 1) is simply left out of
-// the list passed to AppShell, so the branch still exists and its
+// below is ALWAYS 5 branches (Home, Schedule, Community, Settings,
+// Guides) — that list can't change shape at runtime. What changes is
+// which of these tab entries get shown in the nav bar: when classes
+// are disabled, the Schedule entry (branchIndex 1) is simply left out
+// of the list passed to AppShell, so the branch still exists and its
 // route is still reachable by a direct link, it's just not in the tab
 // bar. branchIndex always refers to the fixed branch position, never
-// to this list's own (variable) length.
+// to this list's own (variable) length or on-screen order — Guides
+// sits at branchIndex 4 (added after Settings in the branches list)
+// but is shown third in the tab bar, between Community and Schedule.
 const _memberTabsWithSchedule = [
   (icon: Icons.home_outlined, label: 'Home', branchIndex: 0),
-  (icon: Icons.calendar_month_outlined, label: 'Schedule', branchIndex: 1),
   (icon: Icons.groups_outlined, label: 'Community', branchIndex: 2),
+  (icon: Icons.fitness_center_outlined, label: 'Guides', branchIndex: 4),
+  (icon: Icons.calendar_month_outlined, label: 'Schedule', branchIndex: 1),
   (icon: Icons.settings_outlined, label: 'Settings', branchIndex: 3),
 ];
 const _memberTabsBase = [
   (icon: Icons.home_outlined, label: 'Home', branchIndex: 0),
   (icon: Icons.groups_outlined, label: 'Community', branchIndex: 2),
+  (icon: Icons.fitness_center_outlined, label: 'Guides', branchIndex: 4),
   (icon: Icons.settings_outlined, label: 'Settings', branchIndex: 3),
 ];
 
@@ -172,6 +182,7 @@ final _memberHomeNavigatorKey = GlobalKey<NavigatorState>();
 final _memberSettingsNavigatorKey = GlobalKey<NavigatorState>();
 final _memberScheduleNavigatorKey = GlobalKey<NavigatorState>();
 final _memberCommunityNavigatorKey = GlobalKey<NavigatorState>();
+final _memberGuidesNavigatorKey = GlobalKey<NavigatorState>();
 
 final appRouterProvider = Provider<GoRouter>((ref) {
   final refreshNotifier = ValueNotifier<int>(0);
@@ -201,6 +212,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               : '/role',
         AuthAuthenticated(:final user) => () {
           final isMember = user.accountType == 'member';
+          final gym = user.gym;
+
+          // No StaffProfile and no member_profile — a Django superuser,
+          // or a profile that got removed. Every check below this point
+          // reads gym.something, so this has to come first: not an
+          // error screen, not a crash, a dead end with an exit.
+          if (gym == null) {
+            return loc == '/no-gym' ? null : '/no-gym';
+          }
 
           if (isMember) {
             if (loc == '/role' ||
@@ -209,7 +229,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 loc == '/claim' ||
                 loc == '/splash' ||
                 loc == '/change-password' ||
-                loc == '/setup') {
+                loc == '/setup' ||
+                loc == '/no-gym') {
               return '/member-home';
             }
             return null;
@@ -218,8 +239,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           if (user.mustChangePassword) {
             return loc == '/change-password' ? null : '/change-password';
           }
-          if (user.gym.needsSetup) {
+          // Owner-only: a staff account signed in before the owner has
+          // priced anything has no way to act on this screen (plan
+          // writes are owner-only), so sending them here would just be
+          // a second dead end.
+          if (gym.needsSetup && user.role == UserRole.owner) {
             return loc == '/setup' ? null : '/setup';
+          }
+          if (gym.subscriptionBlocked) {
+            return loc == '/subscribe' ? null : '/subscribe';
           }
           if (loc.startsWith('/settings/staff') &&
               user.role != UserRole.owner) {
@@ -231,9 +259,18 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               loc == '/claim' ||
               loc == '/splash' ||
               loc == '/change-password' ||
-              loc == '/setup') {
+              loc == '/setup' ||
+              loc == '/no-gym') {
             return '/home';
           }
+          // Deliberately NOT evicting '/subscribe' here the way '/setup'
+          // is above: unlike setup, this screen is also reachable
+          // voluntarily while merely trialing (not blocked), and an
+          // unrelated background refresh elsewhere in the app (e.g.
+          // home's periodic /auth/me/ poll) ticks this redirect too —
+          // that must never yank someone off a screen they opened on
+          // purpose. SubscribeScreen navigates itself away once its own
+          // post-checkout refresh confirms the block is gone.
           return null;
         }(),
       };
@@ -261,10 +298,29 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(path: '/claim', builder: (context, state) => const ClaimScreen()),
       GoRoute(
+        path: '/no-gym',
+        builder: (context, state) => const NoGymScreen(),
+      ),
+      GoRoute(
         path: '/change-password',
         builder: (context, state) => const _ChangePasswordRoute(),
       ),
-      GoRoute(path: '/setup', builder: (context, state) => const SetupScreen()),
+      GoRoute(
+        path: '/setup',
+        builder: (context, state) {
+          final authState = ref.read(authControllerProvider);
+          final gymId = authState is AuthAuthenticated
+              ? authState.user.gym?.id ?? ''
+              : '';
+          // Reuses ManagePlansScreen entirely rather than a second,
+          // bespoke screen — see its firstRun doc comment.
+          return ManagePlansScreen(gymId: gymId, firstRun: true);
+        },
+      ),
+      GoRoute(
+        path: '/subscribe',
+        builder: (context, state) => const SubscribeScreen(),
+      ),
 
       // /settings itself moved into the owner shell branch below —
       // only its sub-routes stay top-level, pushed on top of the shell.
@@ -286,7 +342,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) {
           final authState = ref.read(authControllerProvider);
           final gymId = authState is AuthAuthenticated
-              ? authState.user.gym.id
+              ? authState.user.gym?.id ?? ''
               : '';
           return ManagePlansScreen(gymId: gymId);
         },
@@ -376,14 +432,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         ],
       ),
 
-      // Member shell — Home, [Schedule], Community, Settings. The
-      // Schedule branch always exists (see _memberTabsFor above); only
-      // whether it appears in the tab bar depends on classesEnabled.
+      // Member shell — Home, [Schedule], Community, Settings, Guides.
+      // The Schedule branch always exists (see _memberTabsFor above);
+      // only whether it appears in the tab bar depends on
+      // classesEnabled. Guides always appears in the tab bar.
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) {
           final authState = ref.read(authControllerProvider);
           final classesEnabled = authState is AuthAuthenticated
-              ? authState.user.gym.classesEnabled
+              ? authState.user.gym?.classesEnabled ?? false
               : false;
           return AppShell(
             navigationShell: navigationShell,
@@ -425,6 +482,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: '/member-settings',
                 builder: (context, state) => const MemberSettingsScreen(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            navigatorKey: _memberGuidesNavigatorKey,
+            routes: [
+              GoRoute(
+                path: '/member-guides',
+                builder: (context, state) => const WorkoutGuidesScreen(),
               ),
             ],
           ),

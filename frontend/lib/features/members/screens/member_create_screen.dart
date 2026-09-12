@@ -14,8 +14,8 @@ const Color _cSubtle = Color(0xFF6B7570);
 const Color _cMuted = Color(0xFF8A938E);
 const Color _cFieldBg = Color(0xFFF5F6F7);
 const Color _cCardBg = Colors.white;
-const Color _cAccentBlue = Color(0xFF2F6FE4);
-const Color _cAccentBlueBg = Color(0xFFEAF1FE);
+const Color _cAccentTeal = Color(0xFF2F6FE4);
+const Color _cAccentTealBg = Color(0xFFEAF1FE);
 const Color _cErrorBg = Color(0xFFFCEBE8);
 const Color _cErrorText = Color(0xFF9E3125);
 const Color _cDisabledBg = Color(0xFFE2E5E3);
@@ -68,10 +68,10 @@ class _MemberCreateScreenState extends ConsumerState<MemberCreateScreen> {
           width: 48,
           height: 48,
           decoration: const BoxDecoration(
-            color: _cAccentBlueBg,
+            color: _cAccentTealBg,
             shape: BoxShape.circle,
           ),
-          child: const Icon(Icons.check, color: _cAccentBlue, size: 26),
+          child: const Icon(Icons.check, color: _cAccentTeal, size: 26),
         ),
         title: const Text(
           'Member added',
@@ -93,7 +93,7 @@ class _MemberCreateScreenState extends ConsumerState<MemberCreateScreen> {
             child: FilledButton(
               onPressed: () => Navigator.of(dialogContext).pop(),
               style: FilledButton.styleFrom(
-                backgroundColor: _cAccentBlue,
+                backgroundColor: _cAccentTeal,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(999),
                 ),
@@ -177,7 +177,7 @@ class _MemberCreateScreenState extends ConsumerState<MemberCreateScreen> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    final gymId = authState.user.gym.id;
+    final gymId = authState.user.gym?.id ?? '';
     final homeLocationId = authState.user.defaultLocationId;
     final plansAsync = ref.watch(activePlansProvider(gymId));
 
@@ -384,7 +384,7 @@ class _MemberCreateScreenState extends ConsumerState<MemberCreateScreen> {
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
-                        color: _cAccentBlue,
+                        color: _cAccentTeal,
                       ),
                     ),
                   ],
@@ -420,7 +420,7 @@ class _MemberCreateScreenState extends ConsumerState<MemberCreateScreen> {
                     isExpanded: true,
                     icon: const Icon(
                       Icons.keyboard_arrow_down,
-                      color: _cAccentBlue,
+                      color: _cAccentTeal,
                     ),
                     items: items,
                     onChanged: _isSubmitting
@@ -481,7 +481,7 @@ class _MemberCreateScreenState extends ConsumerState<MemberCreateScreen> {
       child: ElevatedButton(
         onPressed: (enabled && !_isSubmitting) ? onPressed : null,
         style: ElevatedButton.styleFrom(
-          backgroundColor: enabled ? _cAccentBlue : _cDisabledBg,
+          backgroundColor: enabled ? _cAccentTeal : _cDisabledBg,
           foregroundColor: enabled ? Colors.white : _cDisabledLabel,
           elevation: 0,
           shape: RoundedRectangleBorder(

@@ -6,9 +6,9 @@ import '../../../core/theme/colors.dart';
 class _MixColors {
   _MixColors._();
 
-  static const active = Color(0xFF2F6FE4);
-  static const expiring = Color(0xFF7CA9F5);
-  static const expired = Color(0xFFC7D4EA);
+  static const active = Color(0xFF0F6E56);
+  static const expiring = Color(0xFFE0A93E);
+  static const expired = Color(0xFFD9564C);
 }
 
 class MembershipMixCard extends StatelessWidget {

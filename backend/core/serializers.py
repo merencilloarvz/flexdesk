@@ -7,7 +7,7 @@ from .models import Announcement, Event, EventRegistration, EventResult
 from .models import CheckIn, Location, Member, Membership, MembershipPlan
 from django.contrib.auth.password_validation import validate_password
 from django.utils.text import slugify
-from .models import Gym, Location, MembershipPlan, StaffProfile, User
+from .models import Gym, Location, MembershipPlan, StaffProfile, Subscription, User
 from .utils import generate_claim_code
 from .models import Booking, TimeSlot
 from django.db.models import Count
@@ -35,6 +35,7 @@ class MeSerializer(serializers.Serializer):
         g = obj.gym
         if not g:
             return None
+        sub = getattr(g, "subscription", None)
         return {
             "id": str(g.id),
             "name": g.name,
@@ -42,6 +43,13 @@ class MeSerializer(serializers.Serializer):
             "currency": g.currency,
             "classes_enabled": g.classes_enabled,
             "needs_setup": not MembershipPlan.objects.filter(gym=g, price__gt=0).exists(),
+            # The router's redirect decision reads subscription_blocked
+            # straight off this payload on every navigation — see
+            # app_router.dart — so it has to be here, not just on
+            # GET /subscription/.
+            "subscription_status": sub.status if sub else None,
+            "subscription_blocked": sub.is_blocked if sub else False,
+            "trial_ends_at": sub.trial_ends_at if sub else None,
         }
     def get_default_location_id(self, obj):
         p = getattr(obj, "staff_profile", None)
@@ -51,6 +59,24 @@ class GymSettingsSerializer(serializers.ModelSerializer):
     class Meta:
         model = Gym
         fields = ["classes_enabled"]
+
+
+class SubscriptionSerializer(serializers.Serializer):
+    status = serializers.CharField(read_only=True)
+    trial_ends_at = serializers.DateTimeField(read_only=True)
+    is_blocked = serializers.SerializerMethodField()
+    days_remaining = serializers.SerializerMethodField()
+
+    def get_is_blocked(self, obj):
+        return obj.is_blocked
+
+    def get_days_remaining(self, obj):
+        # Display only — trial countdown. None once the trial is no
+        # longer the operative state (active/past_due/canceled); the
+        # actual block decision always comes from is_blocked, never this.
+        if obj.status != obj.TRIALING:
+            return None
+        return max((obj.trial_ends_at - timezone.now()).days, 0)
 
 class FlexTokenObtainPairSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):
@@ -374,6 +400,8 @@ class CheckInWriteSerializer(serializers.ModelSerializer):
         return CheckIn.objects.create(**validated_data)
 
 
+TRIAL_DAYS = 14
+
 # name, category, duration_value, unit, is_day_pass
 DEFAULT_PLANS = [
     ("Walk-in", "Regular", 1, "DAY", True),
@@ -423,6 +451,8 @@ class SignupSerializer(serializers.Serializer):
         )
         StaffProfile.objects.create(
             user=user, gym=gym, role=StaffProfile.OWNER, default_location=location)
+        Subscription.objects.create(
+            gym=gym, trial_ends_at=timezone.now() + timedelta(days=TRIAL_DAYS))
         MembershipPlan.objects.bulk_create([
             MembershipPlan(gym=gym, name=n, category=c, duration_value=v,
                            duration_unit=u, price=0, is_day_pass=d, sort_order=i)

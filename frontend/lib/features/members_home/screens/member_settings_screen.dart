@@ -50,7 +50,7 @@ class MemberSettingsScreen extends ConsumerWidget {
                 ListTile(
                   leading: const Icon(Icons.storefront_outlined),
                   title: const Text('Gym'),
-                  subtitle: Text(user?.gym.name ?? ''),
+                  subtitle: Text(user?.gym?.name ?? ''),
                 ),
               ],
             ),

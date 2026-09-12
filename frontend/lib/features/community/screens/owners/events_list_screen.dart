@@ -84,7 +84,7 @@ class _EventsListScreenState extends ConsumerState<EventsListScreen> {
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _openCreate,
-        backgroundColor: AppColors.accentBlue,
+        backgroundColor: AppColors.accentTeal,
         child: const Icon(Icons.add),
       ),
       body: SafeArea(
@@ -142,7 +142,7 @@ class _EventsListScreenState extends ConsumerState<EventsListScreen> {
                           width: 6,
                           height: 6,
                           decoration: const BoxDecoration(
-                            color: AppColors.accentBlue,
+                            color: AppColors.accentTeal,
                             shape: BoxShape.circle,
                           ),
                         ),
@@ -165,7 +165,7 @@ class _EventsListScreenState extends ConsumerState<EventsListScreen> {
                           '${visible.length} event${visible.length == 1 ? '' : 's'}',
                           style: const TextStyle(
                             fontSize: 11,
-                            color: AppColors.accentBlue,
+                            color: AppColors.accentTeal,
                           ),
                         ),
                       ],
@@ -183,7 +183,7 @@ class _EventsListScreenState extends ConsumerState<EventsListScreen> {
                           )
                         : RefreshIndicator(
                             onRefresh: _load,
-                            color: AppColors.accentBlue,
+                            color: AppColors.accentTeal,
                             child: ListView(
                               padding: const EdgeInsets.fromLTRB(16, 0, 16, 40),
                               children: [
@@ -238,7 +238,7 @@ class _TabButton extends StatelessWidget {
           style: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w600,
-            color: selected ? AppColors.accentBlue : AppColors.muted,
+            color: selected ? AppColors.accentTeal : AppColors.muted,
           ),
         ),
       ),
@@ -295,7 +295,7 @@ class _EventCard extends StatelessWidget {
       _ when event.isCanceled => AppColors.errorText,
       _ when isPast => AppColors.subtle,
       _ when full => AppColors.errorText,
-      _ => AppColors.accentBlue,
+      _ => AppColors.accentTeal,
     };
 
     return Opacity(
@@ -496,7 +496,7 @@ class _EmptyState extends StatelessWidget {
               width: 64,
               height: 64,
               decoration: BoxDecoration(
-                color: AppColors.accentBlue,
+                color: AppColors.accentTeal,
                 borderRadius: BorderRadius.circular(18),
               ),
               child: const Icon(
@@ -522,7 +522,7 @@ class _EmptyState extends StatelessWidget {
               child: FilledButton(
                 onPressed: onCreate,
                 style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.accentBlue,
+                  backgroundColor: AppColors.accentTeal,
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(

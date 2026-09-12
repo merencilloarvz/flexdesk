@@ -9,15 +9,21 @@ class MemberStats {
     required this.checkInsThisMonth,
     required this.lastCheckInAt,
     required this.firstName,
+    required this.fullName,
     required this.memberCode,
     required this.currentEndDate,
+    this.planCategory,
+    this.membershipStatus,
   });
   final int streakDays;
   final int checkInsThisMonth;
   final DateTime? lastCheckInAt;
   final String firstName;
+  final String fullName;
   final String memberCode;
   final DateTime? currentEndDate;
+  final String? planCategory;
+  final String? membershipStatus;
 }
 
 final memberStatsProvider = FutureProvider<MemberStats>((ref) async {
@@ -83,7 +89,10 @@ final memberStatsProvider = FutureProvider<MemberStats>((ref) async {
     checkInsThisMonth: checkInsThisMonth,
     lastCheckInAt: lastCheckInAt,
     firstName: firstName,
+    fullName: fullName,
     memberCode: memberCode,
     currentEndDate: currentEndDate,
+    planCategory: summary['current_plan_category'] as String?,
+    membershipStatus: summary['membership_status'] as String?,
   );
 });

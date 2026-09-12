@@ -30,8 +30,14 @@ String _backendStatus(MembershipStatus status) {
 
 // Deterministic avatar color per name — same person always renders the
 // same color, without storing anything.
+//
+// Note: accentTeal (index 0) and categoryTeal (index 1) are both teal
+// hues now that accentBlue is gone — two names can land on similarly-
+// colored avatars where before accentBlue gave clearer separation from
+// categoryTeal. Worth a look on real data; not fixed here since it's a
+// palette-distinctiveness call, not a rename bug.
 const _avatarPalette = [
-  AppColors.accentBlue,
+  AppColors.accentTeal,
   AppColors.categoryTeal,
   AppColors.categoryPurple,
   Color(0xFFE07A5F),
@@ -533,7 +539,7 @@ class _TabButton extends StatelessWidget {
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w600,
-            color: selected ? AppColors.accentBlue : AppColors.muted,
+            color: selected ? AppColors.accentTeal : AppColors.muted,
           ),
         ),
       ),
@@ -722,7 +728,7 @@ class _FilterChip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         decoration: BoxDecoration(
-          color: selected ? AppColors.accentBlueBg : Colors.transparent,
+          color: selected ? AppColors.accentTealBg : Colors.transparent,
           borderRadius: BorderRadius.circular(999),
         ),
         child: Text(
@@ -730,7 +736,7 @@ class _FilterChip extends StatelessWidget {
           style: TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.w600,
-            color: selected ? AppColors.accentBlue : AppColors.muted,
+            color: selected ? AppColors.accentTeal : AppColors.muted,
           ),
         ),
       ),
@@ -833,7 +839,7 @@ class _WalkInTabContent extends StatelessWidget {
                         Icon(
                           Icons.edit_outlined,
                           size: 14,
-                          color: AppColors.accentBlue,
+                          color: AppColors.accentTeal,
                         ),
                         SizedBox(width: 4),
                         Text(
@@ -841,7 +847,7 @@ class _WalkInTabContent extends StatelessWidget {
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w500,
-                            color: AppColors.accentBlue,
+                            color: AppColors.accentTeal,
                           ),
                         ),
                       ],
@@ -961,10 +967,10 @@ class _PlanPriceCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 10),
         decoration: BoxDecoration(
-          color: selected ? AppColors.accentBlueBg : AppColors.pageBg,
+          color: selected ? AppColors.accentTealBg : AppColors.pageBg,
           borderRadius: BorderRadius.circular(12),
           border: selected
-              ? Border.all(color: AppColors.accentBlue, width: 1.5)
+              ? Border.all(color: AppColors.accentTeal, width: 1.5)
               : null,
         ),
         child: Column(
@@ -988,7 +994,7 @@ class _PlanPriceCard extends StatelessWidget {
                   const Icon(
                     Icons.check_circle,
                     size: 15,
-                    color: AppColors.accentBlue,
+                    color: AppColors.accentTeal,
                   ),
                 ],
               ],
@@ -1090,7 +1096,7 @@ class _SearchResultTile extends StatelessWidget {
                   'Checked in ${_formatCheckInTime(alreadyCheckedIn!.checkedInAt)}',
                   style: const TextStyle(
                     fontSize: 11,
-                    color: AppColors.accentBlue,
+                    color: AppColors.accentTeal,
                   ),
                 ),
               ],
@@ -1252,12 +1258,13 @@ class _MemberConfirmSheet extends StatefulWidget {
 }
 
 class _MemberConfirmSheetState extends State<_MemberConfirmSheet> {
-  // Local blue override for THIS sheet only — deliberately NOT touching
-  // AppColors.activeBg/expiringBg/expiredBg, which are the shared status
-  // colors used everywhere else in the app (member list, search results,
-  // check-in tile subtitles). Changing those directly would turn every
-  // status badge app-wide blue, not just this confirm sheet.
-  static const _sheetAccent = AppColors.accentBlue;
+  // Was a local blue override for THIS sheet only, deliberately
+  // different from AppColors.activeBg elsewhere. Now that accentTeal
+  // and activeBg are the same hex, that distinction no longer exists —
+  // this sheet's "Active" badge is visually identical to every other
+  // screen's now. Flagged in the review note above; left as accentTeal
+  // rather than picking a new color unasked.
+  static const _sheetAccent = AppColors.accentTeal;
 
   bool _submitting = false;
   String? _error;
@@ -1288,9 +1295,6 @@ class _MemberConfirmSheetState extends State<_MemberConfirmSheet> {
   Widget build(BuildContext context) {
     final fullName = '${widget.member.firstName} ${widget.member.lastName}'
         .trim();
-    // Only "active" gets the blue override — expiring/expired keep their
-    // real warning colors, since blue there would undersell an actual
-    // problem staff need to notice.
     final (badgeBg, badgeLabel) = switch (widget.status) {
       MembershipStatus.active => (_sheetAccent, 'Active'),
       MembershipStatus.expiring => (AppColors.expiringBg, 'Expiring'),
@@ -1376,7 +1380,7 @@ class _MemberConfirmSheetState extends State<_MemberConfirmSheet> {
                     style: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
-                      color: AppColors.accentBlue,
+                      color: AppColors.accentTeal,
                     ),
                   ),
                 ],

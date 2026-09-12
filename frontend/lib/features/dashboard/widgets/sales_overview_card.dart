@@ -17,18 +17,41 @@ String _formatPeso(double amount) {
 
 const _weekdayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
-// Maps each backend category key to its legend/bar color. Falls back to
-// accentBlue for any category not listed here, so a new category from
-// the backend never crashes — it just renders blue until given its own
-// color.
+// Maps each backend category key to its legend/bar color, icon, and a
+// short static subtitle. The subtitle text is descriptive copy only —
+// not data from the server — same pattern as the color mapping below.
+// NOTE: this switch only branches on 'membership' and 'day_pass' plus a
+// catch-all — a real data-mapping gap, flagged before, still open.
 Color _categoryColor(String category) {
   switch (category) {
     case 'membership':
-      return AppColors.accentBlue;
+      return AppColors.accentTeal;
     case 'day_pass':
       return AppColors.categoryTeal;
     default:
-      return AppColors.categoryPurple;
+      return AppColors.categoryAmber;
+  }
+}
+
+IconData _categoryIcon(String category) {
+  switch (category) {
+    case 'membership':
+      return Icons.card_membership_outlined;
+    case 'day_pass':
+      return Icons.person_outline;
+    default:
+      return Icons.event_outlined;
+  }
+}
+
+String _categorySubtitle(String category) {
+  switch (category) {
+    case 'membership':
+      return 'Renewals & sign-ups';
+    case 'day_pass':
+      return 'Walk-in guest passes';
+    default:
+      return 'Other collections';
   }
 }
 
@@ -133,7 +156,7 @@ class _RangeToggle extends ConsumerWidget {
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: r == range ? AppColors.accentBlue : AppColors.muted,
+                    color: r == range ? AppColors.accentTeal : AppColors.muted,
                   ),
                 ),
               ),
@@ -151,9 +174,6 @@ class _SalesContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final changePct = snapshot.revenueChangePct;
-    // Weekday labels only make sense for a short window — 90 labels on
-    // the 3M chart would be unreadable. Matches the reference, which
-    // shows day labels specifically on the 7D tab.
     final showWeekdayLabels = snapshot.series.length <= 7;
 
     return Column(
@@ -201,6 +221,11 @@ class _SalesContent extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 22),
+        // -------------------------------------------------------------
+        // CHART — left exactly as-is. Not touched this pass; waiting on
+        // the earlier hourly-bar version (or confirmation this daily
+        // line chart is the one to keep) before changing anything here.
+        // -------------------------------------------------------------
         SizedBox(
           height: showWeekdayLabels ? 210 : 190,
           child: snapshot.series.length < 2
@@ -276,7 +301,7 @@ class _SalesContent extends StatelessWidget {
                         ],
                         isCurved: true,
                         curveSmoothness: 0.35,
-                        color: AppColors.accentBlue,
+                        color: AppColors.accentTeal,
                         barWidth: 3,
                         dotData: const FlDotData(show: false),
                         belowBarData: BarAreaData(
@@ -285,8 +310,8 @@ class _SalesContent extends StatelessWidget {
                             begin: Alignment.topCenter,
                             end: Alignment.bottomCenter,
                             colors: [
-                              AppColors.accentBlue.withValues(alpha: 0.18),
-                              AppColors.accentBlue.withValues(alpha: 0.0),
+                              AppColors.accentTeal.withValues(alpha: 0.18),
+                              AppColors.accentTeal.withValues(alpha: 0.0),
                             ],
                           ),
                         ),
@@ -295,32 +320,25 @@ class _SalesContent extends StatelessWidget {
                   ),
                 ),
         ),
-        const SizedBox(height: 14),
-        _ProportionBar(breakdown: snapshot.breakdown),
-        const SizedBox(height: 14),
-        Row(
-          children: [
-            for (var i = 0; i < snapshot.breakdown.length; i++)
-              Expanded(
-                child: Padding(
-                  padding: EdgeInsets.only(
-                    right: i == snapshot.breakdown.length - 1 ? 0 : 7,
-                  ),
-                  child: _BreakdownCard(breakdown: snapshot.breakdown[i]),
-                ),
-              ),
-          ],
-        ),
+        const SizedBox(height: 18),
+        // -------------------------------------------------------------
+        // REVENUE RATIO — back between the chart and the breakdown,
+        // where the reference design has it. No "Category performance"
+        // header anymore — removed per feedback.
+        // -------------------------------------------------------------
+        _RevenueRatio(breakdown: snapshot.breakdown),
+        const SizedBox(height: 16),
+        _BreakdownList(breakdown: snapshot.breakdown),
       ],
     );
   }
 }
 
-/// The colored horizontal bar between the chart and the breakdown cards —
-/// segment widths are proportional to each category's share of revenue,
-/// each segment tinted with that category's legend color.
-class _ProportionBar extends StatelessWidget {
-  const _ProportionBar({required this.breakdown});
+/// Label + percentage-accounted-for line, with the proportional bar
+/// underneath. "100% accounted" is a real computed sum of the
+/// breakdown's own percentages, not a hardcoded string.
+class _RevenueRatio extends StatelessWidget {
+  const _RevenueRatio({required this.breakdown});
   final List<CategoryBreakdown> breakdown;
 
   @override
@@ -328,26 +346,73 @@ class _ProportionBar extends StatelessWidget {
     final total = breakdown.fold<double>(0, (sum, b) => sum + b.pct);
     if (total <= 0) return const SizedBox.shrink();
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(999),
-      child: SizedBox(
-        height: 5,
-        child: Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            for (final b in breakdown)
-              Expanded(
-                flex: (b.pct * 10).round().clamp(1, 100000),
-                child: Container(color: _categoryColor(b.category)),
+            const Text(
+              'Revenue Ratio',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppColors.subtle,
               ),
+            ),
+            Text(
+              '${total.round()}% accounted',
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppColors.accentTeal,
+              ),
+            ),
           ],
         ),
-      ),
+        const SizedBox(height: 8),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(999),
+          child: SizedBox(
+            height: 6,
+            child: Row(
+              children: [
+                for (final b in breakdown)
+                  Expanded(
+                    flex: (b.pct * 10).round().clamp(1, 100000),
+                    child: Container(color: _categoryColor(b.category)),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
 
-class _BreakdownCard extends StatelessWidget {
-  const _BreakdownCard({required this.breakdown});
+/// Stacked breakdown list — icon in a tinted square, category label +
+/// short static subtitle, amount and percentage on the right. Replaces
+/// the earlier 3-across card row.
+class _BreakdownList extends StatelessWidget {
+  const _BreakdownList({required this.breakdown});
+  final List<CategoryBreakdown> breakdown;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        for (var i = 0; i < breakdown.length; i++) ...[
+          if (i > 0) const SizedBox(height: 10),
+          _BreakdownRow(breakdown: breakdown[i]),
+        ],
+      ],
+    );
+  }
+}
+
+class _BreakdownRow extends StatelessWidget {
+  const _BreakdownRow({required this.breakdown});
   final CategoryBreakdown breakdown;
 
   @override
@@ -355,49 +420,69 @@ class _BreakdownCard extends StatelessWidget {
     final color = _categoryColor(breakdown.category);
 
     return Container(
-      constraints: const BoxConstraints(minHeight: 86),
-      padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: AppColors.categoryChipBg,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(14),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.center,
+      child: Row(
         children: [
-          Row(
-            children: [
-              Container(
-                width: 8,
-                height: 8,
-                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-              ),
-              const SizedBox(width: 5),
-              Expanded(
-                child: Text(
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              _categoryIcon(breakdown.category),
+              size: 18,
+              color: color,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
                   breakdown.label,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.ink,
+                  ),
+                ),
+                Text(
+                  _categorySubtitle(breakdown.category),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontSize: 11, color: AppColors.muted),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            _formatPeso(breakdown.amount),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w700,
-              color: AppColors.ink,
+              ],
             ),
           ),
-          const SizedBox(height: 2),
-          Text(
-            '${breakdown.pct.toStringAsFixed(0)}%',
-            style: const TextStyle(fontSize: 11, color: AppColors.muted),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                _formatPeso(breakdown.amount),
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.ink,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                '${breakdown.pct.toStringAsFixed(0)}%',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: color,
+                ),
+              ),
+            ],
           ),
         ],
       ),

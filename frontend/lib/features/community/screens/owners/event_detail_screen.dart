@@ -101,7 +101,7 @@ class _EventDetailScreenState extends ConsumerState<EventDetailScreen> {
   String _currencySymbol() {
     final authState = ref.read(authControllerProvider);
     return authState is AuthAuthenticated
-        ? currencySymbol(authState.user.gym.currency)
+        ? currencySymbol(authState.user.gym?.currency ?? 'PHP')
         : '₱';
   }
 
@@ -135,7 +135,7 @@ class _EventDetailScreenState extends ConsumerState<EventDetailScreen> {
             IconButton(
               icon: const Icon(
                 Icons.edit_outlined,
-                color: AppColors.accentBlue,
+                color: AppColors.accentTeal,
               ),
               onPressed: () async {
                 final changed = await Navigator.of(context).push<bool>(
@@ -155,7 +155,7 @@ class _EventDetailScreenState extends ConsumerState<EventDetailScreen> {
             ? const Center(child: CircularProgressIndicator())
             : RefreshIndicator(
                 onRefresh: _load,
-                color: AppColors.accentBlue,
+                color: AppColors.accentTeal,
                 child: ListView(
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 40),
                   children: [
@@ -184,7 +184,7 @@ class _EventDetailScreenState extends ConsumerState<EventDetailScreen> {
                             label: 'Collected',
                             amount:
                                 '$symbol${centavosToDecimalString(collected)}',
-                            color: AppColors.accentBlue,
+                            color: AppColors.accentTeal,
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -210,7 +210,7 @@ class _EventDetailScreenState extends ConsumerState<EventDetailScreen> {
                             ),
                           ),
                           style: TextButton.styleFrom(
-                            foregroundColor: AppColors.accentBlue,
+                            foregroundColor: AppColors.accentTeal,
                           ),
                           child: const Text('Enter Results'),
                         ),
@@ -348,7 +348,7 @@ class _RegistrantTile extends StatelessWidget {
                       vertical: 3,
                     ),
                     decoration: BoxDecoration(
-                      color: paid ? AppColors.accentBlue : AppColors.expiringBg,
+                      color: paid ? AppColors.accentTeal : AppColors.expiringBg,
                       borderRadius: BorderRadius.circular(999),
                     ),
                     child: Text(

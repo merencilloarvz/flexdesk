@@ -209,7 +209,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     final isOwner =
         authState is AuthAuthenticated && authState.user.role == UserRole.owner;
     final currencyCode = authState is AuthAuthenticated
-        ? authState.user.gym.currency
+        ? authState.user.gym?.currency ?? 'PHP'
         : 'PHP';
 
     // Deactivated products are no longer split into a separate
@@ -250,7 +250,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
-                  color: AppColors.accentBlueBg,
+                  color: AppColors.accentTealBg,
                   borderRadius: BorderRadius.circular(999),
                 ),
                 child: Text(
@@ -258,7 +258,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                   style: const TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
-                    color: AppColors.accentBlue,
+                    color: AppColors.accentTeal,
                   ),
                 ),
               ),
@@ -272,7 +272,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
               ? Center(child: Text(_error!))
               : RefreshIndicator(
                   onRefresh: _load,
-                  color: AppColors.accentBlue,
+                  color: AppColors.accentTeal,
                   child: ListView(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
                     children: [
@@ -515,7 +515,7 @@ class _AddProductCard extends StatelessWidget {
             child: FilledButton.icon(
               onPressed: submitting ? null : onSubmit,
               style: FilledButton.styleFrom(
-                backgroundColor: AppColors.accentBlue,
+                backgroundColor: AppColors.accentTeal,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 shape: RoundedRectangleBorder(
@@ -654,7 +654,7 @@ class _FilterTab extends StatelessWidget {
           style: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w600,
-            color: selected ? AppColors.accentBlue : AppColors.muted,
+            color: selected ? AppColors.accentTeal : AppColors.muted,
           ),
         ),
       ),
@@ -1005,7 +1005,7 @@ class _ConfirmButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: enabled ? AppColors.accentBlue : AppColors.disabledBg,
+      color: enabled ? AppColors.accentTeal : AppColors.disabledBg,
       shape: const CircleBorder(),
       child: InkWell(
         customBorder: const CircleBorder(),

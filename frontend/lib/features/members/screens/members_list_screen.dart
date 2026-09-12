@@ -15,7 +15,7 @@ import '../providers/plans_provider.dart';
 // touching the shared token, which still drives Active everywhere else
 // (member creation, search results, etc.) unless asked to change it
 // app-wide.
-const _activeColorOverride = AppColors.accentBlue;
+const _activeColorOverride = AppColors.accentTeal;
 
 enum _StatusFilter { all, active, expiring, expired }
 
@@ -120,7 +120,7 @@ class _MembersListScreenState extends ConsumerState<MembersListScreen> {
                         width: 6,
                         height: 6,
                         decoration: const BoxDecoration(
-                          color: AppColors.accentBlue,
+                          color: AppColors.accentTeal,
                           shape: BoxShape.circle,
                         ),
                       ),
@@ -129,7 +129,7 @@ class _MembersListScreenState extends ConsumerState<MembersListScreen> {
                         '${allMembers.length} total members listed',
                         style: const TextStyle(
                           fontSize: 12,
-                          color: AppColors.accentBlue,
+                          color: AppColors.accentTeal,
                         ),
                       ),
                     ],
@@ -172,7 +172,7 @@ class _MembersListScreenState extends ConsumerState<MembersListScreen> {
                       children: [
                         _TabLabel(
                           label: 'All',
-                          dotColor: AppColors.accentBlue,
+                          dotColor: AppColors.accentTeal,
                           selected: _filter == _StatusFilter.all,
                           onTap: () =>
                               setState(() => _filter = _StatusFilter.all),
@@ -226,7 +226,7 @@ class _MembersListScreenState extends ConsumerState<MembersListScreen> {
                         }
                         return RefreshIndicator(
                           onRefresh: _refresh,
-                          color: AppColors.accentBlue,
+                          color: AppColors.accentTeal,
                           child: ListView.separated(
                             padding: EdgeInsets.only(
                               bottom: AppShell.reservedNavHeight + 72,
@@ -297,7 +297,7 @@ class _TabLabel extends StatelessWidget {
         decoration: selected
             ? const BoxDecoration(
                 border: Border(
-                  bottom: BorderSide(color: AppColors.accentBlue, width: 2),
+                  bottom: BorderSide(color: AppColors.accentTeal, width: 2),
                 ),
               )
             : null,
@@ -546,7 +546,7 @@ class _ActionMenuState extends State<_ActionMenu> {
                   _CircleAction(
                     icon: Icons.person_add_alt_1_outlined,
                     label: 'New Member',
-                    background: AppColors.accentBlue,
+                    background: AppColors.accentTeal,
                     onTap: () => _pick(widget.onNewMember),
                   ),
                   const SizedBox(height: 16),
@@ -561,7 +561,7 @@ class _ActionMenuState extends State<_ActionMenu> {
                 FloatingActionButton(
                   onPressed: _toggle,
                   // FAB itself is now blue, not ink.
-                  backgroundColor: AppColors.accentBlue,
+                  backgroundColor: AppColors.accentTeal,
                   shape: const CircleBorder(),
                   child: Icon(
                     _expanded ? Icons.close : Icons.add,

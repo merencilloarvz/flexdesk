@@ -1,10 +1,19 @@
 from rest_framework import viewsets
-from .permissions import IsGymStaff
+from .permissions import IsGymStaff, SubscriptionActive
 from .utils import gym_today
 
 
 class GymScopedViewSet(viewsets.ModelViewSet):
     permission_classes = [IsGymStaff]
+
+    def get_permissions(self):
+        # Appended here rather than baked into permission_classes so it
+        # still applies no matter what a subclass (or an @action's own
+        # permission_classes=[...]) overrides that list to. Safe even for
+        # viewsets members also read from (Announcement/Event) — see
+        # SubscriptionActive's own docstring for why a member request
+        # always passes regardless.
+        return [p() for p in self.permission_classes] + [SubscriptionActive()]
 
     @property
     def gym(self):

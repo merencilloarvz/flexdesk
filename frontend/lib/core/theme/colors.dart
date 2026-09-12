@@ -28,6 +28,8 @@ class AppColors {
   static const accentTealBg = Color(0xFFE1F5EE);
   static const accentGreen = Color(0xFF39C77F);
   static const linkGreen = Color(0xFF1F7A4D);
+  static const accentBlue = Color(0xFF2F6FE4);
+  static const accentBlueBg = Color(0xFFEAF1FE);
 
   // -----------------------------------------------------------------------
   // Membership status
@@ -69,17 +71,13 @@ class AppColors {
   static const navInactiveForeground = Colors.white70;
 
   // -----------------------------------------------------------------------
-  // Sales
-  // -----------------------------------------------------------------------
-
-  static const accentBlue = Color(0xFF2F6FE4);
-  static const accentBlueBg = Color(0xFFEAF1FE);
-
-  // -----------------------------------------------------------------------
   // Sales breakdown
   // -----------------------------------------------------------------------
+  // Note: accentBlue/accentBlueBg used to live here and are gone now —
+  // the sales card runs on accentTeal (above), nothing referenced them.
 
   static const categoryChipBg = Color(0xFFF3F1FA);
-  static const categoryTeal = Color(0xFF17B9C8);
-  static const categoryPurple = Color(0xFF7C5CFC);
+  static const categoryTeal = Color(0xFF17B9C8); // Memberships
+  static const categoryPurple = Color(0xFF7C5CFC); // Products
+  static const categoryAmber = Color(0xFFC98A1F); // catch-all / Others
 }

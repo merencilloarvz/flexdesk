@@ -127,7 +127,31 @@ class TenantScopedModel(models.Model):
 
     class Meta:
         abstract = True
+        
+class Subscription(models.Model):
+    TRIALING, ACTIVE, PAST_DUE, CANCELED = "trialing", "active", "past_due", "canceled"
+    STATUS_CHOICES = [
+        (TRIALING, "Trialing"), (ACTIVE, "Active"),
+        (PAST_DUE, "Past due"), (CANCELED, "Canceled"),
+    ]
 
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    gym = models.OneToOneField(Gym, on_delete=models.CASCADE, related_name="subscription")
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=TRIALING)
+    trial_ends_at = models.DateTimeField()
+    paymongo_customer_id = models.CharField(max_length=100, blank=True)
+    paymongo_subscription_id = models.CharField(max_length=100, blank=True)
+    current_period_end = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    @property
+    def is_blocked(self):
+        if self.status == self.ACTIVE:
+            return False
+        if self.status == self.TRIALING:
+            return timezone.now() > self.trial_ends_at
+        return True  # past_due, canceled
 
 class StaffProfile(models.Model):
     OWNER = "owner"
@@ -744,3 +768,5 @@ class StockAdjustment(TenantScopedModel):
     def save(self, *args, **kwargs):
         self.full_clean()
         return super().save(*args, **kwargs)
+
+    

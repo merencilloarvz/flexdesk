@@ -194,7 +194,7 @@ class _TimeSlotEditScreenState extends ConsumerState<TimeSlotEditScreen> {
                   const Icon(
                     Icons.fitness_center,
                     size: 16,
-                    color: AppColors.accentBlue,
+                    color: AppColors.accentTeal,
                   ),
                   const SizedBox(width: 8),
                   Expanded(
@@ -203,7 +203,7 @@ class _TimeSlotEditScreenState extends ConsumerState<TimeSlotEditScreen> {
                       style: const TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w600,
-                        color: AppColors.accentBlue,
+                        color: AppColors.accentTeal,
                       ),
                       decoration: const InputDecoration(
                         hintText: 'e.g. Morning CrossFit',
@@ -227,7 +227,7 @@ class _TimeSlotEditScreenState extends ConsumerState<TimeSlotEditScreen> {
                         const Icon(
                           Icons.schedule,
                           size: 12,
-                          color: AppColors.accentBlue,
+                          color: AppColors.accentTeal,
                         ),
                         const SizedBox(width: 4),
                         Text(
@@ -235,7 +235,7 @@ class _TimeSlotEditScreenState extends ConsumerState<TimeSlotEditScreen> {
                           style: const TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w600,
-                            color: AppColors.accentBlue,
+                            color: AppColors.accentTeal,
                           ),
                         ),
                       ],
@@ -274,7 +274,7 @@ class _TimeSlotEditScreenState extends ConsumerState<TimeSlotEditScreen> {
                   const Icon(
                     Icons.groups_outlined,
                     size: 18,
-                    color: AppColors.accentBlue,
+                    color: AppColors.accentTeal,
                   ),
                   const SizedBox(width: 8),
                   Expanded(
@@ -312,7 +312,7 @@ class _TimeSlotEditScreenState extends ConsumerState<TimeSlotEditScreen> {
                 style: const TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
-                  color: AppColors.accentBlue,
+                  color: AppColors.accentTeal,
                 ),
               ),
               child: Row(
@@ -348,13 +348,13 @@ class _TimeSlotEditScreenState extends ConsumerState<TimeSlotEditScreen> {
                     width: 36,
                     height: 36,
                     decoration: BoxDecoration(
-                      color: AppColors.accentBlueBg,
+                      color: AppColors.accentTealBg,
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: const Icon(
                       Icons.person_outline,
                       size: 18,
-                      color: AppColors.accentBlue,
+                      color: AppColors.accentTeal,
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -383,7 +383,7 @@ class _TimeSlotEditScreenState extends ConsumerState<TimeSlotEditScreen> {
                     style: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
-                      color: AppColors.accentBlue,
+                      color: AppColors.accentTeal,
                     ),
                   ),
                 ],
@@ -405,7 +405,7 @@ class _TimeSlotEditScreenState extends ConsumerState<TimeSlotEditScreen> {
                     style: TextStyle(color: AppColors.muted, fontSize: 11),
                   ),
                   value: _isActive,
-                  activeThumbColor: AppColors.accentBlue,
+                  activeThumbColor: AppColors.accentTeal,
                   onChanged: (v) => setState(() => _isActive = v),
                 ),
               ),
@@ -438,7 +438,7 @@ class _TimeSlotEditScreenState extends ConsumerState<TimeSlotEditScreen> {
                       )
                     : Text(_isEditing ? 'Save Changes' : 'Create Slot'),
                 style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.accentBlue,
+                  backgroundColor: AppColors.accentTeal,
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(999),
@@ -571,7 +571,7 @@ class _TimeField extends StatelessWidget {
                 const Icon(
                   Icons.access_time,
                   size: 15,
-                  color: AppColors.accentBlue,
+                  color: AppColors.accentTeal,
                 ),
               ],
             ),
@@ -602,7 +602,7 @@ class _DayChip extends StatelessWidget {
         height: 38,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: selected ? AppColors.accentBlue : AppColors.fieldBg,
+          color: selected ? AppColors.accentTeal : AppColors.fieldBg,
           shape: BoxShape.circle,
         ),
         child: Text(

@@ -69,6 +69,7 @@ class ScheduleSlot {
     required this.bookedCount,
     required this.spotsLeft,
     required this.myBookingId,
+    this.coachName = '',
   });
 
   final String id;
@@ -79,6 +80,7 @@ class ScheduleSlot {
   final int bookedCount;
   final int spotsLeft;
   final String? myBookingId;
+  final String coachName;
 
   factory ScheduleSlot.fromJson(Map<String, dynamic> json) => ScheduleSlot(
     id: json['id'] as String,
@@ -89,6 +91,7 @@ class ScheduleSlot {
     bookedCount: json['booked_count'] as int,
     spotsLeft: json['spots_left'] as int,
     myBookingId: json['my_booking_id'] as String?,
+    coachName: json['coach_name'] as String? ?? '',
   );
 }
 

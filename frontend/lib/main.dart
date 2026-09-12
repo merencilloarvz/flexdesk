@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/router/app_router.dart';
 import 'features/auth/providers/auth_providers.dart';
+import 'core/theme/colors.dart';
 
 void main() {
   runApp(const ProviderScope(child: FlexDeskApp()));
@@ -25,6 +26,10 @@ class _FlexDeskAppState extends ConsumerState<FlexDeskApp> {
     final router = ref.watch(appRouterProvider);
     return MaterialApp.router(
       title: 'FlexDesk',
+      theme: ThemeData(
+        useMaterial3: true,
+        colorScheme: ColorScheme.fromSeed(seedColor: AppColors.accentTeal),
+      ),
       routerConfig: router,
       debugShowCheckedModeBanner: false,
     );

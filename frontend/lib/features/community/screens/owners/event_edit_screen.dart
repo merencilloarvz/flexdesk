@@ -316,7 +316,7 @@ class _EventEditScreenState extends ConsumerState<EventEditScreen> {
                       )
                     : Text(_isEditing ? 'Save Changes' : 'Create Event'),
                 style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.accentBlue,
+                  backgroundColor: AppColors.accentTeal,
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
                 ),
@@ -355,7 +355,7 @@ class _EventEditScreenState extends ConsumerState<EventEditScreen> {
           if (icon != null) ...[
             Padding(
               padding: const EdgeInsets.only(top: 12),
-              child: Icon(icon, size: 17, color: AppColors.accentBlue),
+              child: Icon(icon, size: 17, color: AppColors.accentTeal),
             ),
             const SizedBox(width: 8),
           ],
@@ -387,7 +387,7 @@ class _EventEditScreenState extends ConsumerState<EventEditScreen> {
       decoration: BoxDecoration(color: AppColors.fieldBg, borderRadius: BorderRadius.circular(12)),
       child: Row(
         children: [
-          Icon(icon, size: 16, color: AppColors.accentBlue),
+          Icon(icon, size: 16, color: AppColors.accentTeal),
           const SizedBox(width: 8),
           Expanded(child: Text(text, style: const TextStyle(fontSize: 14, color: AppColors.ink))),
         ],
@@ -405,7 +405,7 @@ class _SectionHeader extends StatelessWidget {
     return Row(
       children: [
         Container(width: 4, height: 14, decoration: BoxDecoration(
-          color: AppColors.accentBlue, borderRadius: BorderRadius.circular(2))),
+          color: AppColors.accentTeal, borderRadius: BorderRadius.circular(2))),
         const SizedBox(width: 8),
         Text(label, style: const TextStyle(
           fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 0.4, color: AppColors.subtle)),

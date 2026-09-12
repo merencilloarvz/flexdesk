@@ -39,6 +39,17 @@ CSRF_TRUSTED_ORIGINS = config("CSRF_TRUSTED_ORIGINS", default="", cast=Csv())
 # web admin gets built later.
 CORS_ALLOWED_ORIGINS = config("CORS_ALLOWED_ORIGINS", default="", cast=Csv())
 
+# PayMongo (Stage 10 — subscription billing). Both blank by default so a
+# host without them configured fails closed: checkout refuses to start
+# rather than silently hitting PayMongo with an empty key, and the
+# webhook refuses every event rather than skipping signature checks.
+PAYMONGO_SECRET_KEY = config("PAYMONGO_SECRET_KEY", default="")
+PAYMONGO_WEBHOOK_SECRET = config("PAYMONGO_WEBHOOK_SECRET", default="")
+# Price of the FlexDesk subscription itself, in centavos (PHP). Placeholder
+# until a real tier is confirmed — see Stage 10 plan.
+PAYMONGO_SUBSCRIPTION_PRICE_CENTAVOS = config(
+    "PAYMONGO_SUBSCRIPTION_PRICE_CENTAVOS", default=0, cast=int)
+
 # Railway terminates TLS in front of the app, so Django sees plain HTTP
 # unless told otherwise. SECURE_PROXY_SSL_HEADER and SECURE_SSL_REDIRECT
 # must go together — without the first, the second creates an infinite

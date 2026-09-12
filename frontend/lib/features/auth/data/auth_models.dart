@@ -30,6 +30,9 @@ class Gym {
   final String currency;
   final bool needsSetup;
   final bool classesEnabled;
+  final String? subscriptionStatus;
+  final bool subscriptionBlocked;
+  final DateTime? trialEndsAt;
 
   const Gym({
     required this.id,
@@ -38,15 +41,10 @@ class Gym {
     required this.currency,
     required this.needsSetup,
     required this.classesEnabled,
+    required this.subscriptionStatus,
+    required this.subscriptionBlocked,
+    required this.trialEndsAt,
   });
-
-  const Gym.empty()
-    : id = '',
-      name = '',
-      timezone = 'Asia/Manila',
-      currency = 'PHP',
-      needsSetup = false,
-      classesEnabled = false;
 
   factory Gym.fromJson(Map<String, dynamic> json) => Gym(
     id: json['id'].toString(),
@@ -58,6 +56,14 @@ class Gym {
     // defaults to false so an old session never shows a Schedule tab
     // that then 403s.
     classesEnabled: json['classes_enabled'] as bool? ?? false,
+    subscriptionStatus: json['subscription_status'] as String?,
+    // Same reasoning as classesEnabled above — a cached session from
+    // before Stage 10 has no such key, and must never suddenly lock a
+    // signed-in owner out of their own app until the next real refresh.
+    subscriptionBlocked: json['subscription_blocked'] as bool? ?? false,
+    trialEndsAt: json['trial_ends_at'] != null
+        ? DateTime.tryParse(json['trial_ends_at'] as String)
+        : null,
   );
 
   Map<String, dynamic> toJson() => {
@@ -67,6 +73,9 @@ class Gym {
     'currency': currency,
     'needs_setup': needsSetup,
     'classes_enabled': classesEnabled,
+    'subscription_status': subscriptionStatus,
+    'subscription_blocked': subscriptionBlocked,
+    'trial_ends_at': trialEndsAt?.toIso8601String(),
   };
 
   Gym copyWith({bool? classesEnabled}) => Gym(
@@ -76,6 +85,9 @@ class Gym {
     currency: currency,
     needsSetup: needsSetup,
     classesEnabled: classesEnabled ?? this.classesEnabled,
+    subscriptionStatus: subscriptionStatus,
+    subscriptionBlocked: subscriptionBlocked,
+    trialEndsAt: trialEndsAt,
   );
 }
 
@@ -86,7 +98,11 @@ class AuthUser {
   final String? defaultLocationId;
   final UserRole role;
   final String? accountType;
-  final Gym gym;
+  // Null for an account with neither a StaffProfile nor a member_profile
+  // — a Django superuser, or a profile that got removed. Never assume
+  // this is set; the router sends anyone with gym == null to
+  // NoGymScreen before any gym-dependent screen gets a chance to build.
+  final Gym? gym;
   final bool mustChangePassword;
 
   const AuthUser({
@@ -119,7 +135,7 @@ class AuthUser {
       accountType: accountType,
       gym: json['gym'] is Map<String, dynamic>
           ? Gym.fromJson(json['gym'] as Map<String, dynamic>)
-          : Gym.empty(),
+          : null,
       mustChangePassword: json['must_change_password'] as bool? ?? false,
     );
   }
@@ -131,7 +147,7 @@ class AuthUser {
     'default_location_id': defaultLocationId,
     'role': role.name,
     'account_type': accountType,
-    'gym': gym.toJson(),
+    'gym': gym?.toJson(),
     'must_change_password': mustChangePassword,
   };
 

@@ -43,42 +43,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
     try {
       await ref.read(authControllerProvider.notifier).login(email, password);
-      // TEMPORARY DEBUG
-      if (mounted) {
-        showDialog(
-          context: context,
-          builder: (_) => const AlertDialog(
-            title: Text('DEBUG: login() returned successfully'),
-            content: Text(
-              'No exception thrown. If you see this, the router redirect is the problem, not login itself.',
-            ),
-          ),
-        );
-      }
+      // Success flips AuthState to authenticated; the router reacts to
+      // that and sends the person to the right shell for their
+      // account_type. No navigation call belongs here.
     } on ApiException catch (e) {
-      if (mounted) {
-        showDialog(
-          context: context,
-          builder: (_) => AlertDialog(
-            title: const Text('DEBUG: ApiException'),
-            content: SelectableText('kind: ${e.kind}\nmessage: ${e.message}'),
-          ),
-        );
-      }
       setState(() => _errorMessage = e.message);
-    } catch (e, stack) {
-      if (mounted) {
-        showDialog(
-          context: context,
-          builder: (_) => AlertDialog(
-            title: const Text('DEBUG: Unexpected error'),
-            content: SingleChildScrollView(
-              child: SelectableText('$e\n\n$stack'),
-            ),
-          ),
-        );
-      }
-      setState(() => _errorMessage = e.toString());
     } finally {
       if (mounted) {
         setState(() => _isSubmitting = false);

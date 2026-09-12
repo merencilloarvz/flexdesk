@@ -84,7 +84,7 @@ class _AnnouncementsListScreenState
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _openEdit(),
-        backgroundColor: AppColors.accentBlue,
+        backgroundColor: AppColors.accentTeal,
         child: const Icon(Icons.add),
       ),
       body: SafeArea(
@@ -99,7 +99,7 @@ class _AnnouncementsListScreenState
                       width: 6,
                       height: 6,
                       decoration: const BoxDecoration(
-                        color: AppColors.accentBlue,
+                        color: AppColors.accentTeal,
                         shape: BoxShape.circle,
                       ),
                     ),
@@ -108,7 +108,7 @@ class _AnnouncementsListScreenState
                       '${_items!.length} announcement${_items!.length == 1 ? '' : 's'}',
                       style: const TextStyle(
                         fontSize: 12,
-                        color: AppColors.accentBlue,
+                        color: AppColors.accentTeal,
                       ),
                     ),
                   ],
@@ -126,7 +126,7 @@ class _AnnouncementsListScreenState
                     )
                   : RefreshIndicator(
                       onRefresh: _load,
-                      color: AppColors.accentBlue,
+                      color: AppColors.accentTeal,
                       child: ListView(
                         padding: const EdgeInsets.fromLTRB(16, 4, 16, 40),
                         children: [
@@ -191,7 +191,7 @@ class _AnnouncementCard extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
             border: announcement.isPinned
-                ? Border.all(color: AppColors.accentBlue, width: 1.2)
+                ? Border.all(color: AppColors.accentTeal, width: 1.2)
                 : null,
           ),
           child: Column(
@@ -204,7 +204,7 @@ class _AnnouncementCard extends StatelessWidget {
                     height: 28,
                     decoration: BoxDecoration(
                       color: announcement.isPinned
-                          ? AppColors.accentBlue
+                          ? AppColors.accentTeal
                           : AppColors.fieldBg,
                       shape: BoxShape.circle,
                     ),
@@ -226,7 +226,7 @@ class _AnnouncementCard extends StatelessWidget {
                         vertical: 3,
                       ),
                       decoration: BoxDecoration(
-                        color: AppColors.accentBlueBg,
+                        color: AppColors.accentTealBg,
                         borderRadius: BorderRadius.circular(999),
                       ),
                       child: const Row(
@@ -235,7 +235,7 @@ class _AnnouncementCard extends StatelessWidget {
                           Icon(
                             Icons.push_pin,
                             size: 11,
-                            color: AppColors.accentBlue,
+                            color: AppColors.accentTeal,
                           ),
                           SizedBox(width: 3),
                           Text(
@@ -243,7 +243,7 @@ class _AnnouncementCard extends StatelessWidget {
                             style: TextStyle(
                               fontSize: 9,
                               fontWeight: FontWeight.w700,
-                              color: AppColors.accentBlue,
+                              color: AppColors.accentTeal,
                             ),
                           ),
                         ],
@@ -292,14 +292,14 @@ class _AnnouncementCard extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
-                      color: AppColors.accentBlue,
+                      color: AppColors.accentTeal,
                     ),
                   ),
                   SizedBox(width: 2),
                   Icon(
                     Icons.arrow_forward,
                     size: 13,
-                    color: AppColors.accentBlue,
+                    color: AppColors.accentTeal,
                   ),
                 ],
               ),
@@ -327,7 +327,7 @@ class _EmptyState extends StatelessWidget {
             width: 64,
             height: 64,
             decoration: BoxDecoration(
-              color: AppColors.accentBlue,
+              color: AppColors.accentTeal,
               borderRadius: BorderRadius.circular(18),
             ),
             child: const Icon(Icons.campaign, size: 28, color: Colors.white),
@@ -356,7 +356,7 @@ class _EmptyState extends StatelessWidget {
               icon: const Icon(Icons.add, size: 18),
               label: const Text('Create First Announcement'),
               style: FilledButton.styleFrom(
-                backgroundColor: AppColors.accentBlue,
+                backgroundColor: AppColors.accentTeal,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 15),
                 shape: RoundedRectangleBorder(

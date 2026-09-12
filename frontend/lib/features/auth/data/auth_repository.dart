@@ -101,23 +101,45 @@ class AuthRepository {
     }
   }
 
+  /// Always tries the server first so a returning user's needs_setup,
+  /// classes_enabled, and mustChangePassword are current — not whatever
+  /// was true the last time this device happened to fetch them. Cached
+  /// JSON is the fallback for genuinely offline restore, not the default
+  /// path: the previous version returned the cache whenever it existed
+  /// and never reached _api.me() at all for a returning user, which is
+  /// exactly the staleness bug behind the /setup dead-end and the stuck
+  /// classes_enabled/needs_setup flags — the fallback existed but the
+  /// primary path it was meant to fall back FROM was never being taken.
   Future<AuthUser?> restoreSession() async {
     final refresh = await _tokenStorage.readRefresh();
     if (refresh == null) return null;
 
-    final cachedJson = await _tokenStorage.readCachedUserJson();
-    if (cachedJson != null) {
-      try {
-        final user = AuthUser.fromJson(
-          jsonDecode(cachedJson) as Map<String, dynamic>,
-        );
-        return user;
-      } catch (_) {}
-    }
+    try {
+      final user = await _api.me();
+      await _tokenStorage.updateCachedUser(jsonEncode(user.toJson()));
+      return user;
+    } on ApiException catch (e) {
+      // Only a genuine network failure falls back to cache — a real
+      // rejection (expired/invalid session) must propagate up so
+      // AuthController.restore() marks the session unauthenticated
+      // instead of silently trusting stale local data as if it were
+      // still a valid session.
+      if (e.kind != ApiExceptionKind.network) rethrow;
 
-    final user = await _api.me();
-    await _tokenStorage.updateCachedUser(jsonEncode(user.toJson()));
-    return user;
+      final cachedJson = await _tokenStorage.readCachedUserJson();
+      if (cachedJson != null) {
+        try {
+          return AuthUser.fromJson(
+            jsonDecode(cachedJson) as Map<String, dynamic>,
+          );
+        } catch (_) {}
+      }
+      // No usable cache either — let AuthController.restore() see the
+      // network ApiException and land on AuthUnknown(restoreFailed: true)
+      // rather than silently returning null (which would read as "no
+      // session" instead of "couldn't reach the server").
+      rethrow;
+    }
   }
 
   /// Clears the local session immediately, unconditionally. The

@@ -12,6 +12,7 @@ from .views import (AnnouncementViewSet, AnalyticsView, BookingCancelView, Booki
 from .views import SignupView
 from .views import ChangePasswordView, StaffViewSet
 from .views import MeRestDaysView  # add to the existing .views import block
+from .views import SubscriptionCheckoutView, SubscriptionView, SubscriptionWebhookView
 router = DefaultRouter()
 router.register("members", MemberViewSet, basename="member")
 router.register("check-ins", CheckInViewSet, basename="check-in")
@@ -50,6 +51,11 @@ urlpatterns = [
     path("inventory/alerts/", InventoryAlertsView.as_view(), name="inventory-alerts"),
     path("me/rest-days/", MeRestDaysView.as_view(), name="me-rest-days"),
     path("auth/logout/", LogoutView.as_view(), name="auth-logout"),
+    path("subscription/", SubscriptionView.as_view(), name="subscription"),
+    path("subscription/checkout/", SubscriptionCheckoutView.as_view(),
+        name="subscription-checkout"),
+    path("subscription/webhook/", SubscriptionWebhookView.as_view(),
+        name="subscription-webhook"),
     path("", include(router.urls)),
     
 ]

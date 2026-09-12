@@ -1,0 +1,206 @@
+[
+  {
+    "slug": "push-up",
+    "name": "Push-up",
+    "muscle_group": "Chest",
+    "equipment": "Bodyweight",
+    "difficulty": "Beginner",
+    "frames": ["push-up-1.svg", "push-up-2.svg", "push-up-3.svg"],
+    "steps": [
+      "Start in a plank with your hands a little wider than shoulder-width and your body in a straight line.",
+      "Bend your elbows and lower your chest toward the floor, keeping them at roughly a 45-degree angle to your body.",
+      "Press back up to a straight-arm plank without letting your hips sag or your head drop."
+    ],
+    "tips": [
+      "Keep your core tight so your hips stay level the whole way down and up.",
+      "If a full push-up is too hard, drop your knees to the floor and keep the same body line."
+    ]
+  },
+  {
+    "slug": "bodyweight-squat",
+    "name": "Bodyweight Squat",
+    "muscle_group": "Legs",
+    "equipment": "Bodyweight",
+    "difficulty": "Beginner",
+    "frames": ["bodyweight-squat-1.svg", "bodyweight-squat-2.svg", "bodyweight-squat-3.svg"],
+    "steps": [
+      "Stand with feet shoulder-width apart, toes turned slightly out.",
+      "Push your hips back and bend your knees to lower down, as if sitting into a chair.",
+      "Go as low as you can while keeping your heels flat and your chest up, then drive through your heels to stand."
+    ],
+    "tips": [
+      "Keep your knees tracking over your toes rather than caving inward.",
+      "If your heels lift off the ground, try a shallower squat or shoes with a flatter sole."
+    ]
+  },
+  {
+    "slug": "plank",
+    "name": "Plank",
+    "muscle_group": "Core",
+    "equipment": "Bodyweight",
+    "difficulty": "Beginner",
+    "frames": ["plank-1.svg", "plank-2.svg", "plank-3.svg"],
+    "steps": [
+      "Rest on your forearms and toes, elbows stacked directly under your shoulders.",
+      "Squeeze your glutes and pull your belly button toward your spine so your body forms one straight line.",
+      "Hold the position, breathing steadily, without letting your hips rise or drop."
+    ],
+    "tips": [
+      "A sagging lower back is the most common mistake — think 'tall' through your whole body, not just your shoulders.",
+      "Start with short holds of 15-20 seconds and build up rather than fighting to hold a long plank with poor form."
+    ]
+  },
+  {
+    "slug": "forward-lunge",
+    "name": "Forward Lunge",
+    "muscle_group": "Legs",
+    "equipment": "Bodyweight",
+    "difficulty": "Beginner",
+    "frames": ["forward-lunge-1.svg", "forward-lunge-2.svg", "forward-lunge-3.svg"],
+    "steps": [
+      "Stand tall, then step forward with one leg.",
+      "Lower your body until both knees are bent close to 90 degrees, with your back knee hovering just above the floor.",
+      "Push through your front heel to return to standing, then repeat on the other leg."
+    ],
+    "tips": [
+      "Keep your torso upright instead of leaning forward over your front knee.",
+      "Take a slightly longer step if your front knee is drifting past your toes."
+    ]
+  },
+  {
+    "slug": "deadlift",
+    "name": "Barbell Deadlift",
+    "muscle_group": "Back",
+    "equipment": "Barbell",
+    "difficulty": "Intermediate",
+    "frames": ["deadlift-1.svg", "deadlift-2.svg", "deadlift-3.svg"],
+    "steps": [
+      "Stand with the bar over your mid-foot, feet hip-width apart, and grip it just outside your legs.",
+      "Bend your knees and hinge at your hips to grab the bar, keeping your back flat and chest up.",
+      "Drive through your feet and stand up tall, pulling the bar close along your legs, then reverse the motion to lower it back down."
+    ],
+    "tips": [
+      "Keep the bar close to your shins and thighs throughout the whole lift.",
+      "This is a technical lift — start light, and ask a trainer for a form check before adding weight."
+    ]
+  },
+  {
+    "slug": "bench-press",
+    "name": "Barbell Bench Press",
+    "muscle_group": "Chest",
+    "equipment": "Barbell",
+    "difficulty": "Intermediate",
+    "frames": ["bench-press-1.svg", "bench-press-2.svg", "bench-press-3.svg"],
+    "steps": [
+      "Lie on the bench with your eyes under the bar and your feet flat on the floor.",
+      "Unrack the bar and lower it under control to your mid-chest, elbows at about 45 degrees.",
+      "Press the bar back up until your arms are straight, without bouncing it off your chest."
+    ],
+    "tips": [
+      "Keep your shoulder blades pulled back and down against the bench for a stable base.",
+      "Always use a spotter or safety bars when you're pressing near your limit."
+    ]
+  },
+  {
+    "slug": "dumbbell-bent-over-row",
+    "name": "Dumbbell Bent-Over Row",
+    "muscle_group": "Back",
+    "equipment": "Dumbbell",
+    "difficulty": "Beginner",
+    "frames": ["dumbbell-bent-over-row-1.svg", "dumbbell-bent-over-row-2.svg", "dumbbell-bent-over-row-3.svg"],
+    "steps": [
+      "Hold a dumbbell in each hand and hinge forward at your hips until your torso is near horizontal, back flat.",
+      "Let the dumbbells hang straight down, then pull them up toward your ribs, squeezing your shoulder blades together.",
+      "Lower the dumbbells back down under control and repeat."
+    ],
+    "tips": [
+      "Avoid using momentum from your lower back to swing the weight up.",
+      "Keep your neck in a neutral line with your spine instead of craning it up."
+    ]
+  },
+  {
+    "slug": "standing-dumbbell-press",
+    "name": "Standing Dumbbell Shoulder Press",
+    "muscle_group": "Shoulders",
+    "equipment": "Dumbbell",
+    "difficulty": "Beginner",
+    "frames": ["standing-dumbbell-press-1.svg", "standing-dumbbell-press-2.svg", "standing-dumbbell-press-3.svg"],
+    "steps": [
+      "Stand tall holding a dumbbell in each hand at shoulder height, palms facing forward.",
+      "Press both dumbbells straight overhead until your arms are fully extended.",
+      "Lower them back down under control to shoulder height and repeat."
+    ],
+    "tips": [
+      "Brace your core so your lower back doesn't arch as you press overhead.",
+      "Press slightly forward of your ears rather than straight up if it feels more natural on your shoulders."
+    ]
+  },
+  {
+    "slug": "lat-pulldown",
+    "name": "Lat Pulldown",
+    "muscle_group": "Back",
+    "equipment": "Machine",
+    "difficulty": "Beginner",
+    "frames": ["lat-pulldown-1.svg", "lat-pulldown-2.svg", "lat-pulldown-3.svg"],
+    "steps": [
+      "Sit at the machine and grip the bar wider than shoulder-width, thighs secured under the pads.",
+      "Pull the bar down to your upper chest, driving your elbows down and back.",
+      "Let the bar rise back up under control until your arms are fully extended, without shrugging your shoulders up."
+    ],
+    "tips": [
+      "Lead with your elbows rather than pulling mainly with your hands and arms.",
+      "Avoid leaning back excessively to use body weight instead of your back muscles."
+    ]
+  },
+  {
+    "slug": "bicycle-crunch",
+    "name": "Bicycle Crunch",
+    "muscle_group": "Core",
+    "equipment": "Bodyweight",
+    "difficulty": "Beginner",
+    "frames": ["bicycle-crunch-1.svg", "bicycle-crunch-2.svg", "bicycle-crunch-3.svg"],
+    "steps": [
+      "Lie on your back with your hands lightly behind your head and knees pulled toward your chest.",
+      "Extend one leg out straight while rotating to bring the opposite elbow toward the bent knee.",
+      "Switch sides in a smooth pedalling motion, keeping your lower back pressed into the floor."
+    ],
+    "tips": [
+      "Rotate from your torso, not by yanking on your neck with your hands.",
+      "Slow the pace down if your lower back starts to arch off the floor."
+    ]
+  },
+  {
+    "slug": "glute-bridge",
+    "name": "Glute Bridge",
+    "muscle_group": "Glutes",
+    "equipment": "Bodyweight",
+    "difficulty": "Beginner",
+    "frames": ["glute-bridge-1.svg", "glute-bridge-2.svg", "glute-bridge-3.svg"],
+    "steps": [
+      "Lie on your back with knees bent, feet flat on the floor hip-width apart, close to your glutes.",
+      "Squeeze your glutes and push through your heels to lift your hips until your body forms a straight line from shoulders to knees.",
+      "Lower your hips back down under control and repeat."
+    ],
+    "tips": [
+      "Focus on squeezing your glutes at the top rather than overarching your lower back.",
+      "Keep your feet close enough that you can feel your heels doing the work."
+    ]
+  },
+  {
+    "slug": "calf-raise",
+    "name": "Calf Raise",
+    "muscle_group": "Legs",
+    "equipment": "Bodyweight",
+    "difficulty": "Beginner",
+    "frames": ["calf-raise-1.svg", "calf-raise-2.svg", "calf-raise-3.svg"],
+    "steps": [
+      "Stand tall with feet hip-width apart, holding onto something steady for balance if needed.",
+      "Rise up onto the balls of your feet as high as you can, squeezing your calves at the top.",
+      "Lower your heels back down slowly until they just touch the floor, then repeat."
+    ],
+    "tips": [
+      "Move slowly on the way down — that's where most of the muscle work happens.",
+      "Try it on a step with your heels hanging off the edge once bodyweight raises feel easy, for a bigger range of motion."
+    ]
+  }
+]
