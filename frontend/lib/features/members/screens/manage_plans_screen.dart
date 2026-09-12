@@ -48,6 +48,30 @@ class _ManagePlansScreenState extends ConsumerState<ManagePlansScreen> {
   _StatusFilter _filter = _StatusFilter.all;
   bool _continuing = false;
 
+  @override
+  void initState() {
+    super.initState();
+    // This screen only ever reads the local cache (allPlansProvider),
+    // never the API directly — same as every other screen in the app.
+    // Elsewhere that cache is already warm by the time someone arrives
+    // (Members List and Check-In both call refreshPlans() themselves),
+    // but a fresh signup lands here FIRST, on a device with an empty
+    // local DB and no other screen ever reachable to prime it — the
+    // four ₱0 seed plans exist on the server (SignupSerializer) but
+    // would never make it into view. Fetch on entry so that's no
+    // longer true for this screen specifically.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _refreshPlans());
+  }
+
+  Future<void> _refreshPlans() async {
+    try {
+      await ref.read(plansRepositoryProvider).refreshPlans(widget.gymId);
+    } catch (_) {
+      // Offline or transient — the local cache (possibly empty, for a
+      // brand-new gym) is still shown; nothing else to do here.
+    }
+  }
+
   /// The exit condition out of first-run mode. Deliberately re-fetches
   /// /auth/me/ and pushes the result into AuthController rather than
   /// flipping a local flag — needs_setup flipping to false is a server
