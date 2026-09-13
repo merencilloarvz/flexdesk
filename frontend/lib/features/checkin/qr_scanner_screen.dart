@@ -73,7 +73,7 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen> {
   // verify-qr call consumes the time step and every call after it
   // returns "that code has already been used" — a working scan that
   // looks broken. Being synchronous is the whole fix: this is checked
-  // and set, and the camera is stopped, before this callback's first
+  // and set, and the camera is paused, before this callback's first
   // `await` — never after one.
   bool _handled = false;
 
@@ -96,8 +96,16 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen> {
   void _onDetect(BarcodeCapture capture) {
     if (_handled) return;
     _handled = true;
+    // pause(), not stop() — stop() tears the camera session down
+    // (black rectangle through verification/the confirmation sheet/any
+    // error banner); pause() keeps the preview visible while halting
+    // detection. Both route through the same private _stop() helper in
+    // the installed mobile_scanner 7.4.1 source, which synchronously
+    // cancels the barcode-stream subscription before either method's
+    // own single `await` — confirmed from source, not assumed — so
+    // pause() closes the guard's race exactly as stop() did.
     // ignore: unawaited_futures
-    _controller.stop();
+    _controller.pause();
 
     final raw = capture.barcodes.isEmpty
         ? null
@@ -146,6 +154,12 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen> {
       _errorMessage = null;
       _handled = false;
     });
+    // start() is pause()'s documented counterpart too, not just
+    // stop()'s — mobile_scanner's own doc comment on pause() says "the
+    // camera can be restarted using start()", and the method-channel
+    // implementation resets its internal _pausing flag inside start(),
+    // confirming a resumed camera goes through the same call as a
+    // fresh one. There is no separate resume() on the controller.
     // ignore: unawaited_futures
     _controller.start();
   }

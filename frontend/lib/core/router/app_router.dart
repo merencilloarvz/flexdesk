@@ -21,6 +21,7 @@ import '../../features/dashboard/screens/home_screen.dart';
 import '../../features/settings/screens/settings_screen.dart';
 import '../../features/shell/app_shell.dart';
 import '../../features/checkin/check_in_screen.dart';
+import '../../features/checkin/qr_scanner_screen.dart';
 import '../../features/pos/screens/pos_screen.dart';
 import '../../features/auth/screens/signup_screen.dart';
 import '../../features/members_home/screens/member_home_screen.dart';
@@ -377,6 +378,18 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/me/card',
         builder: (context, state) => const DigitalCardScreen(),
+      ),
+      // Top-level, outside every shell branch — pushed on the root
+      // navigator via context.push<QrVerifyResult>, the same way
+      // /me/card is, so it renders full-screen above AppShell's
+      // floating bottomNavigationBar rather than behind it. A push
+      // through Navigator.of(context) from inside a shell branch
+      // resolves to that branch's own nested navigator, which sits
+      // inside AppShell's extended body — this route deliberately
+      // does not.
+      GoRoute(
+        path: '/checkin/scan',
+        builder: (context, state) => const QrScannerScreen(),
       ),
 
       // Owner shell — 5 tabs: Home, Members, Check-In, Modules, Settings.

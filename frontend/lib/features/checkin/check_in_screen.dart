@@ -354,9 +354,13 @@ class _CheckInScreenState extends ConsumerState<CheckInScreen> {
       return;
     }
 
-    final result = await Navigator.of(context).push<QrVerifyResult>(
-      MaterialPageRoute(builder: (_) => const QrScannerScreen()),
-    );
+    // Pushed as a top-level route (outside every shell branch — see
+    // app_router.dart's /checkin/scan) so it renders full-screen above
+    // AppShell's floating bottomNavigationBar, not behind it.
+    // Navigator.of(context).push from in here would resolve to the
+    // /checkin branch's own nested navigator, still inside AppShell's
+    // extended body.
+    final result = await context.push<QrVerifyResult>('/checkin/scan');
     if (result == null || !mounted) return;
 
     await _openMemberConfirmSheetFromScan(result, locationId);
