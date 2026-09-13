@@ -279,6 +279,16 @@ class Member(TenantScopedModel):
     claim_code = models.CharField(max_length=8, blank=True)
     claim_code_expires_at = models.DateTimeField(null=True, blank=True)
 
+    # QR check-in (Phase 3b). Blank until the member's app first calls
+    # GET /me/qr-secret/ — generated lazily there (core.qr.generate_secret),
+    # never backfilled. A member who has never claimed their account can
+    # never have one, which is what makes an unclaimed member's QR code
+    # unforgeable by construction rather than by a permission check.
+    qr_secret = models.CharField(max_length=64, blank=True)
+    # Last accepted TOTP time step, for replay protection — see
+    # core.qr.accepted_steps and CheckInViewSet.verify_qr.
+    qr_last_step = models.BigIntegerField(null=True, blank=True)
+
     objects = MemberQuerySet.as_manager()
 
     class Meta(TenantScopedModel.Meta):

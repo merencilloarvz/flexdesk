@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import uuid
 from django.conf import settings as dj_settings
 from django.db import IntegrityError
 from rest_framework import status, viewsets
@@ -13,6 +14,7 @@ from django.utils import timezone
 
 from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo
+from . import qr as qr_lib
 from .mixins import GymScopedViewSet
 from .models import CheckIn, Member, Membership, MembershipPlan, Subscription, User
 from .permissions import IsGymMember, IsGymStaff, IsOwner, IsOwnerOrReadOnly, SubscriptionActive
@@ -22,7 +24,7 @@ from .serializers import (CheckInSerializer, CheckInWriteSerializer,
                           MeMemberSummarySerializer, MeSerializer, MemberRestDaysSerializer,
                           MemberSerializer, MembershipPlanSerializer,
                           MembershipSerializer, MemberWriteSerializer,
-                          SubscriptionSerializer)
+                          SubscriptionSerializer, VerifyQrSerializer)
 from .utils import generate_claim_code, gym_today
 
 from rest_framework.permissions import AllowAny
@@ -503,6 +505,26 @@ class MemberViewSet(GymScopedViewSet):
             "expires_at": member.claim_code_expires_at,
         })
 
+    @action(detail=True, methods=["post"], url_path="qr-secret/reset",
+            permission_classes=[IsGymStaff, IsOwner])
+    def qr_secret_reset(self, request, pk=None):
+        """
+        For a lost phone, or a member who shared their card. Rotates the
+        secret and clears qr_last_step — step numbers from the old
+        secret carry no meaning against a new one, so an old step
+        surviving here would either falsely block the member's first
+        real code or (if a step number happened to be smaller) do
+        nothing at all. No response body: the raw secret is nobody's
+        business but the member's own app, which picks up the new one
+        next time it calls GET /me/qr-secret/ (B4 — the owner tells the
+        member to tap Refresh card in Settings).
+        """
+        member = self.get_object()
+        member.qr_secret = qr_lib.generate_secret()
+        member.qr_last_step = None
+        member.save(update_fields=["qr_secret", "qr_last_step", "updated_at"])
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 ANALYTICS_RANGE_DAYS = {"1D": 1, "1W": 7, "1M": 30, "3M": 90}
 
 
@@ -710,6 +732,110 @@ class CheckInViewSet(GymScopedViewSet):
         checkin.save(update_fields=["voided_at", "voided_by"])
         return Response(status=status.HTTP_204_NO_CONTENT)
 
+    @action(detail=False, methods=["post"], url_path="verify-qr")
+    def verify_qr(self, request):
+        """
+        Verifies a scanned QR payload WITHOUT creating a check-in — staff
+        confirms on the sheet, then the app calls the existing check-in
+        create endpoint. One check-in code path, not two.
+
+        Every failure below is intentionally the exact wording from Phase
+        3b's A9, including two deliberate collisions: a nonexistent
+        member and another gym's member return the identical message (the
+        lookup below can't tell them apart, by construction — it never
+        even sees whether a matching id exists elsewhere), and an
+        unclaimed member (empty qr_secret) returns the identical message
+        as an expired code, so this endpoint never confirms which one it
+        was.
+        """
+        s = VerifyQrSerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+        parts = s.validated_data["payload"].split("|")
+
+        if parts[0] == qr_lib.CLAIM_PREFIX:
+            raise ValidationError(
+                {"detail": "That's an account setup code, not a membership card"})
+
+        if len(parts) != 3 or parts[0] != qr_lib.CHECKIN_PREFIX:
+            raise ValidationError({"detail": "Couldn't read that code"})
+
+        _, member_id_str, code = parts
+        try:
+            member_id = uuid.UUID(member_id_str)
+        except ValueError:
+            raise ValidationError({"detail": "Couldn't read that code"})
+
+        # Gym-scoped by construction — a UUID that doesn't exist at all
+        # and a UUID that belongs to a different gym both just miss here,
+        # with nothing downstream able to tell the two apart.
+        member = Member.objects.filter(pk=member_id, gym=self.gym).first()
+        if member is None:
+            raise ValidationError({"detail": "This card isn't from your gym"})
+
+        if member.archived_at is not None:
+            raise ValidationError(
+                {"detail": "This membership is no longer active at your gym"})
+
+        # A3: reject an empty secret BEFORE computing anything — HMAC
+        # with an empty key is still a valid, deterministic code, and an
+        # unclaimed member must never have a working one.
+        expired_message = "That code has expired — ask them to reopen their card"
+        if not member.qr_secret:
+            raise ValidationError({"detail": expired_message})
+
+        now_step = qr_lib.time_step(timezone.now().timestamp())
+        matched_step = None
+        for candidate_step in qr_lib.accepted_steps(now_step):
+            expected_code = qr_lib.compute_code(member.qr_secret, candidate_step)
+            if hmac.compare_digest(expected_code, code):
+                matched_step = candidate_step
+                break
+
+        if matched_step is None:
+            raise ValidationError({"detail": expired_message})
+
+        # A5 replay protection, race-safe: a plain read-then-save lets two
+        # concurrent requests both read qr_last_step before either writes
+        # it, so both pass the check and both succeed. A single
+        # conditional UPDATE makes the check and the write one atomic
+        # operation — the second request's UPDATE matches zero rows once
+        # the first has already advanced qr_last_step, the same way
+        # create_sale()'s stock decrement can't oversell the last unit.
+        updated = Member.objects.filter(pk=member.pk).filter(
+            Q(qr_last_step__isnull=True) | Q(qr_last_step__lt=matched_step)
+        ).update(qr_last_step=matched_step)
+
+        if updated == 0:
+            raise ValidationError({"detail": "That code has already been used"})
+
+        annotated = (Member.objects.filter(pk=member.pk, gym=self.gym)
+                     .with_status(self.today).first())
+        days_remaining = None
+        if annotated.current_end_date:
+            days_remaining = (annotated.current_end_date - self.today).days
+
+        # "Already checked in today" via gym_today's explicit UTC range —
+        # never __date on checked_in_at, same standing rule as everywhere
+        # else this endpoint's own queryset applies it.
+        tz = ZoneInfo(self.gym.timezone)
+        day_start = datetime.combine(self.today, time.min, tzinfo=tz)
+        day_end = day_start + timedelta(days=1)
+        already_checked_in_today = CheckIn.objects.filter(
+            gym=self.gym, member=member, visit_type=CheckIn.MEMBER,
+            voided_at__isnull=True,
+            checked_in_at__gte=day_start, checked_in_at__lt=day_end,
+        ).exists()
+
+        return Response({
+            "id": str(member.id),
+            "full_name": member.full_name,
+            "member_code": member.member_code,
+            "membership_status": annotated.membership_status,
+            "current_end_date": annotated.current_end_date,
+            "days_remaining": days_remaining,
+            "already_checked_in_today": already_checked_in_today,
+        })
+
 
 class SignupView(APIView):
     permission_classes = [AllowAny]
@@ -901,6 +1027,34 @@ class MeCheckInsView(ListAPIView):
             .filter(member=self.request.user.member_profile, voided_at__isnull=True)
             .order_by("-checked_in_at")
         )
+
+class MeQrSecretView(APIView):
+    """
+    Returns the calling member's own QR secret — never by id, always
+    request.user.member_profile, so this can never be used to fetch
+    anyone else's. Generates the secret lazily on first call (A4): a
+    member who has never claimed their account never reaches this view
+    at all (IsGymMember requires member_profile), so their qr_secret
+    stays blank forever — which is what makes an unclaimed member's code
+    unforgeable by construction, not by a permission check (see A3 in
+    CheckInViewSet.verify_qr).
+    """
+    permission_classes = [IsGymMember]
+    throttle_scope = "qr_secret"
+
+    def get(self, request):
+        member = request.user.member_profile
+        if not member.qr_secret:
+            member.qr_secret = qr_lib.generate_secret()
+            member.save(update_fields=["qr_secret", "updated_at"])
+
+        return Response({
+            "secret": member.qr_secret,
+            "server_time": timezone.now().timestamp(),
+            "period": qr_lib.PERIOD_SECONDS,
+            "digits": qr_lib.DIGITS,
+        })
+
 
 class AnnouncementViewSet(GymScopedViewSet):
     queryset = Announcement.objects.all()

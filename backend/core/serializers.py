@@ -168,6 +168,16 @@ class BookingCreateSerializer(serializers.Serializer):
     date = serializers.DateField()
 
 
+class VerifyQrSerializer(serializers.Serializer):
+    """
+    Deliberately just the raw payload string — same "plain Serializer,
+    real work happens in the view" pattern as BookingCreateSerializer.
+    All parsing (prefix, shape, member lookup, code check, replay) is in
+    CheckInViewSet.verify_qr, not here.
+    """
+    payload = serializers.CharField()
+
+
 class MembershipSerializer(serializers.ModelSerializer):
     class Meta:
         model = Membership
