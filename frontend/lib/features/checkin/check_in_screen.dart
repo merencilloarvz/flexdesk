@@ -14,6 +14,7 @@ import '../members/providers/check_ins_provider.dart';
 import '../members/providers/members_providers.dart';
 import '../members/providers/plans_provider.dart';
 import '../checkin/widgets/edit_walkin_prices.dart';
+import '../checkin/qr_scanner_screen.dart';
 
 String _backendStatus(MembershipStatus status) {
   switch (status) {
@@ -25,6 +26,25 @@ String _backendStatus(MembershipStatus status) {
       return 'expired';
     case MembershipStatus.noMembership:
       return 'no_membership';
+  }
+}
+
+// Inverse of _backendStatus — for the QR scan path, whose status comes
+// from verify-qr's own `membership_status` string (exactly the values
+// Member.with_status() annotates on the backend) rather than a local
+// statusFor() computation. Only used to pick the sheet's badge
+// color/label; the raw string itself is what's actually sent back to
+// createMemberCheckIn, never this enum.
+MembershipStatus _membershipStatusFromBackend(String value) {
+  switch (value) {
+    case 'active':
+      return MembershipStatus.active;
+    case 'expiring':
+      return MembershipStatus.expiring;
+    case 'expired':
+      return MembershipStatus.expired;
+    default:
+      return MembershipStatus.noMembership;
   }
 }
 
@@ -96,6 +116,7 @@ class _CheckInScreenState extends ConsumerState<CheckInScreen> {
   _ListFilter _filter = _ListFilter.all;
 
   final _searchController = TextEditingController();
+  final _searchFocusNode = FocusNode();
   String _searchQuery = '';
 
   final _walkInNameController = TextEditingController();
@@ -120,6 +141,7 @@ class _CheckInScreenState extends ConsumerState<CheckInScreen> {
   @override
   void dispose() {
     _searchController.dispose();
+    _searchFocusNode.dispose();
     _walkInNameController.dispose();
     super.dispose();
   }
@@ -290,7 +312,8 @@ class _CheckInScreenState extends ConsumerState<CheckInScreen> {
               MediaQuery.of(sheetContext).viewInsets.bottom,
         ),
         child: _MemberConfirmSheet(
-          member: member,
+          fullName: '${member.firstName} ${member.lastName}'.trim(),
+          planCategory: member.currentPlanCategory,
           status: status,
           remaining: remaining,
           alreadyToday: alreadyToday,
@@ -308,6 +331,97 @@ class _CheckInScreenState extends ConsumerState<CheckInScreen> {
                       );
                   return result;
                 },
+        ),
+      ),
+    );
+  }
+
+  // C1/C2 — opens the full-screen scanner. verify-qr does the actual
+  // check; the scanner screen pops with the verified QrVerifyResult on
+  // success (or null if staff backs out). Offline gates this entirely
+  // (C3/C5) — reusing the same `_offline` flag the sync banner already
+  // shows, not a second connectivity mechanism.
+  Future<void> _openScanner(String? locationId) async {
+    if (_offline) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'QR check-in needs a connection — search for them instead.',
+          ),
+        ),
+      );
+      _searchFocusNode.requestFocus();
+      return;
+    }
+
+    final result = await Navigator.of(context).push<QrVerifyResult>(
+      MaterialPageRoute(builder: (_) => const QrScannerScreen()),
+    );
+    if (result == null || !mounted) return;
+
+    await _openMemberConfirmSheetFromScan(result, locationId);
+  }
+
+  // C1 — renders from verify-qr's own response (membership status, end
+  // date, days remaining, already-checked-in-today) rather than a local
+  // Member lookup: those are the server's authoritative values,
+  // computed against the gym's timezone from current data. This is
+  // also what makes the sheet reachable even for a member this device
+  // has never synced locally — the previous "try search instead" dead
+  // end (search filters the same local cache, so it couldn't find them
+  // either, and the time step was already consumed) no longer applies.
+  // createMemberCheckIn still takes the exact same arguments as the
+  // manual path — one code path, unchanged.
+  Future<void> _openMemberConfirmSheetFromScan(
+    QrVerifyResult result,
+    String? locationId,
+  ) async {
+    final status = _membershipStatusFromBackend(result.membershipStatus);
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.pageBg,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) => Padding(
+        padding: EdgeInsets.only(
+          bottom:
+              AppShell.reservedNavHeight +
+              MediaQuery.of(sheetContext).viewInsets.bottom,
+        ),
+        child: _MemberConfirmSheet(
+          fullName: result.fullName,
+          // Not in the verify-qr response — never guessed from a local
+          // cache that this path is deliberately independent of.
+          planCategory: null,
+          status: status,
+          remaining: result.daysRemaining,
+          alreadyToday: result.alreadyCheckedInToday,
+          onConfirm: locationId == null
+              ? null
+              : () => ref
+                    .read(checkInsRepositoryProvider)
+                    .createMemberCheckIn(
+                      gymId: widget.gymId,
+                      memberId: result.memberId,
+                      locationId: locationId,
+                      membershipStatus: result.membershipStatus,
+                      membershipEndDate: result.currentEndDate,
+                    ),
+          // C4 — verify-qr already consumed the time step, so staff
+          // can't rescan for up to a minute. On a create failure, route
+          // to the search field with the name pre-filled instead of
+          // leaving them stuck in the sheet — never retries the scan
+          // and never silently re-verifies.
+          onRejected: (message) {
+            _searchController.text = result.fullName;
+            _searchFocusNode.requestFocus();
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(SnackBar(content: Text(message)));
+          },
         ),
       ),
     );
@@ -404,6 +518,7 @@ class _CheckInScreenState extends ConsumerState<CheckInScreen> {
                 child: _tab == _CheckInTab.member
                     ? _MemberTabContent(
                         searchController: _searchController,
+                        searchFocusNode: _searchFocusNode,
                         searchQuery: _searchQuery,
                         membersAsync: membersAsync,
                         today: today,
@@ -419,6 +534,8 @@ class _CheckInScreenState extends ConsumerState<CheckInScreen> {
                           locationId,
                           todaysCheckIns,
                         ),
+                        offline: _offline,
+                        onScanTap: () => _openScanner(locationId),
                       )
                     : _WalkInTabContent(
                         gymId: widget.gymId,
@@ -547,9 +664,52 @@ class _TabButton extends StatelessWidget {
   }
 }
 
+// C1/C3 — a Scan button alongside the existing search. Never disabled
+// in the Flutter sense (onPressed: null): offline still responds to a
+// tap, just with the "needs a connection" message instead of opening
+// the camera, which is what C3 means by "disabled ... plus a shortcut
+// to the search field" — greyed out is purely visual here.
+class _ScanButton extends StatelessWidget {
+  const _ScanButton({required this.offline, required this.onTap});
+
+  final bool offline;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = offline ? AppColors.muted : AppColors.accentTeal;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.qr_code_scanner_rounded, size: 16, color: color),
+              const SizedBox(width: 4),
+              Text(
+                'Scan',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: color,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _MemberTabContent extends StatelessWidget {
   const _MemberTabContent({
     required this.searchController,
+    required this.searchFocusNode,
     required this.searchQuery,
     required this.membersAsync,
     required this.today,
@@ -561,9 +721,12 @@ class _MemberTabContent extends StatelessWidget {
     required this.matchingMembers,
     required this.todaysCheckInFor,
     required this.onMemberTap,
+    required this.offline,
+    required this.onScanTap,
   });
 
   final TextEditingController searchController;
+  final FocusNode searchFocusNode;
   final String searchQuery;
   final AsyncValue<List<Member>> membersAsync;
   final DateTime today;
@@ -575,6 +738,12 @@ class _MemberTabContent extends StatelessWidget {
   final List<Member> Function(List<Member>) matchingMembers;
   final CheckIn? Function(String, List<CheckIn>) todaysCheckInFor;
   final void Function(Member) onMemberTap;
+  // C3 — Scan stays visually "on" but tapping it while offline shows
+  // the specific message and focuses search instead of opening the
+  // camera; gated by the same _offline flag that drives the sync
+  // banner, not a second connectivity mechanism.
+  final bool offline;
+  final VoidCallback onScanTap;
 
   @override
   Widget build(BuildContext context) {
@@ -596,13 +765,19 @@ class _MemberTabContent extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text(
-                'Search Member Name or ID',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.ink,
-                ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Search Member Name or ID',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.ink,
+                    ),
+                  ),
+                  _ScanButton(offline: offline, onTap: onScanTap),
+                ],
               ),
               const SizedBox(height: 6),
               Container(
@@ -612,6 +787,7 @@ class _MemberTabContent extends StatelessWidget {
                 ),
                 child: TextField(
                   controller: searchController,
+                  focusNode: searchFocusNode,
                   decoration: const InputDecoration(
                     hintText: "Enter member's name or ID",
                     hintStyle: TextStyle(color: AppColors.muted, fontSize: 14),
@@ -625,6 +801,13 @@ class _MemberTabContent extends StatelessWidget {
                   ),
                 ),
               ),
+              if (offline) ...[
+                const SizedBox(height: 6),
+                const Text(
+                  'QR check-in needs a connection — search for them instead.',
+                  style: TextStyle(fontSize: 11, color: AppColors.muted),
+                ),
+              ],
               if (searchQuery.isNotEmpty) ...[
                 const SizedBox(height: 10),
                 membersAsync.when(
@@ -1240,18 +1423,31 @@ class _CheckInTile extends ConsumerWidget {
 
 class _MemberConfirmSheet extends StatefulWidget {
   const _MemberConfirmSheet({
-    required this.member,
+    required this.fullName,
+    required this.planCategory,
     required this.status,
     required this.remaining,
     required this.alreadyToday,
     required this.onConfirm,
+    this.onRejected,
   });
 
-  final Member member;
+  final String fullName;
+  // Null for the QR scan path — verify-qr's response doesn't include
+  // plan category, and this is deliberately never backfilled from a
+  // local Member lookup (see _openMemberConfirmSheetFromScan). The
+  // "PLAN TYPE" row just doesn't render in that case.
+  final String? planCategory;
   final MembershipStatus status;
   final int? remaining;
   final bool alreadyToday;
   final Future<CreateCheckInResult> Function()? onConfirm;
+
+  // Phase 3b C4 — when set (the QR scan path), a rejected create pops
+  // the sheet and hands the message to the caller instead of the
+  // manual path's default of showing it inline and staying open. Null
+  // for the manual path, whose behavior is unchanged.
+  final void Function(String message)? onRejected;
 
   @override
   State<_MemberConfirmSheet> createState() => _MemberConfirmSheetState();
@@ -1282,9 +1478,16 @@ class _MemberConfirmSheetState extends State<_MemberConfirmSheet> {
     final result = await onConfirm();
     if (!mounted) return;
     if (result.outcome == CreateCheckInOutcome.rejected) {
+      final message = result.message ?? "Couldn't check in.";
+      final onRejected = widget.onRejected;
+      if (onRejected != null) {
+        Navigator.of(context).pop();
+        onRejected(message);
+        return;
+      }
       setState(() {
         _submitting = false;
-        _error = result.message ?? "Couldn't check in.";
+        _error = message;
       });
       return;
     }
@@ -1293,8 +1496,7 @@ class _MemberConfirmSheetState extends State<_MemberConfirmSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final fullName = '${widget.member.firstName} ${widget.member.lastName}'
-        .trim();
+    final fullName = widget.fullName;
     final (badgeBg, badgeLabel) = switch (widget.status) {
       MembershipStatus.active => (_sheetAccent, 'Active'),
       MembershipStatus.expiring => (AppColors.expiringBg, 'Expiring'),
@@ -1354,8 +1556,8 @@ class _MemberConfirmSheetState extends State<_MemberConfirmSheet> {
               ),
             ),
           ),
-          if (widget.member.currentPlanCategory != null &&
-              widget.member.currentPlanCategory!.isNotEmpty) ...[
+          if (widget.planCategory != null &&
+              widget.planCategory!.isNotEmpty) ...[
             const SizedBox(height: 14),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -1376,7 +1578,7 @@ class _MemberConfirmSheetState extends State<_MemberConfirmSheet> {
                     ),
                   ),
                   Text(
-                    widget.member.currentPlanCategory!,
+                    widget.planCategory!,
                     style: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,

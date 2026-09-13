@@ -62,4 +62,21 @@ class CheckInsApi {
       throw ApiException.from(e);
     }
   }
+
+  /// Phase 3b C1 — verifies a scanned QR payload without creating a
+  /// check-in. Returns `{id, full_name, member_code, membership_status,
+  /// current_end_date, days_remaining, already_checked_in_today}` for
+  /// the member on success. Every failure is a specific message from
+  /// spec A9, carried through as-is via ApiException.message.
+  Future<Map<String, dynamic>> verifyQr(String payload) async {
+    try {
+      final response = await _dio.post(
+        '/check-ins/verify-qr/',
+        data: {'payload': payload},
+      );
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw ApiException.from(e);
+    }
+  }
 }
