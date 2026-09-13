@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/api/api_exception.dart';
 import '../../../core/theme/colors.dart';
 import '../../auth/providers/auth_providers.dart';
+import '../providers/qr_card_providers.dart';
 
 // Update this if pubspec.yaml's version line changes. Not read
 // dynamically — package_info_plus isn't a project dependency yet.
@@ -56,6 +58,21 @@ class MemberSettingsScreen extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 16),
+          Container(
+            decoration: BoxDecoration(
+              color: AppColors.cardBg,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: ListTile(
+              leading: const Icon(Icons.refresh),
+              title: const Text('Refresh card'),
+              subtitle: const Text(
+                "If a staff member reset your card's code, tap this",
+              ),
+              onTap: () => _refreshCard(context, ref),
+            ),
+          ),
+          const SizedBox(height: 16),
           Center(
             child: Text(
               'FlexDesk v$_appVersion',
@@ -77,6 +94,31 @@ class MemberSettingsScreen extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  // B4 — the owner's confirmation after resetting a member's secret
+  // tells them to come here. Fetches the new secret first and only
+  // overwrites the cached one once that succeeds (QrCardRepository.
+  // refreshSecret) — a failed or throttled fetch must never leave the
+  // member with no working secret at all, so there's no upfront clear.
+  Future<void> _refreshCard(BuildContext context, WidgetRef ref) async {
+    final authState = ref.read(authControllerProvider);
+    if (authState is! AuthAuthenticated) return;
+
+    try {
+      await ref
+          .read(qrCardRepositoryProvider)
+          .refreshSecret(authState.user.id);
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Card refreshed.')));
+    } on ApiException catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message)),
+      );
+    }
   }
 
   Future<void> _confirmLogout(BuildContext context, WidgetRef ref) async {

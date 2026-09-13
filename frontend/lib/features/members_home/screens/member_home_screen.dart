@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -80,24 +79,6 @@ class _MemberHomeScreenState extends ConsumerState<MemberHomeScreen>
     } catch (_) {
       // Gracefully fall back to the showcase event
     }
-  }
-
-  void _showQrModal(
-    BuildContext context,
-    String payload,
-    String name,
-    String code,
-  ) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => _GatePassSheet(
-        qrPayload: payload,
-        memberName: name,
-        memberCode: code,
-      ),
-    );
   }
 
   @override
@@ -207,12 +188,7 @@ class _MemberHomeScreenState extends ConsumerState<MemberHomeScreen>
                   _TurnstileQrCard(
                     qrPayload: qrPayload,
                     daysLeft: daysLeft ?? 28,
-                    onTap: () => _showQrModal(
-                      context,
-                      qrPayload,
-                      memberFullName,
-                      memberCodeStr,
-                    ),
+                    onTap: () => context.push('/me/card'),
                   ),
                   const SizedBox(height: 12),
 
@@ -1639,170 +1615,6 @@ class _EventCard extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Turnstile Gate Pass Bottom Sheet (Modal on QR tap)
-// ---------------------------------------------------------------------------
-
-class _GatePassSheet extends StatefulWidget {
-  const _GatePassSheet({
-    required this.qrPayload,
-    required this.memberName,
-    required this.memberCode,
-  });
-
-  final String qrPayload;
-  final String memberName;
-  final String memberCode;
-
-  @override
-  State<_GatePassSheet> createState() => _GatePassSheetState();
-}
-
-class _GatePassSheetState extends State<_GatePassSheet> {
-  int _secondsRemaining = 30;
-  Timer? _timer;
-
-  @override
-  void initState() {
-    super.initState();
-    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (mounted) {
-        setState(() {
-          if (_secondsRemaining > 1) {
-            _secondsRemaining--;
-          } else {
-            _secondsRemaining = 30;
-          }
-        });
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: const Color(0xFFE5E7EB),
-              borderRadius: BorderRadius.circular(999),
-            ),
-          ),
-          const SizedBox(height: 20),
-
-          const Text(
-            'Turnstile Gate Pass',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-              color: Color(0xFF111827),
-            ),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'Hold this QR code directly against the scanner',
-            style: TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
-          ),
-          const SizedBox(height: 24),
-
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: const Color(0xFFBCECD5), width: 1.5),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFF0F6E56).withValues(alpha: 0.08),
-                  blurRadius: 16,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: QrImageView(
-              data: widget.qrPayload,
-              version: QrVersions.auto,
-              size: 200,
-              eyeStyle: const QrEyeStyle(
-                eyeShape: QrEyeShape.square,
-                color: Color(0xFF0F6E56),
-              ),
-              dataModuleStyle: const QrDataModuleStyle(
-                dataModuleShape: QrDataModuleShape.square,
-                color: Color(0xFF0F6E56),
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          Text(
-            widget.memberName.toUpperCase(),
-            style: const TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w800,
-              color: Color(0xFF111827),
-              letterSpacing: 0.8,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            'MEMBER #IW-${widget.memberCode}',
-            style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              color: Color(0xFF0F6E56),
-              letterSpacing: 0.5,
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF3F4F6),
-              borderRadius: BorderRadius.circular(999),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(
-                  Icons.autorenew_rounded,
-                  size: 14,
-                  color: Color(0xFF6B7280),
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  'Auto-refreshes in ${_secondsRemaining}s',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF6B7280),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }
