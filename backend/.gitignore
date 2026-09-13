@@ -8,3 +8,4 @@ db.sqlite3
 staticfiles/
 backup*.txt
 cached/
+_qr_display.*
