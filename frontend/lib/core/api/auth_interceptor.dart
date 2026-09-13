@@ -2,17 +2,22 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import 'token_storage.dart';
 import 'api_config.dart';
+import 'server_clock.dart';
 import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
 
 class AuthInterceptor extends Interceptor {
   final TokenStorage _tokenStorage;
   final void Function() onSessionExpired;
+  final ServerClock _serverClock;
 
   static const _skipPaths = {'/auth/login/', '/auth/refresh/', '/auth/signup/'};
 
   // Bare Dio, no interceptors — used only for the refresh call itself
   // and for manually retrying a failed request. Keeps this class from
-  // triggering itself recursively through the main client.
+  // triggering itself recursively through the main client. Its own
+  // /auth/refresh/ responses deliberately never reach onResponse below —
+  // that's fine and intentional; the main client's own requests already
+  // update the clock offset constantly, and refresh calls are rare.
   final Dio _plainDio;
 
   Completer<String?>? _refreshCompleter;
@@ -21,6 +26,7 @@ class AuthInterceptor extends Interceptor {
     required this._tokenStorage,
     required String baseUrl,
     required this.onSessionExpired,
+    required this._serverClock,
   }) : _plainDio = Dio(
          BaseOptions(
            baseUrl: baseUrl,
@@ -29,6 +35,22 @@ class AuthInterceptor extends Interceptor {
            sendTimeout: ApiConfig.sendTimeout,
          ),
        );
+
+  @override
+  void onResponse(
+    Response response,
+    ResponseInterceptorHandler handler,
+  ) async {
+    // Every path out of here calls handler.next(response) exactly once —
+    // same rule onError follows. updateFromDateHeader already swallows
+    // its own parse/persistence failures, but the try/catch here is
+    // belt-and-suspenders: a clock-offset problem must never be able to
+    // block or corrupt the actual response reaching its caller.
+    try {
+      await _serverClock.updateFromDateHeader(response.headers.value('date'));
+    } catch (_) {}
+    handler.next(response);
+  }
 
   bool _isSkipped(String path) => _skipPaths.any((skip) => path.contains(skip));
 

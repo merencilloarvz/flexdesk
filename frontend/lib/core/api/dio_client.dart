@@ -3,12 +3,14 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'auth_interceptor.dart';
 import 'api_config.dart';
+import 'server_clock.dart';
 import 'token_storage.dart';
 import '../../features/auth/providers/auth_providers.dart';
 
 Dio _buildDio(
   TokenStorage tokenStorage, {
   required void Function() onSessionExpired,
+  required ServerClock serverClock,
 }) {
   final dio = Dio(
     BaseOptions(
@@ -49,6 +51,7 @@ Dio _buildDio(
       tokenStorage: tokenStorage,
       baseUrl: ApiConfig.baseUrl,
       onSessionExpired: onSessionExpired,
+      serverClock: serverClock,
     ),
   );
 
@@ -60,5 +63,6 @@ final dioProvider = Provider<Dio>((ref) {
     ref.watch(tokenStorageProvider),
     onSessionExpired: () =>
         ref.read(authControllerProvider.notifier).handleSessionExpired(),
+    serverClock: ref.watch(serverClockProvider),
   );
 });
