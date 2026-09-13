@@ -22,6 +22,7 @@ import '../../features/settings/screens/settings_screen.dart';
 import '../../features/shell/app_shell.dart';
 import '../../features/checkin/check_in_screen.dart';
 import '../../features/checkin/qr_scanner_screen.dart';
+import '../../features/auth/screens/claim_qr_scanner_screen.dart';
 import '../../features/pos/screens/pos_screen.dart';
 import '../../features/auth/screens/signup_screen.dart';
 import '../../features/members_home/screens/member_home_screen.dart';
@@ -209,7 +210,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           (loc == '/role' ||
                   loc.startsWith('/login') ||
                   loc == '/signup' ||
-                  loc == '/claim')
+                  // Exact match, not startsWith — only these two /claim
+                  // paths exist pre-login (/claim itself and /claim/scan,
+                  // D2's scanner); startsWith would also admit any future
+                  // /claim-anything route, which /login's prefix check
+                  // needs (for /login/:role) but this doesn't.
+                  loc == '/claim' ||
+                  loc == '/claim/scan')
               ? null
               : '/role',
         AuthAuthenticated(:final user) => () {
@@ -300,6 +307,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(path: '/claim', builder: (context, state) => const ClaimScreen()),
       GoRoute(
+        path: '/claim/scan',
+        builder: (context, state) => const ClaimQrScannerScreen(),
+      ),
+      GoRoute(
         path: '/no-gym',
         builder: (context, state) => const NoGymScreen(),
       ),
@@ -389,7 +400,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       // does not.
       GoRoute(
         path: '/checkin/scan',
-        builder: (context, state) => const QrScannerScreen(),
+        builder: (context, state) => const CheckInQrScannerScreen(),
       ),
 
       // Owner shell — 5 tabs: Home, Members, Check-In, Modules, Settings.

@@ -9,6 +9,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../../core/api/api_exception.dart';
 import '../../../core/db/app_database.dart';
+import '../../../core/qr/qr_totp.dart';
 import '../../../core/utils/gym_time.dart';
 import '../../../core/utils/member_status.dart';
 import '../../auth/providers/auth_providers.dart';
@@ -194,6 +195,9 @@ class _MemberDetailScreenState extends ConsumerState<MemberDetailScreen> {
     final gymId = authState is AuthAuthenticated
         ? authState.user.gym?.id ?? ''
         : '';
+    final gymName = authState is AuthAuthenticated
+        ? authState.user.gym?.name ?? ''
+        : '';
 
     return Scaffold(
       backgroundColor: _cPageBg,
@@ -225,6 +229,7 @@ class _MemberDetailScreenState extends ConsumerState<MemberDetailScreen> {
           }
           return _MemberDetailBody(
             member: member,
+            gymName: gymName,
             isOwner: isOwner,
             isArchiving: _isArchiving,
             archiveError: _archiveError,
@@ -249,6 +254,7 @@ class _MemberDetailScreenState extends ConsumerState<MemberDetailScreen> {
 class _MemberDetailBody extends ConsumerWidget {
   const _MemberDetailBody({
     required this.member,
+    required this.gymName,
     required this.isOwner,
     required this.isArchiving,
     required this.archiveError,
@@ -263,6 +269,7 @@ class _MemberDetailBody extends ConsumerWidget {
   });
 
   final Member member;
+  final String gymName;
   final bool isOwner;
   final bool isArchiving;
   final String? archiveError;
@@ -492,6 +499,8 @@ class _MemberDetailBody extends ConsumerWidget {
               if (isOwner) ...[
                 const SizedBox(height: 20),
                 _ClaimPassCard(
+                  gymName: gymName,
+                  memberName: '${member.firstName} ${member.lastName}'.trim(),
                   hasAccount: hasAccount,
                   isCheckingAccount: isCheckingAccount,
                   isIssuingCode: isIssuingCode,
@@ -734,6 +743,8 @@ class _StatCard extends StatelessWidget {
 // -----------------------------------------------------------------------
 class _ClaimPassCard extends StatefulWidget {
   const _ClaimPassCard({
+    required this.gymName,
+    required this.memberName,
     required this.hasAccount,
     required this.isCheckingAccount,
     required this.isIssuingCode,
@@ -742,6 +753,8 @@ class _ClaimPassCard extends StatefulWidget {
     required this.onIssueCode,
   });
 
+  final String gymName;
+  final String memberName;
   final bool? hasAccount;
   final bool isCheckingAccount;
   final bool isIssuingCode;
@@ -962,6 +975,28 @@ class _ClaimPassCardState extends State<_ClaimPassCard> {
 
     return Column(
       children: [
+        // D1 — this is the card staff show the member: gym name and
+        // member's name identify whose code this is (there's no
+        // printing or plastic, so the screen itself has to carry that
+        // context), then the QR, then the code in large text
+        // underneath for whoever's camera won't focus.
+        if (widget.gymName.isNotEmpty || widget.memberName.isNotEmpty) ...[
+          Text(
+            widget.gymName,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 12, color: _cMuted),
+          ),
+          Text(
+            widget.memberName,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: _cInk,
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
@@ -978,8 +1013,12 @@ class _ClaimPassCardState extends State<_ClaimPassCard> {
                     ),
                   ),
                 )
+              // A8 — the claim payload is prefixed, never the bare code,
+              // so the scanner can tell a claim QR apart from a check-in
+              // QR and give the specific reverse-A9 message (D2) instead
+              // of treating a photographed claim card as unreadable.
               : QrImageView(
-                  data: code,
+                  data: '${QrTotp.claimPrefix}|$code',
                   size: 160,
                   backgroundColor: Colors.white,
                   eyeStyle: const QrEyeStyle(

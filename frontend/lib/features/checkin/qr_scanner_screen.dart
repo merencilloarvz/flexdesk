@@ -52,26 +52,46 @@ class QrVerifyResult {
   }
 }
 
-/// Phase 3b Part C — the staff scanner. Verifies a scanned check-in QR
-/// via `POST /check-ins/verify-qr/` and pops with the verified
-/// [QrVerifyResult] on success; CheckInScreen renders its confirmation
-/// sheet directly from that — this screen never creates a check-in
-/// itself (C1).
-class QrScannerScreen extends ConsumerStatefulWidget {
-  const QrScannerScreen({super.key});
-
-  @override
-  ConsumerState<QrScannerScreen> createState() => _QrScannerScreenState();
+/// Thrown by a [QrScannerScreen.onScanned] handler to show [message] as
+/// the failure banner and resume the camera (C3) — the shared scanner
+/// never has to know whether that message came from a rejected API
+/// call (check-in) or a local parsing rule (claim, D2); it just shows
+/// whatever text the handler decided on.
+class QrScanFailure implements Exception {
+  const QrScanFailure(this.message);
+  final String message;
 }
 
-class _QrScannerScreenState extends ConsumerState<QrScannerScreen> {
+/// The shared camera engine behind both Phase 3b Part C (staff
+/// check-in) and Part D (member claim). Everything scan-type-specific
+/// — what a detected payload means, what to do with it, and what to
+/// call the screen — lives in [title] and [onScanned]; this widget
+/// only owns the camera lifecycle, the C2 single-shot guard, the
+/// framing guide, and the failure banner/resume behavior, so neither
+/// caller has to reimplement (or risk diverging on) any of that.
+///
+/// [onScanned] returns the value to pop the screen with on success, or
+/// throws [QrScanFailure] to show a message and keep scanning.
+class QrScannerScreen<T extends Object> extends ConsumerStatefulWidget {
+  const QrScannerScreen({super.key, required this.title, required this.onScanned});
+
+  final String title;
+  final Future<T> Function(String payload) onScanned;
+
+  @override
+  ConsumerState<QrScannerScreen<T>> createState() => _QrScannerScreenState<T>();
+}
+
+class _QrScannerScreenState<T extends Object>
+    extends ConsumerState<QrScannerScreen<T>> {
   late final MobileScannerController _controller;
   Timer? _resumeTimer;
 
   // C2 — mobile_scanner's detect callback fires many times per second
-  // for one code held up to the camera. Without this guard the first
-  // verify-qr call consumes the time step and every call after it
-  // returns "that code has already been used" — a working scan that
+  // for one code held up to the camera. Without this guard, one scan
+  // fires several onScanned calls — for check-in specifically, the
+  // first verify-qr call consumes the time step and every call after
+  // it returns "that code has already been used", a working scan that
   // looks broken. Being synchronous is the whole fix: this is checked
   // and set, and the camera is paused, before this callback's first
   // `await` — never after one.
@@ -115,27 +135,27 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen> {
       return;
     }
     // ignore: unawaited_futures
-    _verify(raw);
+    _handle(raw);
   }
 
-  Future<void> _verify(String payload) async {
+  Future<void> _handle(String payload) async {
     setState(() {
       _verifying = true;
       _errorMessage = null;
     });
     try {
-      final data = await ref.read(checkInsApiProvider).verifyQr(payload);
+      final result = await widget.onScanned(payload);
       if (!mounted) return;
-      Navigator.of(context).pop(QrVerifyResult.fromJson(data));
-    } on ApiException catch (e) {
+      Navigator.of(context).pop(result);
+    } on QrScanFailure catch (e) {
       _fail(e.message);
     }
   }
 
-  // C3 — a failure shows the specific A9 message and returns to the
-  // camera, never back out to the check-in screen. Auto-resumes after
-  // a short pause so staff aren't left staring at a dead camera, but a
-  // tap resumes immediately too.
+  // A failure shows the specific message and returns to the camera,
+  // never back out to the calling screen (C3). Auto-resumes after a
+  // short pause so whoever's holding the phone isn't left staring at a
+  // dead camera, but a tap resumes immediately too.
   void _fail(String message) {
     if (!mounted) return;
     setState(() {
@@ -172,7 +192,7 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen> {
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
         elevation: 0,
-        title: const Text('Scan membership card'),
+        title: Text(widget.title),
       ),
       body: Stack(
         fit: StackFit.expand,
@@ -182,7 +202,7 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen> {
             onDetect: _onDetect,
             errorBuilder: (context, error) => _CameraError(error: error),
           ),
-          // C1 — a framing guide. Purely visual; the scan window is the
+          // A framing guide. Purely visual; the scan window is the
           // full camera preview, this never narrows detection.
           const IgnorePointer(child: Center(child: _FrameGuide())),
           if (_verifying)
@@ -201,6 +221,30 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen> {
             ),
         ],
       ),
+    );
+  }
+}
+
+/// Phase 3b Part C — the staff check-in scanner. Verifies a scanned
+/// code via `POST /check-ins/verify-qr/` and pops with the verified
+/// [QrVerifyResult] on success; CheckInScreen renders its confirmation
+/// sheet directly from that — this screen never creates a check-in
+/// itself (C1).
+class CheckInQrScannerScreen extends ConsumerWidget {
+  const CheckInQrScannerScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return QrScannerScreen<QrVerifyResult>(
+      title: 'Scan membership card',
+      onScanned: (payload) async {
+        try {
+          final data = await ref.read(checkInsApiProvider).verifyQr(payload);
+          return QrVerifyResult.fromJson(data);
+        } on ApiException catch (e) {
+          throw QrScanFailure(e.message);
+        }
+      },
     );
   }
 }
@@ -262,7 +306,8 @@ class _ErrorBanner extends StatelessWidget {
 // Camera permission denial (or any other camera error) must never be a
 // blank screen — same failure shape as the INTERNET permission bug
 // (spec 0.2). mobile_scanner requests CAMERA at runtime the moment the
-// controller starts; if that's denied, this is what staff see instead.
+// controller starts; if that's denied, this is what the user sees
+// instead, regardless of which scanner (check-in or claim) is open.
 class _CameraError extends StatelessWidget {
   const _CameraError({required this.error});
 
@@ -289,10 +334,9 @@ class _CameraError extends StatelessWidget {
               const SizedBox(height: 16),
               Text(
                 permissionDenied
-                    ? 'Camera access is off for FlexDesk. Turn it on in your '
-                          "phone's settings to scan a membership card."
-                    : "Couldn't start the camera. Search for the member "
-                          'instead.',
+                    ? 'Camera access is off for FlexDesk. Turn it on in '
+                          "your phone's settings to scan a code."
+                    : "Couldn't start the camera.",
                 textAlign: TextAlign.center,
                 style: const TextStyle(color: Colors.white70, fontSize: 14),
               ),
@@ -303,7 +347,7 @@ class _CameraError extends StatelessWidget {
                   foregroundColor: Colors.white,
                   side: const BorderSide(color: Colors.white54),
                 ),
-                child: const Text('Search instead'),
+                child: const Text('Go back'),
               ),
             ],
           ),

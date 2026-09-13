@@ -63,6 +63,20 @@ class _ClaimScreenState extends ConsumerState<ClaimScreen> {
     super.dispose();
   }
 
+  // D2 — opens the shared scanner (the exact same camera engine the
+  // staff check-in scanner uses) configured to read a claim QR
+  // (FDCLAIM1|<code>) instead of verifying a check-in one. Purely
+  // local parsing on the other side, no server round trip — the email
+  // field stays required regardless, since the code alone is exactly
+  // what a photographed claim card would hand anyone who found it.
+  Future<void> _scanCode() async {
+    final code = await context.push<String>('/claim/scan');
+    if (code == null || !mounted) return;
+    setState(() {
+      _codeController.text = code.replaceAll(' ', '').toUpperCase();
+    });
+  }
+
   Future<void> _submit() async {
     if (_isSubmitting) return;
 
@@ -257,6 +271,15 @@ class _ClaimScreenState extends ConsumerState<ClaimScreen> {
                         hint: 'e.g. 8-character gym code',
                         icon: Icons.confirmation_number_outlined,
                         helper: '8 characters, given to you by your gym',
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            Icons.qr_code_scanner_rounded,
+                            size: 20,
+                            color: Colors.grey.shade500,
+                          ),
+                          tooltip: 'Scan',
+                          onPressed: _isSubmitting ? null : _scanCode,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 18),
