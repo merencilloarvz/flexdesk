@@ -104,14 +104,7 @@ class MembersRepository {
           // Permanently rejected. isDirty stays true — it's still
           // unsynced — but syncError being set excludes it from future
           // automatic retries and is what the failed-sync banner reads.
-          await (_db.update(
-            _db.members,
-          )..where((m) => m.id.equals(member.id))).write(
-            MembersCompanion(
-              syncError: Value(e.message ?? 'Rejected by server.'),
-              syncFailedAt: Value(DateTime.now()),
-            ),
-          );
+          await _parkMember(member.id, e);
         }
       } catch (_) {
         // A corrupt/unparseable stored payload (e.g. jsonDecode failure)
@@ -121,6 +114,22 @@ class MembersRepository {
         continue;
       }
     }
+  }
+
+  /// Keeps a locally-created member row (still dirty, so still visible
+  /// as unsynced) but records why the last sync attempt failed, and
+  /// excludes it from every future automatic pass — see
+  /// syncPendingMembers's `syncError.isNull()` filter above. Shared by
+  /// the flush loop and createMember's first attempt so the two can
+  /// never drift onto different rules for what counts as "not the
+  /// payload's fault".
+  Future<void> _parkMember(String memberId, ApiException e) {
+    return (_db.update(_db.members)..where((m) => m.id.equals(memberId))).write(
+      MembersCompanion(
+        syncError: Value(rowSyncErrorMessage(e)),
+        syncFailedAt: Value(DateTime.now()),
+      ),
+    );
   }
 
   /// Clears a row's recorded failure so the next syncPendingMembers() pass
@@ -254,7 +263,26 @@ class MembersRepository {
         return const CreateMemberResult(outcome: CreateMemberOutcome.synced);
       }
 
-      await (_db.delete(_db.members)..where((m) => m.id.equals(id))).go();
+      final genuinelyRejected =
+          e.kind == ApiExceptionKind.validation &&
+          (e.fieldErrors?.isNotEmpty ?? false);
+      if (genuinelyRejected) {
+        // The payload itself is what's wrong (e.g. a bad plan id) —
+        // nothing worth keeping dirty for a retry that would just fail
+        // the same way.
+        await (_db.delete(_db.members)..where((m) => m.id.equals(id))).go();
+        return CreateMemberResult(
+          outcome: CreateMemberOutcome.rejected,
+          fieldErrors: e.fieldErrors,
+          message: e.message,
+        );
+      }
+
+      // Everything else — a 5xx, a blocked subscription, an auth blip,
+      // ApiExceptionKind.unknown — is NOT the payload's fault. Keep the
+      // row and park it exactly like the flush loop would, rather than
+      // destroying data over what might be a transient server problem.
+      await _parkMember(id, e);
       return CreateMemberResult(
         outcome: CreateMemberOutcome.rejected,
         fieldErrors: e.fieldErrors,

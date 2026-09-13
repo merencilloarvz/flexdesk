@@ -151,17 +151,28 @@ class CheckInsRepository {
             ),
           );
         } else {
-          await (_db.update(
-            _db.checkIns,
-          )..where((c) => c.id.equals(checkIn.id))).write(
-            CheckInsCompanion(
-              syncError: Value(e.message ?? 'Rejected by server.'),
-              syncFailedAt: Value(DateTime.now()),
-            ),
-          );
+          await _parkCheckIn(checkIn.id, e);
         }
       }
     }
+  }
+
+  /// Keeps a locally-created check-in row (still dirty, so still visible
+  /// as unsynced) but records why the last sync attempt failed, and
+  /// excludes it from every future automatic pass — see
+  /// syncPendingCheckIns's `syncError.isNull()` filter above. Shared by
+  /// the flush loop and _createCheckIn's first attempt so the two can
+  /// never drift onto different rules for what counts as "not the
+  /// payload's fault".
+  Future<void> _parkCheckIn(String checkInId, ApiException e) {
+    return (_db.update(
+      _db.checkIns,
+    )..where((c) => c.id.equals(checkInId))).write(
+      CheckInsCompanion(
+        syncError: Value(rowSyncErrorMessage(e)),
+        syncFailedAt: Value(DateTime.now()),
+      ),
+    );
   }
 
   Future<void> retryPending(String checkInId) {
@@ -326,10 +337,28 @@ class CheckInsRepository {
         return const CreateCheckInResult(outcome: CreateCheckInOutcome.synced);
       }
 
-      // Rejected on the FIRST attempt (not a queued retry) — the row is
-      // wrong from the start (e.g. bad member id), nothing worth keeping
-      // dirty. Delete it, same as createMember does.
-      await (_db.delete(_db.checkIns)..where((c) => c.id.equals(id))).go();
+      final genuinelyRejected =
+          e.kind == ApiExceptionKind.validation &&
+          (e.fieldErrors?.isNotEmpty ?? false);
+      if (genuinelyRejected) {
+        // Rejected on the FIRST attempt (not a queued retry), and the
+        // payload itself is what's wrong (e.g. bad member id) — nothing
+        // worth keeping dirty for a retry that would just fail the same
+        // way. Delete it, same as createMember does.
+        await (_db.delete(_db.checkIns)..where((c) => c.id.equals(id))).go();
+        return CreateCheckInResult(
+          outcome: CreateCheckInOutcome.rejected,
+          fieldErrors: e.fieldErrors,
+          message: e.message,
+        );
+      }
+
+      // Everything else — a 5xx, a blocked subscription, an auth blip,
+      // ApiExceptionKind.unknown — is NOT the payload's fault. Keep the
+      // row and park it exactly like the flush loop would for the same
+      // kind of failure, rather than destroying data over what might be
+      // a transient server problem the next retry would clear on its own.
+      await _parkCheckIn(id, e);
       return CreateCheckInResult(
         outcome: CreateCheckInOutcome.rejected,
         fieldErrors: e.fieldErrors,

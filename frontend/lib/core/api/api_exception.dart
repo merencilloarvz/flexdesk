@@ -9,6 +9,12 @@ enum ApiExceptionKind {
   throttled,
   server,
   cancelled,
+  // A blocked gym's subscription (402) — never network, never a payload
+  // problem, and never auto-retryable on its own: retrying does nothing
+  // until the owner pays. Kept distinct from `unknown` so callers (the
+  // offline queue in particular) can tell "the server is having a bad
+  // day" apart from "this gym needs to subscribe".
+  subscriptionRequired,
   unknown,
 }
 
@@ -98,6 +104,7 @@ class ApiException implements Exception {
 
     final status = e.response?.statusCode;
     if (status == 401) return ApiExceptionKind.unauthorized;
+    if (status == 402) return ApiExceptionKind.subscriptionRequired;
     if (status == 403) return ApiExceptionKind.forbidden;
     if (status == 404) return ApiExceptionKind.notFound;
     if (status == 400) return ApiExceptionKind.validation;
@@ -106,4 +113,23 @@ class ApiException implements Exception {
 
     return ApiExceptionKind.unknown;
   }
+}
+
+/// The message to persist on a locally-queued row's syncError field when
+/// a create attempt is rejected outside the retryable/duplicate cases —
+/// shared by the offline-queue repositories so the two never drift apart
+/// on what gets stored there.
+///
+/// Deliberately NEVER the raw backend text for a blocked subscription:
+/// that's gym-level billing state (already surfaced by the
+/// subscription_blocked banner from /auth/me/), not something that
+/// belongs sitting next to a check-in or member row out of context,
+/// possibly seen by someone other than whoever attempted the action.
+/// Every other kind still uses the server's own message — it's still
+/// useful context for a genuinely failed row.
+String rowSyncErrorMessage(ApiException e) {
+  if (e.kind == ApiExceptionKind.subscriptionRequired) {
+    return "Couldn't sync — the gym's FlexDesk subscription needs attention";
+  }
+  return e.message;
 }
