@@ -1,6 +1,7 @@
 import 'package:flexdesk/core/api/api_exception.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api/dio_client.dart';
+import '../../../core/api/qr_secret_storage.dart';
 import '../../../core/api/token_storage.dart';
 import '../../../core/db/app_database.dart';
 import '../data/auth_api.dart';
@@ -122,6 +123,7 @@ class AuthController extends Notifier<AuthState> {
 
   Future<void> logout({bool force = false}) async {
     final db = ref.read(dbProvider);
+    final previousState = state;
 
     if (!force) {
       final dirtyCount =
@@ -133,6 +135,14 @@ class AuthController extends Notifier<AuthState> {
 
     await db.clearAllData();
     await ref.read(authRepositoryProvider).logout();
+    // Phase 3b B3 — the QR secret is keyed by member id in secure
+    // storage, alongside the tokens; a device shared across accounts
+    // must never let the next login read the previous member's secret.
+    if (previousState is AuthAuthenticated) {
+      await ref
+          .read(qrSecretStorageProvider)
+          .clear(previousState.user.id);
+    }
     state = const AuthUnauthenticated();
   }
 

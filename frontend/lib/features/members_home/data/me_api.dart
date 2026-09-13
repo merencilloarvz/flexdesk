@@ -44,4 +44,16 @@ class MeApi {
       throw ApiException.from(e);
     }
   }
+
+  /// Returns `{secret, server_time, period, digits}` for the calling
+  /// member (Phase 3b A7/B3). Throttled server-side at 10/hour — callers
+  /// must only call this when the cached secret is genuinely absent.
+  Future<Map<String, dynamic>> fetchQrSecret() async {
+    try {
+      final response = await _dio.get('/me/qr-secret/');
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw ApiException.from(e);
+    }
+  }
 }

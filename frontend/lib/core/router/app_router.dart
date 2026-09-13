@@ -27,6 +27,7 @@ import '../../features/members_home/screens/member_home_screen.dart';
 import '../../features/members_home/screens/member_attendance_screen.dart';
 import '../../features/members_home/screens/member_membership_screen.dart';
 import '../../features/members_home/screens/member_settings_screen.dart';
+import '../../features/members_home/screens/digital_card_screen.dart';
 import '../../features/scheduling/screens/member_schedule_screen.dart';
 import '../../features/scheduling/screens/time_slot_list_screen.dart';
 import '../../features/community/screens/member/community_screen.dart';
@@ -372,6 +373,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/me/membership',
         builder: (context, state) => const MemberMembershipScreen(),
+      ),
+      GoRoute(
+        path: '/me/card',
+        builder: (context, state) => const DigitalCardScreen(),
       ),
 
       // Owner shell — 5 tabs: Home, Members, Check-In, Modules, Settings.
