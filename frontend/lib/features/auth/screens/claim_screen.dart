@@ -46,6 +46,14 @@ class _ClaimScreenState extends ConsumerState<ClaimScreen> {
   bool _accountAlreadyExists = false;
   String? _passwordError;
 
+  // UI-only state, not wired into claim logic.
+  bool _obscurePassword = true;
+  bool _obscureConfirm = true;
+
+  static const _brandGreen = Color(0xFF0E5B44);
+  static const _linkTeal = Color(0xFF1F9D7C);
+  static const _labelGrey = Color(0xFF8A9591);
+
   @override
   void dispose() {
     _emailController.dispose();
@@ -133,102 +141,302 @@ class _ClaimScreenState extends ConsumerState<ClaimScreen> {
     }
   }
 
+  InputDecoration _fieldDecoration({
+    required String hint,
+    required IconData icon,
+    String? helper,
+    String? errorText,
+    Widget? suffixIcon,
+  }) {
+    return InputDecoration(
+      hintText: hint,
+      hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
+      prefixIcon: Icon(icon, size: 19, color: Colors.grey.shade500),
+      suffixIcon: suffixIcon,
+      filled: true,
+      fillColor: const Color(0xFFF7F9F8),
+      contentPadding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: const BorderSide(color: Color(0xFFE3E8E6)),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: const BorderSide(color: Color(0xFFE3E8E6)),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: const BorderSide(color: _brandGreen, width: 1.4),
+      ),
+      helperText: errorText == null ? helper : null,
+      helperStyle: TextStyle(fontSize: 11.5, color: Colors.grey.shade500),
+      errorText: errorText,
+      errorStyle: const TextStyle(fontSize: 11.5),
+    );
+  }
+
+  Widget _fieldLabel(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontSize: 11.5,
+          fontWeight: FontWeight.w700,
+          color: _labelGrey,
+          letterSpacing: 0.6,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Set up your account')),
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        leading: BackButton(
+          color: Colors.black87,
+          onPressed: () => context.pop(),
+        ),
+      ),
       body: SafeArea(
         child: Center(
           child: Padding(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.symmetric(horizontal: 24),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 400),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    'Your gym gave you a one-time code. Use it here to '
-                    'set up your own login.',
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
-                  const SizedBox(height: 24),
-                  TextField(
-                    controller: _emailController,
-                    enabled: !_isSubmitting,
-                    keyboardType: TextInputType.emailAddress,
-                    autofillHints: const [AutofillHints.email],
-                    decoration: const InputDecoration(
-                      labelText: 'Email',
-                      helperText: 'The address your gym has on file',
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: _codeController,
-                    enabled: !_isSubmitting,
-                    textCapitalization: TextCapitalization.characters,
-                    inputFormatters: [
-                      _ClaimCodeFormatter(),
-                      LengthLimitingTextInputFormatter(8),
-                    ],
-                    decoration: const InputDecoration(
-                      labelText: 'Claim code',
-                      helperText: '8 characters, given to you by your gym',
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: _passwordController,
-                    enabled: !_isSubmitting,
-                    obscureText: true,
-                    autofillHints: const [AutofillHints.newPassword],
-                    decoration: InputDecoration(
-                      labelText: 'Choose a password',
-                      helperText:
-                          'The code is one-time — this password is yours',
-                      errorText: _passwordError,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: _confirmController,
-                    enabled: !_isSubmitting,
-                    obscureText: true,
-                    decoration: const InputDecoration(
-                      labelText: 'Confirm password',
-                    ),
-                    onSubmitted: (_) => _submit(),
-                  ),
-                  const SizedBox(height: 24),
-                  if (_generalError != null) ...[
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
                     Text(
-                      _generalError!,
-                      textAlign: TextAlign.center,
+                      'Set up your account',
+                      style: Theme.of(context).textTheme.headlineMedium
+                          ?.copyWith(fontWeight: FontWeight.w800),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Your gym gave you a one-time code. Use it here to '
+                      'set up your own login.',
                       style: TextStyle(
-                        color: Theme.of(context).colorScheme.error,
+                        color: Colors.grey.shade600,
+                        fontSize: 13.5,
+                        height: 1.4,
                       ),
                     ),
-                    if (_accountAlreadyExists) ...[
-                      const SizedBox(height: 12),
-                      OutlinedButton(
-                        onPressed: () => context.go('/login/member'),
-                        child: const Text('Sign in instead'),
+                    const SizedBox(height: 28),
+
+                    _fieldLabel('EMAIL ADDRESS'),
+                    TextField(
+                      controller: _emailController,
+                      enabled: !_isSubmitting,
+                      keyboardType: TextInputType.emailAddress,
+                      autofillHints: const [AutofillHints.email],
+                      decoration: _fieldDecoration(
+                        hint: 'e.g. member@email.com',
+                        icon: Icons.mail_outline,
+                        helper: 'The address your gym has on file',
                       ),
+                    ),
+                    const SizedBox(height: 18),
+
+                    _fieldLabel('CLAIM CODE'),
+                    TextField(
+                      controller: _codeController,
+                      enabled: !_isSubmitting,
+                      textCapitalization: TextCapitalization.characters,
+                      inputFormatters: [
+                        _ClaimCodeFormatter(),
+                        LengthLimitingTextInputFormatter(8),
+                      ],
+                      decoration: _fieldDecoration(
+                        hint: 'e.g. 8-character gym code',
+                        icon: Icons.confirmation_number_outlined,
+                        helper: '8 characters, given to you by your gym',
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+
+                    _fieldLabel('CHOOSE A PASSWORD'),
+                    TextField(
+                      controller: _passwordController,
+                      enabled: !_isSubmitting,
+                      obscureText: _obscurePassword,
+                      autofillHints: const [AutofillHints.newPassword],
+                      decoration: _fieldDecoration(
+                        hint: '••••••••••',
+                        icon: Icons.lock_outline,
+                        helper: 'The code is one-time — this password is yours',
+                        errorText: _passwordError,
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _obscurePassword
+                                ? Icons.visibility_outlined
+                                : Icons.visibility_off_outlined,
+                            size: 19,
+                            color: Colors.grey.shade500,
+                          ),
+                          onPressed: () => setState(
+                            () => _obscurePassword = !_obscurePassword,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+
+                    _fieldLabel('CONFIRM PASSWORD'),
+                    TextField(
+                      controller: _confirmController,
+                      enabled: !_isSubmitting,
+                      obscureText: _obscureConfirm,
+                      onSubmitted: (_) => _submit(),
+                      decoration: _fieldDecoration(
+                        hint: '••••••••••',
+                        icon: Icons.lock_outline,
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _obscureConfirm
+                                ? Icons.visibility_outlined
+                                : Icons.visibility_off_outlined,
+                            size: 19,
+                            color: Colors.grey.shade500,
+                          ),
+                          onPressed: () => setState(
+                            () => _obscureConfirm = !_obscureConfirm,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 22),
+
+                    if (_generalError != null) ...[
+                      Text(
+                        _generalError!,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                          fontSize: 13,
+                        ),
+                      ),
+                      if (_accountAlreadyExists) ...[
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          height: 44,
+                          child: OutlinedButton(
+                            style: OutlinedButton.styleFrom(
+                              side: const BorderSide(color: _brandGreen),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(22),
+                              ),
+                            ),
+                            onPressed: () => context.go('/login/member'),
+                            child: const Text(
+                              'Sign in instead',
+                              style: TextStyle(
+                                color: _brandGreen,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 16),
                     ],
-                    const SizedBox(height: 16),
+
+                    SizedBox(
+                      height: 52,
+                      child: FilledButton(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: _brandGreen,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(26),
+                          ),
+                        ),
+                        onPressed: _isSubmitting ? null : _submit,
+                        child: _isSubmitting
+                            ? const SizedBox(
+                                height: 20,
+                                width: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    'Set up account',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 15,
+                                    ),
+                                  ),
+                                  SizedBox(width: 8),
+                                  Icon(Icons.arrow_forward, size: 18),
+                                ],
+                              ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    Center(
+                      child: RichText(
+                        textAlign: TextAlign.center,
+                        text: TextSpan(
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.grey.shade600,
+                          ),
+                          children: [
+                            const TextSpan(text: 'Already activated? '),
+                            WidgetSpan(
+                              alignment: PlaceholderAlignment.middle,
+                              child: GestureDetector(
+                                onTap: _isSubmitting
+                                    ? null
+                                    : () => context.go('/login/member'),
+                                child: const Text(
+                                  'Log in',
+                                  style: TextStyle(
+                                    color: _linkTeal,
+                                    fontWeight: FontWeight.w600,
+                                    decoration: TextDecoration.underline,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 28),
+
+                    Center(
+                      child: RichText(
+                        textAlign: TextAlign.center,
+                        text: const TextSpan(
+                          style: TextStyle(fontSize: 11.5, color: Colors.grey),
+                          children: [
+                            TextSpan(text: 'Need assistance? '),
+                            TextSpan(
+                              text: 'Contact gym staff',
+                              style: TextStyle(
+                                color: _linkTeal,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
                   ],
-                  FilledButton(
-                    onPressed: _isSubmitting ? null : _submit,
-                    child: _isSubmitting
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('Set up account'),
-                  ),
-                ],
+                ),
               ),
             ),
           ),
