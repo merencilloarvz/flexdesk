@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "189785138919",
+    "project_id": "flexdesk-d661a",
+    "storage_bucket": "flexdesk-d661a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:189785138919:android:7336b1f9ce47525ed3e442",
+        "android_client_info": {
+          "package_name": "com.flexdesk.flexdesk"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBt1GZ9F4vju2nDMyMou7A_ZhKXRf9WYjc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
