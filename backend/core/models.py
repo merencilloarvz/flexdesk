@@ -389,7 +389,35 @@ class Membership(TenantScopedModel):
         return cls.objects.create(
             gym=member.gym, member=member, plan=plan,
             start_date=start, previous=current, created_by=created_by,
-        )   
+        )
+
+class RenewalReminder(TenantScopedModel):
+    """
+    Phase 5 — a historical fact ("this member was contacted about
+    renewing on this date"), not a cache of derived state, which is
+    why it's stored rather than recomputed.
+
+    Keyed on the membership, not just the member. When a member
+    renews, the new Membership row has no reminder attached, so a
+    future expiry starts a fresh contact cycle automatically — keying
+    on the member alone would make "already contacted" stick forever,
+    or need manual clearing on every renewal.
+    """
+    member = models.ForeignKey(Member, on_delete=models.CASCADE,
+                               related_name="renewal_reminders")
+    membership = models.ForeignKey(Membership, on_delete=models.CASCADE,
+                                   related_name="renewal_reminders")
+    contacted_at = models.DateTimeField()
+    contacted_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True,
+                                     on_delete=models.SET_NULL, related_name="+")
+    note = models.TextField(blank=True)
+
+    class Meta(TenantScopedModel.Meta):
+        # -contacted_at then a plain (not -id) tiebreaker — same shape
+        # as Membership's ["-end_date", "id"] and CheckIn's
+        # ["-checked_in_at", "id"] elsewhere in this file.
+        ordering = ["-contacted_at", "id"]
+
 
 class CheckIn(TenantScopedModel):
     MEMBER, WALKIN = "MEMBER", "WALKIN"

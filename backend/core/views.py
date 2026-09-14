@@ -16,15 +16,16 @@ from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo
 from . import qr as qr_lib
 from .mixins import GymScopedViewSet
-from .models import CheckIn, Member, Membership, MembershipPlan, Subscription, User
+from .models import CheckIn, Member, Membership, MembershipPlan, RenewalReminder, Subscription, User
 from .permissions import IsGymMember, IsGymStaff, IsOwner, IsOwnerOrReadOnly, SubscriptionActive
 from .serializers import (CheckInSerializer, CheckInWriteSerializer,
-                          ClaimAccountSerializer,
+                          ClaimAccountSerializer, ExpiringMemberSerializer,
                           FlexTokenObtainPairSerializer, MeCheckInSerializer,
                           MeMemberSummarySerializer, MeSerializer, MemberRestDaysSerializer,
                           MemberSerializer, MembershipPlanSerializer,
                           MembershipSerializer, MemberWriteSerializer,
-                          SubscriptionSerializer, VerifyQrSerializer)
+                          RenewalReminderSerializer, SubscriptionSerializer,
+                          VerifyQrSerializer)
 from .utils import generate_claim_code, gym_today
 
 from rest_framework.permissions import AllowAny
@@ -36,7 +37,7 @@ from .serializers import (ChangePasswordSerializer, StaffCreateSerializer,
                           StaffMemberSerializer)
 from .models import StaffProfile
 from django.db import transaction
-from django.db.models import Count, F, Q
+from django.db.models import Count, F, OuterRef, Q, Subquery
 from django.http import Http404
 from django.shortcuts import get_object_or_404
 from .models import Booking, TimeSlot
@@ -464,6 +465,110 @@ class MemberViewSet(GymScopedViewSet):
             raise ValidationError({"plan_id": "Plan not found for your gym."})
         ms = Membership.renew(member, plan, self.today, created_by=request.user)
         return Response(MembershipSerializer(ms).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=["get"], url_path="expiring")
+    def expiring(self, request):
+        """
+        Phase 5 A2 — the renewal worklist. Built directly on top of
+        get_queryset(), which already does .visible().with_status(self.today)
+        — the 7-day "expiring" rule and the visibility rule both live
+        there and only there; this adds the two fixed conditions A2
+        specifies (member type, expiring status), the ordering, and the
+        latest-reminder-per-current-membership annotation.
+        """
+        latest_membership = (
+            Membership.objects
+            .filter(member=OuterRef("pk"), canceled_at__isnull=True)
+            .order_by("-end_date")
+        )
+        latest_reminder = (
+            RenewalReminder.objects
+            .filter(membership_id=OuterRef("current_membership_id"))
+            .order_by("-contacted_at", "-id")
+        )
+        qs = (
+            self.get_queryset()
+            .members()
+            .filter(membership_status="expiring")
+            .annotate(
+                current_membership_id=Subquery(latest_membership.values("id")[:1]),
+            )
+            .annotate(
+                reminder_contacted_at=Subquery(
+                    latest_reminder.values("contacted_at")[:1]
+                ),
+                reminder_contacted_by_name=Subquery(
+                    latest_reminder.values("contacted_by__full_name")[:1]
+                ),
+            )
+            .order_by("current_end_date", "id")
+        )
+        serializer = ExpiringMemberSerializer(
+            qs, many=True, context={"today": self.today}
+        )
+        return Response(serializer.data)
+
+    @action(detail=True, methods=["post"], url_path="remind")
+    def remind(self, request, pk=None):
+        """
+        Phase 5 A3 — marks a member as contacted about their upcoming
+        renewal. One message for two different causes (no current
+        membership, or a current membership outside the expiring
+        window) — same shape as A9's deliberate collisions elsewhere:
+        the caller doesn't need to tell them apart, both just mean
+        "not applicable right now". Re-runs with_status(self.today)
+        rather than re-deriving the window in Python, for the same
+        reason expiring() reuses get_queryset() — one rule, one place.
+
+        current_membership_id is annotated onto this SAME query rather
+        than resolved separately via member.current_membership — a
+        renewal landing between two separate resolutions of "the
+        current membership" could otherwise attach the reminder to a
+        different membership than the one membership_status was
+        actually validated against, which is exactly the row A1's
+        keying decision depends on getting right.
+        """
+        member = self.get_object()
+        latest_membership = (
+            Membership.objects
+            .filter(member=OuterRef("pk"), canceled_at__isnull=True)
+            .order_by("-end_date")
+        )
+        annotated = (
+            Member.objects.filter(pk=member.pk, gym=self.gym)
+            .with_status(self.today)
+            .annotate(
+                current_membership_id=Subquery(latest_membership.values("id")[:1]),
+            )
+            .first()
+        )
+        if annotated is None or annotated.membership_status != "expiring":
+            raise ValidationError(
+                {"detail": "This member isn't in the renewal window."}
+            )
+
+        s = RenewalReminderSerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+        try:
+            # Savepoint around the write, same reason MemberWriteSerializer's
+            # claim_code retry loop uses one: a caught IntegrityError still
+            # leaves the outer (per-request) transaction aborted at the
+            # database level unless the failing statement ran inside its
+            # own atomic block, whose rollback-on-exception is what
+            # actually clears that state.
+            with transaction.atomic():
+                s.save(
+                    gym=self.gym,
+                    member=member,
+                    membership_id=annotated.current_membership_id,
+                    contacted_at=timezone.now(),
+                    contacted_by=request.user,
+                )
+        except IntegrityError:
+            raise ValidationError(
+                {"id": "A renewal reminder with this id already exists."}
+            )
+        return Response(s.data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=["post"], permission_classes=[IsGymStaff, IsOwner])
     def archive(self, request, pk=None):
