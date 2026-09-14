@@ -160,6 +160,37 @@ class RenewalWorklistTestCase(APITestCase):
         tied_ids = [row["id"] for row in resp.data if row["id"] in expected_order]
         self.assertEqual(tied_ids, expected_order)
 
+    def test_renewed_membership_wins_end_date_tie_over_older_one(self):
+        # A renewal whose new end_date happens to land on the same date
+        # as the membership it replaced (the exact shape a device test
+        # hit) — with_status's "latest membership" subquery ordered by
+        # -end_date alone can't break that tie, so it needs -start_date
+        # as a second key: the later-starting (newer) row must win, not
+        # whichever row Postgres happens to return first for the tie.
+        today = gym_today(self.gym_a)
+        member = self._member(self.gym_a, self.location_a, "Renewed")
+        old_membership = Membership.objects.create(
+            gym=self.gym_a, member=member, plan=self.plan,
+            start_date=today - timedelta(days=30),
+            end_date=today + timedelta(days=3),
+        )
+        new_membership = Membership.objects.create(
+            gym=self.gym_a, member=member, plan=self.plan,
+            start_date=today + timedelta(days=4),
+            end_date=today + timedelta(days=3),
+        )
+        RenewalReminder.objects.create(
+            gym=self.gym_a, member=member, membership=old_membership,
+            contacted_at=timezone.now(), contacted_by=self.owner_user,
+        )
+
+        self.assertEqual(member.current_membership.id, new_membership.id)
+
+        self._auth(self.owner_user)
+        resp = self._expiring()
+        row = next(r for r in resp.data if r["id"] == str(member.id))
+        self.assertIsNone(row["reminder"])
+
     def test_gym_only_sees_own_members(self):
         today = gym_today(self.gym_a)
         member_a = self._member(self.gym_a, self.location_a, "OnlyA")
@@ -318,7 +349,7 @@ class RenewalReminderTestCase(APITestCase):
         guard_would_see = (
             Membership.objects
             .filter(member=self.expiring_member, canceled_at__isnull=True)
-            .order_by("-end_date")
+            .order_by("-end_date", "-start_date", "-id")
             .first()
         )
         reminder = RenewalReminder.objects.get(member=self.expiring_member)

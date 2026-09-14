@@ -233,7 +233,7 @@ class MemberQuerySet(models.QuerySet):
         latest_membership = (
             Membership.objects
             .filter(member=OuterRef("pk"), canceled_at__isnull=True)
-            .order_by("-end_date")
+            .order_by("-end_date", "-start_date", "-id")
         )
         return self.annotate(
             current_end_date=Subquery(latest_membership.values("end_date")[:1]),
@@ -321,7 +321,7 @@ class Member(TenantScopedModel):
     def current_membership(self):
         return (self.memberships
                 .filter(canceled_at__isnull=True)
-                .order_by("-end_date")
+                .order_by("-end_date", "-start_date", "-id")
                 .first())
 
     def clean(self):

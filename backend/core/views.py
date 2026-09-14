@@ -479,7 +479,7 @@ class MemberViewSet(GymScopedViewSet):
         latest_membership = (
             Membership.objects
             .filter(member=OuterRef("pk"), canceled_at__isnull=True)
-            .order_by("-end_date")
+            .order_by("-end_date", "-start_date", "-id")
         )
         latest_reminder = (
             RenewalReminder.objects
@@ -532,7 +532,7 @@ class MemberViewSet(GymScopedViewSet):
         latest_membership = (
             Membership.objects
             .filter(member=OuterRef("pk"), canceled_at__isnull=True)
-            .order_by("-end_date")
+            .order_by("-end_date", "-start_date", "-id")
         )
         annotated = (
             Member.objects.filter(pk=member.pk, gym=self.gym)
