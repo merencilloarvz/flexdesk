@@ -180,7 +180,7 @@ class _MemberDetailScreenState extends ConsumerState<MemberDetailScreen> {
         padding: EdgeInsets.only(
           bottom: MediaQuery.of(context).viewInsets.bottom,
         ),
-        child: _RenewSheet(memberId: widget.memberId, gymId: gymId),
+        child: RenewSheet(memberId: widget.memberId, gymId: gymId),
       ),
     );
     ref.invalidate(membershipHistoryProvider(widget.memberId));
@@ -1342,17 +1342,19 @@ class _HistoryTile extends StatelessWidget {
   }
 }
 
-class _RenewSheet extends ConsumerStatefulWidget {
-  const _RenewSheet({required this.memberId, required this.gymId});
+// Public — Phase 5 Part B's renewal worklist reuses this exact sheet
+// for its own Renew action rather than building a second flow.
+class RenewSheet extends ConsumerStatefulWidget {
+  const RenewSheet({super.key, required this.memberId, required this.gymId});
 
   final String memberId;
   final String gymId;
 
   @override
-  ConsumerState<_RenewSheet> createState() => _RenewSheetState();
+  ConsumerState<RenewSheet> createState() => _RenewSheetState();
 }
 
-class _RenewSheetState extends ConsumerState<_RenewSheet> {
+class _RenewSheetState extends ConsumerState<RenewSheet> {
   String? _planId;
   bool _isSubmitting = false;
   String? _error;

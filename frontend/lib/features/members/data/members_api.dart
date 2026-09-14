@@ -113,4 +113,36 @@ class MembersApi {
       throw ApiException.from(e);
     }
   }
+
+  /// Phase 5 B — the renewal worklist, `GET /members/expiring/`. Not
+  /// paginated the way fetchAllMembers is: the endpoint's own 7-day
+  /// window keeps this small, and it's derived/live state, never
+  /// cached in Drift, so there's no "next page" concept to page
+  /// through here.
+  Future<List<Map<String, dynamic>>> fetchExpiringMembers() async {
+    try {
+      final response = await _dio.get('/members/expiring/');
+      return (response.data as List).cast<Map<String, dynamic>>();
+    } on DioException catch (e) {
+      throw ApiException.from(e);
+    }
+  }
+
+  /// Phase 5 A3 — marks [memberId] as contacted about their upcoming
+  /// renewal, via `POST /members/{id}/remind/`. Requires a connection
+  /// (standing rule 9); never queues offline — see the spec's S4.
+  Future<Map<String, dynamic>> remindMember(
+    String memberId, {
+    String? note,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/members/$memberId/remind/',
+        data: {if (note != null && note.isNotEmpty) 'note': note},
+      );
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw ApiException.from(e);
+    }
+  }
 }
