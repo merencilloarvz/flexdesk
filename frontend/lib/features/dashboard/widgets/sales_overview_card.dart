@@ -270,6 +270,23 @@ class _ChartWithPeak extends StatelessWidget {
   static const _bottomAxisHeight = 28.0;
   static const _topClearance = 38.0;
 
+  /// 1M has ~30 daily points from the API — too dense for "Week N"
+  /// labels to mean anything, so they're bucketed into 7-day chunks
+  /// here purely for display. 1D/1W are returned unchanged: the API
+  /// already gives them at the granularity the labels expect (hourly*
+  /// and daily respectively; *pending backend hourly support for 1D).
+  List<RevenuePoint> get _displaySeries {
+    if (range != '1M' || series.length <= 7) return series;
+    final buckets = <RevenuePoint>[];
+    for (var start = 0; start < series.length; start += 7) {
+      final end = (start + 7 < series.length) ? start + 7 : series.length;
+      final chunk = series.sublist(start, end);
+      final sum = chunk.fold<double>(0, (s, p) => s + p.amount);
+      buckets.add(RevenuePoint(date: chunk.last.date, amount: sum));
+    }
+    return buckets;
+  }
+
   String _pointLabel(RevenuePoint p, int index) {
     switch (range) {
       case '1D':
@@ -284,6 +301,8 @@ class _ChartWithPeak extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final series = _displaySeries;
+
     if (series.length < 2) {
       return const SizedBox(
         height: _chartHeight,
