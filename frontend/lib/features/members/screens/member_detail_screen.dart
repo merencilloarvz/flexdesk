@@ -17,6 +17,12 @@ import '../providers/members_providers.dart';
 import '../providers/plans_provider.dart';
 import '../providers/member_visit_stats_provider.dart';
 
+// Stage 9: this file has always had its OWN private color constants,
+// separate from core/theme/colors.dart's AppColors — that's why it was
+// never touched by the app-wide accentBlue -> accentTeal rename earlier.
+// Renamed here to match; _cAccentBlueBg (formerly unused, per
+// flutter analyze) is now actually used as the quick-guide banner
+// background below.
 const Color _cPageBg = Color(0xFFEDEFF0);
 const Color _cInk = Color(0xFF0E1A13);
 const Color _cSubtle = Color(0xFF6B7570);
@@ -68,7 +74,6 @@ class _MemberDetailScreenState extends ConsumerState<MemberDetailScreen> {
       final hasAccount = await ref
           .read(membersRepositoryProvider)
           .fetchHasAccount(widget.memberId);
-
       if (mounted) {
         setState(() {
           _hasAccount = hasAccount;
@@ -84,22 +89,22 @@ class _MemberDetailScreenState extends ConsumerState<MemberDetailScreen> {
     ref.invalidate(memberByIdProvider(widget.memberId));
     ref.invalidate(membershipHistoryProvider(widget.memberId));
     ref.invalidate(memberVisitStatsProvider(widget.memberId));
-
     setState(() => _isCheckingAccount = true);
     _checkHasAccount();
   }
 
+  // Doubles as both "issue" (first time) and "regenerate" (subsequent
+  // taps) — it's the same backend call either way. The QR card's
+  // "Regenerate code" action calls this directly.
   Future<void> _issueClaimCode() async {
     setState(() {
       _isIssuingCode = true;
       _claimError = null;
     });
-
     try {
       final result = await ref
           .read(membersRepositoryProvider)
           .issueClaimCode(widget.memberId);
-
       if (mounted) {
         setState(() {
           _issuedCode = result;
@@ -143,7 +148,6 @@ class _MemberDetailScreenState extends ConsumerState<MemberDetailScreen> {
         ],
       ),
     );
-
     if (confirmed != true) return;
 
     setState(() {
@@ -153,7 +157,6 @@ class _MemberDetailScreenState extends ConsumerState<MemberDetailScreen> {
 
     try {
       await ref.read(membersRepositoryProvider).archiveMember(widget.memberId);
-
       if (mounted) context.pop();
     } catch (e) {
       if (mounted) {
@@ -171,7 +174,7 @@ class _MemberDetailScreenState extends ConsumerState<MemberDetailScreen> {
       isScrollControlled: true,
       backgroundColor: _cPageBg,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (context) => Padding(
         padding: EdgeInsets.only(
@@ -180,7 +183,6 @@ class _MemberDetailScreenState extends ConsumerState<MemberDetailScreen> {
         child: RenewSheet(memberId: widget.memberId, gymId: gymId),
       ),
     );
-
     ref.invalidate(membershipHistoryProvider(widget.memberId));
   }
 
@@ -188,14 +190,11 @@ class _MemberDetailScreenState extends ConsumerState<MemberDetailScreen> {
   Widget build(BuildContext context) {
     final memberAsync = ref.watch(memberByIdProvider(widget.memberId));
     final authState = ref.watch(authControllerProvider);
-
     final isOwner =
         authState is AuthAuthenticated && authState.user.role == UserRole.owner;
-
     final gymId = authState is AuthAuthenticated
         ? authState.user.gym?.id ?? ''
         : '';
-
     final gymName = authState is AuthAuthenticated
         ? authState.user.gym?.name ?? ''
         : '';
@@ -205,20 +204,15 @@ class _MemberDetailScreenState extends ConsumerState<MemberDetailScreen> {
       appBar: AppBar(
         backgroundColor: _cPageBg,
         elevation: 0,
-        centerTitle: false,
         title: const Text(
           'Member Details',
-          style: TextStyle(
-            color: _cInk,
-            fontWeight: FontWeight.w700,
-            fontSize: 19,
-          ),
+          style: TextStyle(color: _cInk, fontWeight: FontWeight.w600),
         ),
         iconTheme: const IconThemeData(color: _cInk),
         actions: [
           IconButton(
             onPressed: _refreshAll,
-            icon: const Icon(Icons.refresh_rounded, size: 21),
+            icon: const Icon(Icons.refresh, size: 20),
           ),
           const SizedBox(width: 4),
         ],
@@ -233,7 +227,6 @@ class _MemberDetailScreenState extends ConsumerState<MemberDetailScreen> {
               ),
             );
           }
-
           return _MemberDetailBody(
             member: member,
             gymName: gymName,
@@ -291,9 +284,7 @@ class _MemberDetailBody extends ConsumerWidget {
 
   void _copyToClipboard(BuildContext context, String value, String label) {
     if (value.isEmpty) return;
-
     Clipboard.setData(ClipboardData(text: value));
-
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text('$label copied')));
@@ -305,7 +296,6 @@ class _MemberDetailBody extends ConsumerWidget {
     final status = statusFor(member.currentEndDate, today);
     final remaining = daysRemaining(member.currentEndDate, today);
     final fullName = '${member.firstName} ${member.lastName}'.trim();
-
     final statsAsync = ref.watch(memberVisitStatsProvider(member.id));
 
     final (avatarBg, avatarIcon) = switch (status) {
@@ -314,7 +304,6 @@ class _MemberDetailBody extends ConsumerWidget {
       MembershipStatus.expired => (_cExpiredBg, _cExpiredIcon),
       MembershipStatus.noMembership => (_cNoMembershipBg, _cNoMembershipIcon),
     };
-
     final (pillBg, pillText) = switch (status) {
       MembershipStatus.active => (_cActiveIcon, _cActiveBg),
       MembershipStatus.expiring => (_cExpiringIcon, _cExpiringBg),
@@ -329,137 +318,108 @@ class _MemberDetailBody extends ConsumerWidget {
       children: [
         Expanded(
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 6, 16, 24),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
             children: [
-              // ---------------------------------------------------------
-              // MEMBER HEADER
-              // ---------------------------------------------------------
-              Container(
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  color: _cCardBg,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Row(
+              Center(
+                child: Column(
                   children: [
                     Stack(
                       clipBehavior: Clip.none,
                       children: [
                         Container(
-                          width: 68,
-                          height: 68,
+                          width: 76,
+                          height: 76,
                           decoration: BoxDecoration(
                             color: avatarBg,
                             shape: BoxShape.circle,
                           ),
                           child: Icon(
-                            Icons.person_rounded,
+                            Icons.person,
                             size: 32,
                             color: avatarIcon,
                           ),
                         ),
                         if (hasAccount == true)
                           Positioned(
-                            right: 0,
-                            bottom: 0,
+                            right: 2,
+                            bottom: 2,
                             child: Container(
-                              width: 17,
-                              height: 17,
+                              width: 16,
+                              height: 16,
                               decoration: BoxDecoration(
                                 color: _cActiveBg,
                                 shape: BoxShape.circle,
-                                border: Border.all(color: _cCardBg, width: 2.5),
+                                border: Border.all(color: _cCardBg, width: 2),
                               ),
                             ),
                           ),
                       ],
                     ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Flexible(
-                                child: Text(
-                                  fullName,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    fontSize: 19,
-                                    fontWeight: FontWeight.w700,
-                                    color: _cInk,
-                                  ),
-                                ),
-                              ),
-                              if (member.currentPlanCategory != null &&
-                                  member.currentPlanCategory!.isNotEmpty) ...[
-                                const SizedBox(width: 7),
-                                Flexible(
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                      vertical: 4,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: _cAccentTealBg,
-                                      borderRadius: BorderRadius.circular(999),
-                                    ),
-                                    child: Text(
-                                      member.currentPlanCategory!,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w700,
-                                        color: _cAccentTeal,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ],
+                    const SizedBox(height: 10),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          fullName,
+                          style: const TextStyle(
+                            fontSize: 19,
+                            fontWeight: FontWeight.w600,
+                            color: _cInk,
                           ),
-                          const SizedBox(height: 7),
-                          Row(
-                            children: [
-                              Container(
-                                width: 7,
-                                height: 7,
-                                decoration: BoxDecoration(
-                                  color: pillText,
-                                  shape: BoxShape.circle,
-                                ),
+                        ),
+                        if (member.currentPlanCategory != null &&
+                            member.currentPlanCategory!.isNotEmpty) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: _cAccentTealBg,
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Text(
+                              member.currentPlanCategory!,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: _cAccentTeal,
                               ),
-                              const SizedBox(width: 6),
-                              Text(
-                                _statusLabel(status, remaining),
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: pillText,
-                                ),
-                              ),
-                            ],
+                            ),
                           ),
                         ],
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: pillBg,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        _statusLabel(status, remaining),
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: pillText,
+                        ),
                       ),
                     ),
                   ],
                 ),
               ),
+              const SizedBox(height: 20),
 
-              const SizedBox(height: 14),
-
-              // ---------------------------------------------------------
-              // QUICK STATS
-              // ---------------------------------------------------------
               Row(
                 children: [
                   Expanded(
                     child: _StatCard(
-                      icon: Icons.bolt_rounded,
+                      icon: Icons.bolt,
                       label: 'Visits',
                       sublabel: 'This month',
                       value: statsAsync.when(
@@ -472,7 +432,7 @@ class _MemberDetailBody extends ConsumerWidget {
                   const SizedBox(width: 10),
                   Expanded(
                     child: _StatCard(
-                      icon: Icons.schedule_rounded,
+                      icon: Icons.access_time,
                       label: 'Last in',
                       sublabel: statsAsync.when(
                         data: (s) => s.lastCheckInAt == null
@@ -495,19 +455,15 @@ class _MemberDetailBody extends ConsumerWidget {
                 ],
               ),
 
-              const SizedBox(height: 14),
-
-              // ---------------------------------------------------------
-              // CONTACT INFORMATION
-              // ---------------------------------------------------------
+              const SizedBox(height: 16),
               Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 16,
-                  vertical: 3,
+                  vertical: 4,
                 ),
                 decoration: BoxDecoration(
                   color: _cCardBg,
-                  borderRadius: BorderRadius.circular(18),
+                  borderRadius: BorderRadius.circular(14),
                 ),
                 child: Column(
                   children: [
@@ -525,7 +481,7 @@ class _MemberDetailBody extends ConsumerWidget {
                     ),
                     const Divider(height: 1, color: _cFieldBg),
                     _InfoRow(
-                      icon: Icons.mail_outline_rounded,
+                      icon: Icons.mail_outline,
                       label: 'Email',
                       value: member.email,
                       onCopy: member.email.isEmpty
@@ -540,11 +496,8 @@ class _MemberDetailBody extends ConsumerWidget {
                 ),
               ),
 
-              // ---------------------------------------------------------
-              // CLAIM PASS
-              // ---------------------------------------------------------
               if (isOwner) ...[
-                const SizedBox(height: 14),
+                const SizedBox(height: 20),
                 _ClaimPassCard(
                   gymName: gymName,
                   memberName: '${member.firstName} ${member.lastName}'.trim(),
@@ -557,38 +510,34 @@ class _MemberDetailBody extends ConsumerWidget {
                 ),
               ],
 
-              const SizedBox(height: 18),
-
-              // ---------------------------------------------------------
-              // MEMBERSHIP HISTORY HEADER
-              // ---------------------------------------------------------
+              const SizedBox(height: 20),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Text(
                     'Membership history',
                     style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
                       color: _cInk,
                     ),
                   ),
+                  // "Invoices" is the same history section below — a
+                  // relabeled entry point, not a separate data source.
+                  // No invoice/receipt model exists in the backend, so
+                  // this intentionally scrolls to / highlights the same
+                  // list rather than opening anything new.
                   Text(
                     'Invoices',
                     style: TextStyle(
                       fontSize: 12,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w600,
                       color: _cAccentTeal,
                     ),
                   ),
                 ],
               ),
-
-              const SizedBox(height: 9),
-
-              // ---------------------------------------------------------
-              // MEMBERSHIP HISTORY
-              // ---------------------------------------------------------
+              const SizedBox(height: 8),
               Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 16,
@@ -596,7 +545,7 @@ class _MemberDetailBody extends ConsumerWidget {
                 ),
                 decoration: BoxDecoration(
                   color: _cCardBg,
-                  borderRadius: BorderRadius.circular(18),
+                  borderRadius: BorderRadius.circular(14),
                 ),
                 child: _MembershipHistorySection(memberId: member.id),
               ),
@@ -604,11 +553,8 @@ class _MemberDetailBody extends ConsumerWidget {
           ),
         ),
 
-        // -------------------------------------------------------------
-        // BOTTOM ACTIONS
-        // -------------------------------------------------------------
         Container(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
           decoration: const BoxDecoration(
             color: _cPageBg,
             border: Border(top: BorderSide(color: _cFieldBg, width: 1)),
@@ -619,19 +565,19 @@ class _MemberDetailBody extends ConsumerWidget {
               children: [
                 SizedBox(
                   width: double.infinity,
-                  height: 52,
+                  height: 54,
                   child: Material(
                     color: _cAccentTeal,
-                    borderRadius: BorderRadius.circular(15),
+                    borderRadius: BorderRadius.circular(999),
                     child: InkWell(
-                      borderRadius: BorderRadius.circular(15),
+                      borderRadius: BorderRadius.circular(999),
                       onTap: onRenew,
                       child: const Center(
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(
-                              Icons.autorenew_rounded,
+                              Icons.autorenew,
                               size: 18,
                               color: Colors.white,
                             ),
@@ -640,7 +586,7 @@ class _MemberDetailBody extends ConsumerWidget {
                               'Renew membership',
                               style: TextStyle(
                                 fontSize: 15,
-                                fontWeight: FontWeight.w700,
+                                fontWeight: FontWeight.w600,
                                 color: Colors.white,
                               ),
                             ),
@@ -650,10 +596,8 @@ class _MemberDetailBody extends ConsumerWidget {
                     ),
                   ),
                 ),
-
                 if (isOwner && member.archivedAt == null) ...[
-                  const SizedBox(height: 5),
-
+                  const SizedBox(height: 6),
                   if (archiveError != null) ...[
                     Text(
                       archiveError!,
@@ -662,11 +606,10 @@ class _MemberDetailBody extends ConsumerWidget {
                     ),
                     const SizedBox(height: 4),
                   ],
-
                   isArchiving
                       ? const SizedBox(
-                          height: 18,
-                          width: 18,
+                          height: 16,
+                          width: 16,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : InkWell(
@@ -675,22 +618,22 @@ class _MemberDetailBody extends ConsumerWidget {
                           child: const Padding(
                             padding: EdgeInsets.symmetric(
                               horizontal: 12,
-                              vertical: 7,
+                              vertical: 8,
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Icon(
                                   Icons.archive_outlined,
-                                  size: 15,
+                                  size: 16,
                                   color: _cErrorText,
                                 ),
                                 SizedBox(width: 6),
                                 Text(
                                   'Archive member',
                                   style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500,
                                     color: _cErrorText,
                                   ),
                                 ),
@@ -709,7 +652,6 @@ class _MemberDetailBody extends ConsumerWidget {
 
   String _statusLabel(MembershipStatus status, int? remaining) {
     if (remaining == 0) return 'Expires today';
-
     switch (status) {
       case MembershipStatus.active:
         return 'Active · $remaining days left';
@@ -724,23 +666,17 @@ class _MemberDetailBody extends ConsumerWidget {
 
   String _relativeDay(DateTime when) {
     final today = DateTime.now();
-
     final isToday =
         when.year == today.year &&
         when.month == today.month &&
         when.day == today.day;
-
     if (isToday) return 'Today';
-
     final yesterday = today.subtract(const Duration(days: 1));
-
     final isYesterday =
         when.year == yesterday.year &&
         when.month == yesterday.month &&
         when.day == yesterday.day;
-
     if (isYesterday) return 'Yesterday';
-
     return DateFormat('MMM d').format(when);
   }
 }
@@ -761,10 +697,10 @@ class _StatCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(15),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: _cCardBg,
-        borderRadius: BorderRadius.circular(17),
+        borderRadius: BorderRadius.circular(14),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -772,30 +708,15 @@ class _StatCard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                label,
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                  color: _cMuted,
-                ),
-              ),
-              Container(
-                width: 27,
-                height: 27,
-                decoration: BoxDecoration(
-                  color: _cAccentTealBg,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(icon, size: 15, color: _cAccentTeal),
-              ),
+              Text(label, style: const TextStyle(fontSize: 12, color: _cMuted)),
+              Icon(icon, size: 15, color: _cAccentTeal),
             ],
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 4),
           Text(
             value,
             style: const TextStyle(
-              fontSize: 21,
+              fontSize: 20,
               fontWeight: FontWeight.w700,
               color: _cInk,
             ),
@@ -812,9 +733,14 @@ class _StatCard extends StatelessWidget {
 }
 
 // -----------------------------------------------------------------------
-// MEMBER CLAIM PASS
+// MEMBER CLAIM PASS (Stage 9) — replaces the old _ClaimAccessSection.
+//
+// Same backend calls as before (fetchHasAccount / issueClaimCode), no new
+// endpoint. What's new is entirely presentational: the same claim_code
+// string that used to render as plain text now also renders as a QR
+// image, plus a live countdown computed from the same expires_at the
+// server already returns.
 // -----------------------------------------------------------------------
-
 class _ClaimPassCard extends StatefulWidget {
   const _ClaimPassCard({
     required this.gymName,
@@ -845,9 +771,7 @@ class _ClaimPassCardState extends State<_ClaimPassCard> {
 
   void _copyToClipboard(BuildContext context, String value, String label) {
     if (value.isEmpty) return;
-
     Clipboard.setData(ClipboardData(text: value));
-
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text('$label copied')));
@@ -858,7 +782,7 @@ class _ClaimPassCardState extends State<_ClaimPassCard> {
     return Container(
       decoration: BoxDecoration(
         color: _cCardBg,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(16),
       ),
       padding: const EdgeInsets.all(16),
       child: _content(context),
@@ -886,7 +810,7 @@ class _ClaimPassCardState extends State<_ClaimPassCard> {
     if (widget.hasAccount == true) {
       return const Row(
         children: [
-          Icon(Icons.check_circle_rounded, size: 19, color: _cActiveBg),
+          Icon(Icons.check_circle, size: 18, color: _cActiveBg),
           SizedBox(width: 8),
           Text(
             'This member has set up their account.',
@@ -901,23 +825,16 @@ class _ClaimPassCardState extends State<_ClaimPassCard> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // -------------------------------------------------------------
-        // CLAIM PASS HEADER
-        // -------------------------------------------------------------
         Row(
           children: [
             Container(
-              width: 36,
-              height: 36,
+              width: 30,
+              height: 30,
               decoration: BoxDecoration(
                 color: _cAccentTealBg,
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(9),
               ),
-              child: const Icon(
-                Icons.qr_code_2_rounded,
-                size: 19,
-                color: _cAccentTeal,
-              ),
+              child: const Icon(Icons.qr_code_2, size: 16, color: _cAccentTeal),
             ),
             const SizedBox(width: 10),
             const Expanded(
@@ -928,11 +845,10 @@ class _ClaimPassCardState extends State<_ClaimPassCard> {
                     'Member Claim Pass',
                     style: TextStyle(
                       fontSize: 14,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w600,
                       color: _cInk,
                     ),
                   ),
-                  SizedBox(height: 2),
                   Text(
                     'Single-use activation',
                     style: TextStyle(fontSize: 11, color: _cMuted),
@@ -942,7 +858,7 @@ class _ClaimPassCardState extends State<_ClaimPassCard> {
             ),
             if (issuedCode != null)
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: _cErrorBg,
                   borderRadius: BorderRadius.circular(999),
@@ -951,7 +867,7 @@ class _ClaimPassCardState extends State<_ClaimPassCard> {
                   'ONE-TIME',
                   style: TextStyle(
                     fontSize: 9,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w700,
                     letterSpacing: 0.4,
                     color: _cErrorText,
                   ),
@@ -960,46 +876,31 @@ class _ClaimPassCardState extends State<_ClaimPassCard> {
           ],
         ),
 
-        // -------------------------------------------------------------
-        // QUICK GUIDE
-        // -------------------------------------------------------------
         if (issuedCode != null && _showGuide) ...[
           const SizedBox(height: 12),
           Container(
-            padding: const EdgeInsets.all(11),
+            padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
               color: _cAccentTealBg,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(10),
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(
-                  Icons.info_outline_rounded,
-                  size: 15,
-                  color: _cAccentTeal,
-                ),
+                const Icon(Icons.info_outline, size: 14, color: _cAccentTeal),
                 const SizedBox(width: 8),
                 const Expanded(
                   child: Text(
-                    'Quick guide: 1. Open app & tap "I have a code" '
+                    'Quick guide: 1. Open app & tap "I have a code"  '
                     '2. Scan QR · 3. Enter email to bind.',
-                    style: TextStyle(
-                      fontSize: 11,
-                      height: 1.35,
-                      color: _cAccentTeal,
-                    ),
+                    style: TextStyle(fontSize: 11, color: _cAccentTeal),
                   ),
                 ),
                 InkWell(
                   onTap: () => setState(() => _showGuide = false),
                   child: const Padding(
                     padding: EdgeInsets.only(left: 4),
-                    child: Icon(
-                      Icons.close_rounded,
-                      size: 15,
-                      color: _cAccentTeal,
-                    ),
+                    child: Icon(Icons.close, size: 14, color: _cAccentTeal),
                   ),
                 ),
               ],
@@ -1007,16 +908,13 @@ class _ClaimPassCardState extends State<_ClaimPassCard> {
           ),
         ],
 
-        // -------------------------------------------------------------
-        // ERROR
-        // -------------------------------------------------------------
         if (widget.claimError != null) ...[
           const SizedBox(height: 12),
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
               color: _cErrorBg,
-              borderRadius: BorderRadius.circular(11),
+              borderRadius: BorderRadius.circular(10),
             ),
             child: Text(
               widget.claimError!,
@@ -1025,11 +923,8 @@ class _ClaimPassCardState extends State<_ClaimPassCard> {
           ),
         ],
 
-        // -------------------------------------------------------------
-        // NO CODE
-        // -------------------------------------------------------------
         if (issuedCode == null) ...[
-          const SizedBox(height: 15),
+          const SizedBox(height: 14),
           const Text(
             "This member hasn't set up app access yet.",
             style: TextStyle(fontSize: 13, color: _cMuted),
@@ -1043,7 +938,7 @@ class _ClaimPassCardState extends State<_ClaimPassCard> {
                 backgroundColor: _cAccentTeal,
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(13),
+                  borderRadius: BorderRadius.circular(999),
                 ),
               ),
               child: widget.isIssuingCode
@@ -1059,7 +954,7 @@ class _ClaimPassCardState extends State<_ClaimPassCard> {
                       'Set up app access',
                       style: TextStyle(
                         color: Colors.white,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
             ),
@@ -1074,97 +969,79 @@ class _ClaimPassCardState extends State<_ClaimPassCard> {
 
   Widget _buildQrAndKey(BuildContext context, Map<String, dynamic> issuedCode) {
     final code = issuedCode['claim_code'] as String? ?? '';
-
     final expiresAt = DateTime.tryParse(
       issuedCode['expires_at'] as String? ?? '',
     );
 
     return Column(
       children: [
-        // -------------------------------------------------------------
-        // DIGITAL PASS IDENTITY
-        // -------------------------------------------------------------
+        // D1 — this is the card staff show the member: gym name and
+        // member's name identify whose code this is (there's no
+        // printing or plastic, so the screen itself has to carry that
+        // context), then the QR, then the code in large text
+        // underneath for whoever's camera won't focus.
         if (widget.gymName.isNotEmpty || widget.memberName.isNotEmpty) ...[
           Text(
             widget.gymName,
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w500,
-              color: _cMuted,
-            ),
+            style: const TextStyle(fontSize: 12, color: _cMuted),
           ),
-          const SizedBox(height: 2),
           Text(
             widget.memberName,
             textAlign: TextAlign.center,
             style: const TextStyle(
-              fontSize: 17,
+              fontSize: 16,
               fontWeight: FontWeight.w700,
               color: _cInk,
             ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
         ],
-
-        // -------------------------------------------------------------
-        // QR CODE
-        // -------------------------------------------------------------
         Container(
-          padding: const EdgeInsets.all(18),
+          padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: _cFieldBg,
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(14),
           ),
-          child: Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: code.isEmpty
-                ? const SizedBox(
-                    height: 190,
-                    child: Center(
-                      child: Text(
-                        'No code to display',
-                        style: TextStyle(color: _cMuted, fontSize: 12),
-                      ),
-                    ),
-                  )
-                : QrImageView(
-                    data: '${QrTotp.claimPrefix}|$code',
-                    size: 190,
-                    backgroundColor: Colors.white,
-                    eyeStyle: const QrEyeStyle(
-                      eyeShape: QrEyeShape.square,
-                      color: _cInk,
-                    ),
-                    dataModuleStyle: const QrDataModuleStyle(
-                      dataModuleShape: QrDataModuleShape.square,
-                      color: _cInk,
+          child: code.isEmpty
+              ? const SizedBox(
+                  height: 160,
+                  child: Center(
+                    child: Text(
+                      'No code to display',
+                      style: TextStyle(color: _cMuted, fontSize: 12),
                     ),
                   ),
-          ),
+                )
+              // A8 — the claim payload is prefixed, never the bare code,
+              // so the scanner can tell a claim QR apart from a check-in
+              // QR and give the specific reverse-A9 message (D2) instead
+              // of treating a photographed claim card as unreadable.
+              : QrImageView(
+                  data: '${QrTotp.claimPrefix}|$code',
+                  size: 160,
+                  backgroundColor: Colors.white,
+                  eyeStyle: const QrEyeStyle(
+                    eyeShape: QrEyeShape.square,
+                    color: _cInk,
+                  ),
+                  dataModuleStyle: const QrDataModuleStyle(
+                    dataModuleShape: QrDataModuleShape.square,
+                    color: _cInk,
+                  ),
+                ),
         ),
-
-        const SizedBox(height: 13),
-
-        // -------------------------------------------------------------
-        // MANUAL KEY
-        // -------------------------------------------------------------
+        const SizedBox(height: 14),
         const Text(
           'MANUAL ACTIVATION KEY',
           style: TextStyle(
-            fontSize: 9,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 0.7,
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.6,
             color: _cMuted,
           ),
         ),
-
-        const SizedBox(height: 5),
-
+        const SizedBox(height: 6),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -1172,97 +1049,69 @@ class _ClaimPassCardState extends State<_ClaimPassCard> {
               code,
               style: const TextStyle(
                 fontSize: 18,
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w700,
                 letterSpacing: 2,
                 color: _cInk,
               ),
             ),
-            const SizedBox(width: 7),
+            const SizedBox(width: 8),
             InkWell(
               onTap: () => _copyToClipboard(context, code, 'Code'),
-              borderRadius: BorderRadius.circular(7),
-              child: Container(
-                padding: const EdgeInsets.all(5),
-                decoration: BoxDecoration(
-                  color: _cAccentTealBg,
-                  borderRadius: BorderRadius.circular(7),
-                ),
-                child: const Icon(
-                  Icons.copy_outlined,
-                  size: 14,
-                  color: _cAccentTeal,
-                ),
+              borderRadius: BorderRadius.circular(6),
+              child: const Padding(
+                padding: EdgeInsets.all(2),
+                child: Icon(Icons.copy_outlined, size: 15, color: _cAccentTeal),
               ),
             ),
           ],
         ),
-
-        const SizedBox(height: 13),
-
-        // -------------------------------------------------------------
-        // EXPIRATION + REGENERATE
-        // -------------------------------------------------------------
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-          decoration: BoxDecoration(
-            color: _cFieldBg,
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              if (expiresAt != null)
-                _ExpiryCountdown(expiresAt: expiresAt)
-              else
-                const SizedBox.shrink(),
-              InkWell(
-                onTap: widget.isIssuingCode ? null : widget.onIssueCode,
-                borderRadius: BorderRadius.circular(7),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 4,
-                    vertical: 2,
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      widget.isIssuingCode
-                          ? const SizedBox(
-                              width: 12,
-                              height: 12,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: _cAccentTeal,
-                              ),
-                            )
-                          : const Icon(
-                              Icons.refresh_rounded,
-                              size: 14,
-                              color: _cAccentTeal,
-                            ),
-                      const SizedBox(width: 4),
-                      const Text(
-                        'Regenerate',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
+        const SizedBox(height: 12),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            if (expiresAt != null)
+              _ExpiryCountdown(expiresAt: expiresAt)
+            else
+              const SizedBox.shrink(),
+            InkWell(
+              onTap: widget.isIssuingCode ? null : widget.onIssueCode,
+              borderRadius: BorderRadius.circular(6),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  widget.isIssuingCode
+                      ? const SizedBox(
+                          width: 12,
+                          height: 12,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: _cAccentTeal,
+                          ),
+                        )
+                      : const Icon(
+                          Icons.refresh,
+                          size: 14,
                           color: _cAccentTeal,
                         ),
-                      ),
-                    ],
+                  const SizedBox(width: 4),
+                  const Text(
+                    'Regenerate code',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: _cAccentTeal,
+                    ),
                   ),
-                ),
+                ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
-
         const SizedBox(height: 10),
-
         const Text(
           "It's one-time use — the member sets their own password with it. "
           "This screen won't show it again once you leave.",
-          style: TextStyle(fontSize: 10, height: 1.35, color: _cMuted),
+          style: TextStyle(fontSize: 11, color: _cMuted),
           textAlign: TextAlign.center,
         ),
       ],
@@ -1270,6 +1119,10 @@ class _ClaimPassCardState extends State<_ClaimPassCard> {
   }
 }
 
+/// Ticks its own Timer independently of the rest of the card, so an
+/// unrelated rebuild elsewhere on the screen doesn't reset or duplicate
+/// the countdown. Purely a display computation over the expires_at the
+/// server already returned — no network calls happen here.
 class _ExpiryCountdown extends StatefulWidget {
   const _ExpiryCountdown({required this.expiresAt});
 
@@ -1286,26 +1139,21 @@ class _ExpiryCountdownState extends State<_ExpiryCountdown> {
   @override
   void initState() {
     super.initState();
-
     _remaining = widget.expiresAt.difference(DateTime.now());
-
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       final next = widget.expiresAt.difference(DateTime.now());
-
       if (!mounted) return;
-
       setState(() => _remaining = next);
-
-      if (next.isNegative) {
-        _timer?.cancel();
-      }
+      if (next.isNegative) _timer?.cancel();
     });
   }
 
   @override
   void didUpdateWidget(covariant _ExpiryCountdown oldWidget) {
     super.didUpdateWidget(oldWidget);
-
+    // A "Regenerate code" tap issues a new expires_at — restart the
+    // ticker against the new deadline rather than keep counting down
+    // to the old one.
     if (oldWidget.expiresAt != widget.expiresAt) {
       _remaining = widget.expiresAt.difference(DateTime.now());
     }
@@ -1319,24 +1167,18 @@ class _ExpiryCountdownState extends State<_ExpiryCountdown> {
 
   String _format(Duration d) {
     if (d.isNegative) return 'Expired';
-
     final days = d.inDays;
-
     if (days >= 1) {
       final hours = d.inHours % 24;
       return 'Expires in ${days}d ${hours}h';
     }
-
     final hours = d.inHours;
-
     if (hours >= 1) {
       final minutes = d.inMinutes % 60;
       return 'Expires in ${hours}h ${minutes}m';
     }
-
     final minutes = d.inMinutes;
     final seconds = d.inSeconds % 60;
-
     return 'Expires in ${minutes.toString().padLeft(2, '0')}:'
         '${seconds.toString().padLeft(2, '0')}';
   }
@@ -1347,7 +1189,7 @@ class _ExpiryCountdownState extends State<_ExpiryCountdown> {
       mainAxisSize: MainAxisSize.min,
       children: [
         Icon(
-          Icons.schedule_rounded,
+          Icons.schedule,
           size: 13,
           color: _remaining.isNegative ? _cErrorText : _cMuted,
         ),
@@ -1356,7 +1198,7 @@ class _ExpiryCountdownState extends State<_ExpiryCountdown> {
           _format(_remaining),
           style: TextStyle(
             fontSize: 11,
-            fontWeight: FontWeight.w600,
+            fontWeight: FontWeight.w500,
             color: _remaining.isNegative ? _cErrorText : _cMuted,
           ),
         ),
@@ -1381,61 +1223,29 @@ class _InfoRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
+      padding: const EdgeInsets.symmetric(vertical: 10),
       child: Row(
         children: [
-          Container(
-            width: 30,
-            height: 30,
-            decoration: BoxDecoration(
-              color: _cFieldBg,
-              borderRadius: BorderRadius.circular(9),
-            ),
-            child: Icon(icon, size: 15, color: _cMuted),
-          ),
+          Icon(icon, size: 16, color: _cMuted),
           const SizedBox(width: 10),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: const TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600,
-                    color: _cMuted,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  value.isEmpty ? '—' : value,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                    color: _cInk,
-                  ),
-                ),
-              ],
+            child: Text(
+              label,
+              style: const TextStyle(fontSize: 13, color: _cMuted),
             ),
+          ),
+          Text(
+            value.isEmpty ? '—' : value,
+            style: const TextStyle(fontSize: 13, color: _cInk),
           ),
           if (onCopy != null) ...[
             const SizedBox(width: 6),
             InkWell(
               onTap: onCopy,
-              borderRadius: BorderRadius.circular(7),
-              child: Container(
-                padding: const EdgeInsets.all(5),
-                decoration: BoxDecoration(
-                  color: _cAccentTealBg,
-                  borderRadius: BorderRadius.circular(7),
-                ),
-                child: const Icon(
-                  Icons.copy_outlined,
-                  size: 14,
-                  color: _cAccentTeal,
-                ),
+              borderRadius: BorderRadius.circular(6),
+              child: const Padding(
+                padding: EdgeInsets.all(2),
+                child: Icon(Icons.copy_outlined, size: 14, color: _cAccentTeal),
               ),
             ),
           ],
@@ -1458,14 +1268,13 @@ class _MembershipHistorySection extends ConsumerWidget {
       data: (entries) {
         if (entries.isEmpty) {
           return const Padding(
-            padding: EdgeInsets.symmetric(vertical: 14),
+            padding: EdgeInsets.symmetric(vertical: 12),
             child: Text(
               'No membership history yet.',
               style: TextStyle(color: _cMuted, fontSize: 13),
             ),
           );
         }
-
         return Column(
           children: [
             for (var i = 0; i < entries.length; i++) ...[
@@ -1501,9 +1310,7 @@ class _HistoryTile extends StatelessWidget {
         json['plan_name'] as String? ??
         (json['plan'] is Map ? json['plan']['name'] as String? : null) ??
         'Plan';
-
     final startDate = DateTime.tryParse(json['start_date'] as String? ?? '');
-
     final endDate = DateTime.tryParse(json['end_date'] as String? ?? '');
 
     final dateRange = startDate != null && endDate != null
@@ -1512,55 +1319,31 @@ class _HistoryTile extends StatelessWidget {
         : '';
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
+      padding: const EdgeInsets.symmetric(vertical: 10),
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Container(
-            width: 34,
-            height: 34,
-            decoration: BoxDecoration(
-              color: _cAccentTealBg,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: const Icon(
-              Icons.fitness_center_rounded,
-              size: 16,
-              color: _cAccentTeal,
+          Text(
+            planName,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: _cInk,
             ),
           ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  planName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: _cInk,
-                  ),
-                ),
-                if (dateRange.isNotEmpty) ...[
-                  const SizedBox(height: 3),
-                  Text(
-                    dateRange,
-                    style: const TextStyle(fontSize: 11, color: _cMuted),
-                  ),
-                ],
-              ],
+          if (dateRange.isNotEmpty)
+            Text(
+              dateRange,
+              style: const TextStyle(fontSize: 12, color: _cMuted),
             ),
-          ),
         ],
       ),
     );
   }
 }
 
-// Public — Phase 5 Part B's renewal worklist reuses
-// this exact sheet for its own Renew action.
+// Public — Phase 5 Part B's renewal worklist reuses this exact sheet
+// for its own Renew action rather than building a second flow.
 class RenewSheet extends ConsumerStatefulWidget {
   const RenewSheet({super.key, required this.memberId, required this.gymId});
 
@@ -1581,12 +1364,10 @@ class _RenewSheetState extends ConsumerState<RenewSheet> {
       setState(() => _error = 'Pick a plan first.');
       return;
     }
-
     setState(() {
       _isSubmitting = true;
       _error = null;
     });
-
     try {
       await ref
           .read(membersRepositoryProvider)
@@ -1595,10 +1376,7 @@ class _RenewSheetState extends ConsumerState<RenewSheet> {
             gymId: widget.gymId,
             planId: _planId!,
           );
-
-      if (mounted) {
-        Navigator.of(context).pop();
-      }
+      if (mounted) Navigator.of(context).pop();
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -1630,23 +1408,19 @@ class _RenewSheetState extends ConsumerState<RenewSheet> {
               ),
             ),
           ),
-
           const Text(
             'Renew membership',
             style: TextStyle(
-              fontSize: 19,
-              fontWeight: FontWeight.w700,
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
               color: _cInk,
             ),
           ),
-
           const SizedBox(height: 4),
-
           const Text(
             'Extends from the current end date using the plan you pick.',
             style: TextStyle(fontSize: 12, color: _cMuted),
           ),
-
           const SizedBox(height: 16),
 
           if (_error != null) ...[
@@ -1654,7 +1428,7 @@ class _RenewSheetState extends ConsumerState<RenewSheet> {
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: _cErrorBg,
-                borderRadius: BorderRadius.circular(11),
+                borderRadius: BorderRadius.circular(10),
               ),
               child: Text(
                 _error!,
@@ -1665,11 +1439,11 @@ class _RenewSheetState extends ConsumerState<RenewSheet> {
           ],
 
           Container(
-            height: 50,
-            padding: const EdgeInsets.symmetric(horizontal: 13),
+            height: 48,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
             decoration: BoxDecoration(
               color: _cFieldBg,
-              borderRadius: BorderRadius.circular(13),
+              borderRadius: BorderRadius.circular(12),
             ),
             alignment: Alignment.center,
             child: plansAsync.when(
@@ -1686,7 +1460,6 @@ class _RenewSheetState extends ConsumerState<RenewSheet> {
                       ),
                     )
                     .toList();
-
                 return DropdownButtonHideUnderline(
                   child: DropdownButton<String>(
                     value: _planId,
@@ -1712,7 +1485,6 @@ class _RenewSheetState extends ConsumerState<RenewSheet> {
           ),
 
           const SizedBox(height: 16),
-
           SizedBox(
             height: 52,
             child: ElevatedButton(
@@ -1721,7 +1493,7 @@ class _RenewSheetState extends ConsumerState<RenewSheet> {
                 backgroundColor: _cAccentTeal,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(15),
+                  borderRadius: BorderRadius.circular(999),
                 ),
               ),
               child: _isSubmitting
@@ -1733,10 +1505,7 @@ class _RenewSheetState extends ConsumerState<RenewSheet> {
                         color: Colors.white,
                       ),
                     )
-                  : const Text(
-                      'Confirm renewal',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
+                  : const Text('Confirm renewal'),
             ),
           ),
         ],
