@@ -150,18 +150,33 @@ class _PosScreenState extends ConsumerState<PosScreen> {
       appBar: AppBar(
         backgroundColor: AppColors.pageBg,
         elevation: 0,
-        title: const Text(
-          'POS & Store',
-          style: TextStyle(color: AppColors.ink, fontWeight: FontWeight.w700),
+        toolbarHeight: 64,
+        titleSpacing: 16,
+        title: const Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              'FLEXDESK POINT OF SALE',
+              style: TextStyle(
+                color: AppColors.accentTeal,
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.6,
+              ),
+            ),
+            SizedBox(height: 2),
+            Text(
+              'Store & Register',
+              style: TextStyle(
+                color: AppColors.ink,
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
         ),
         iconTheme: const IconThemeData(color: AppColors.ink),
-        actions: [
-          if (_alerts != null)
-            Padding(
-              padding: const EdgeInsets.only(right: 16),
-              child: _StockBadgeChip(alerts: _alerts!),
-            ),
-        ],
       ),
       body: SafeArea(
         child: Column(
@@ -227,44 +242,6 @@ class _PosScreenState extends ConsumerState<PosScreen> {
               currencyCode: currencyCode,
               onPayNow: () => _openConfirm(currencyCode),
             ),
-    );
-  }
-}
-
-class _StockBadgeChip extends StatelessWidget {
-  const _StockBadgeChip({required this.alerts});
-
-  final InventoryAlerts alerts;
-
-  @override
-  Widget build(BuildContext context) {
-    final String label;
-    final Color color;
-    if (alerts.lowStockCount > 0) {
-      label = 'Stock (${alerts.lowStockCount} Low)';
-      color = AppColors.expiringBg;
-    } else if (alerts.outOfStockCount > 0) {
-      label = 'Stock (${alerts.outOfStockCount} Out)';
-      color = AppColors.errorText;
-    } else {
-      label = 'Stock (Full)';
-      color = AppColors.linkGreen;
-    }
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: AppColors.cardBg,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: AppColors.border, width: 0.6),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-          color: color,
-        ),
-      ),
     );
   }
 }
@@ -360,6 +337,7 @@ class _ProductTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final disabled = product.isOutOfStock;
+    final inCart = cartQuantity > 0;
 
     return Opacity(
       opacity: disabled ? 0.55 : 1.0,
@@ -368,6 +346,9 @@ class _ProductTile extends StatelessWidget {
         decoration: BoxDecoration(
           color: AppColors.cardBg,
           borderRadius: BorderRadius.circular(16),
+          border: inCart
+              ? Border.all(color: AppColors.accentTeal, width: 1.5)
+              : null,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -413,22 +394,40 @@ class _ProductTile extends StatelessWidget {
                     color: AppColors.ink,
                   ),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  disabled
-                      ? 'Out of stock'
-                      : product.isLowStock
-                      ? 'Low · ${product.stockQuantity} left'
-                      : '${product.stockQuantity} in stock',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500,
-                    color: disabled
-                        ? AppColors.errorText
-                        : product.isLowStock
-                        ? AppColors.expiringBg
-                        : AppColors.muted,
-                  ),
+                const SizedBox(height: 4),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: disabled
+                            ? AppColors.errorText
+                            : product.isLowStock
+                            ? AppColors.expiringBg
+                            : AppColors.linkGreen,
+                      ),
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      disabled
+                          ? 'Out of stock'
+                          : product.isLowStock
+                          ? 'Low · ${product.stockQuantity} left'
+                          : '${product.stockQuantity} in stock',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                        color: disabled
+                            ? AppColors.errorText
+                            : product.isLowStock
+                            ? AppColors.expiringBg
+                            : AppColors.muted,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -568,6 +567,17 @@ class _CartSummaryCard extends ConsumerWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            Center(
+              child: Container(
+                width: 36,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 12),
+                decoration: BoxDecoration(
+                  color: AppColors.border,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+            ),
             Row(
               children: [
                 const Text(
@@ -674,7 +684,15 @@ class _CartSummaryCard extends ConsumerWidget {
                     borderRadius: BorderRadius.circular(999),
                   ),
                 ),
-                child: const Text('Pay Now'),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('Pay Now'),
+                    SizedBox(width: 6),
+                    Icon(Icons.arrow_forward, size: 18),
+                  ],
+                ),
               ),
             ),
           ],
