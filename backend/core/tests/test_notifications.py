@@ -244,6 +244,75 @@ class DailyNotificationsCommandTests(TestCase):
             1,
         )
 
+    def test_one_gym_raising_does_not_block_other_gyms(self):
+        today = gym_today(self.gym)
+        gym_b = Gym.objects.create(name="Working Gym", slug="working-gym",
+                                   timezone="Asia/Manila")
+        location_b = Location.objects.create(gym=gym_b, name="Main")
+        plan_b = MembershipPlan.objects.create(
+            gym=gym_b, name="Monthly", category="Standard",
+            duration_value=1, duration_unit=MembershipPlan.MONTH, price=1000,
+        )
+        StaffProfile.objects.create(
+            user=User.objects.create_user(email="workingowner@example.com",
+                                          password="StrongPass123!"),
+            gym=gym_b, role=StaffProfile.OWNER, default_location=location_b,
+        )
+        broken_member = self._member(self.gym, self.location, self.plan,
+                                     "broken@example.com", today + timedelta(days=3))
+        working_member = self._member(gym_b, location_b, plan_b,
+                                      "working@example.com", today + timedelta(days=3))
+
+        def send_side_effect(users, **kwargs):
+            if users == [broken_member.user]:
+                raise RuntimeError("boom")
+            return (1, 0)
+
+        # Gym has no defined ordering, so force self.gym (the one that
+        # raises) to be processed first — otherwise this test could pass
+        # by accident regardless of whether the loop actually recovers.
+        with mock.patch.object(Gym.objects, "all", return_value=[self.gym, gym_b]):
+            with mock.patch(
+                "core.management.commands.send_daily_notifications.send_to_users",
+                side_effect=send_side_effect,
+            ):
+                call_command("send_daily_notifications")
+
+        self.assertTrue(
+            NotificationSend.objects.filter(
+                user=working_member.user, kind="renewal_3day").exists()
+        )
+
+    def test_send_to_users_raising_leaves_no_notification_send_row(self):
+        today = gym_today(self.gym)
+        member = self._member(self.gym, self.location, self.plan,
+                              "retry@example.com", today + timedelta(days=3))
+
+        with mock.patch(
+            "core.management.commands.send_daily_notifications.send_to_users",
+            side_effect=RuntimeError("boom"),
+        ):
+            call_command("send_daily_notifications")
+
+        self.assertFalse(
+            NotificationSend.objects.filter(
+                user=member.user, kind="renewal_3day").exists()
+        )
+
+        # A later run (send_to_users healthy again) must still attempt
+        # the send — nothing about the earlier failed attempt should
+        # have marked this member as already notified.
+        with mock.patch(
+            "core.management.commands.send_daily_notifications.send_to_users"
+        ) as send_mock:
+            call_command("send_daily_notifications")
+
+        send_mock.assert_called_once()
+        self.assertTrue(
+            NotificationSend.objects.filter(
+                user=member.user, kind="renewal_3day").exists()
+        )
+
     def test_member_in_one_gym_never_receives_another_gyms_notification(self):
         today = gym_today(self.gym)
         gym_b = Gym.objects.create(name="Other Gym", slug="other-gym")

@@ -9,7 +9,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('core', '0020_member_qr_last_step_member_qr_secret'),
+        ('core', '0021_renewalreminder'),
     ]
 
     operations = [
