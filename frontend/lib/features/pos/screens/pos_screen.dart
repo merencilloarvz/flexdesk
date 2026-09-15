@@ -272,24 +272,13 @@ class _StockOverviewCard extends StatelessWidget {
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Stock Overview',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.ink,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '${alerts.inStockCount} in Stock · ${alerts.lowStockCount} Low · '
-                  '${alerts.outOfStockCount} Out',
-                  style: const TextStyle(fontSize: 11, color: AppColors.muted),
-                ),
-              ],
+            child: const Text(
+              'Stock Overview',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: AppColors.ink,
+              ),
             ),
           ),
           const SizedBox(width: 10),
