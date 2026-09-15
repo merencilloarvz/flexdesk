@@ -1,5 +1,7 @@
 import hashlib
 import hmac
+import logging
+import threading
 import uuid
 from django.conf import settings as dj_settings
 from django.db import IntegrityError
@@ -47,7 +49,8 @@ from .serializers import BookingCreateSerializer, BookingSerializer, TimeSlotSer
 from rest_framework.exceptions import PermissionDenied
 from .models import Announcement, Event, EventRegistration, EventResult
 from .models import Product, Sale, SaleItem, StockAdjustment
-from .models import DeviceToken
+from .models import DeviceToken, NotificationSend
+from .notifications import send_to_users
 from .permissions import IsGymUser, IsGymStaffOrReadOnly
 from .serializers import (AnnouncementSerializer, EventRegistrationSerializer,
                           EventResultInputSerializer, EventResultSerializer,
@@ -1500,13 +1503,99 @@ class MeQrSecretView(APIView):
         })
 
 
+logger = logging.getLogger(__name__)
+
+
+def _notify_announcement(announcement):
+    """
+    Runs off-thread (see AnnouncementViewSet.perform_create) so an FCM
+    outage or slow multicast call can't delay the create response. Must
+    never raise into the thread runner — there's no caller left to catch
+    it — so the whole body is wrapped, matching the per-gym isolation
+    pattern in send_daily_notifications.
+    """
+    try:
+        member_users = list(
+            User.objects.filter(
+                member_profile__gym=announcement.gym,
+                member_profile__archived_at__isnull=True,
+                member_profile__member_type=Member.MEMBER,
+            )
+        )
+        if not member_users:
+            return
+
+        title = announcement.title[:100]
+        body = announcement.body[:150]
+
+        send_to_users(
+            member_users, title=title, body=body,
+            data={"type": "announcement", "id": str(announcement.id)},
+        )
+
+        NotificationSend.objects.bulk_create(
+            [
+                NotificationSend(user=u, kind="announcement", subject_id=announcement.id)
+                for u in member_users
+            ],
+            ignore_conflicts=True,
+        )
+    except Exception:
+        logger.exception("Failed to send announcement notification for %s", announcement.id)
+
+
+def _notify_out_of_stock(product):
+    """
+    Called right after the stock decrement that took `product` from >0 to
+    exactly 0 (see create_sale and ProductViewSet.adjust), from inside the
+    same select_for_update()-locked block, so this only ever runs once per
+    genuine transition — never on a second sale attempted against a
+    product already at zero.
+
+    kind is suffixed with the transition's timestamp rather than left as
+    a bare "out_of_stock", because subject_id is the product's id and
+    doesn't change between transitions. A restock followed by another
+    sale that re-empties the same product is a second, distinct event
+    that must notify again; a fixed kind would collide with the first
+    transition's NotificationSend row (same user/kind/subject_id) and
+    silently suppress the second notification. The digest in
+    send_daily_notifications solves the same problem the same way, with
+    a day-suffixed kind instead of a timestamp-suffixed one.
+    """
+    try:
+        recipients = list(User.objects.filter(staff_profile__gym=product.gym))
+        if not recipients:
+            return
+
+        send_to_users(
+            recipients,
+            title="Out of stock",
+            body=f"{product.name} is out of stock.",
+            data={"type": "out_of_stock", "id": str(product.id)},
+        )
+
+        kind = f"out_of_stock_{timezone.now():%Y%m%d%H%M%S%f}"
+        NotificationSend.objects.bulk_create(
+            [
+                NotificationSend(user=u, kind=kind, subject_id=product.id)
+                for u in recipients
+            ],
+            ignore_conflicts=True,
+        )
+    except Exception:
+        logger.exception("Failed to send out-of-stock notification for %s", product.id)
+
+
 class AnnouncementViewSet(GymScopedViewSet):
     queryset = Announcement.objects.all()
     serializer_class = AnnouncementSerializer
     permission_classes = [IsGymUser, IsGymStaffOrReadOnly]
 
     def perform_create(self, serializer):
-        serializer.save(gym=self.gym, created_by=self.request.user)
+        announcement = serializer.save(gym=self.gym, created_by=self.request.user)
+        threading.Thread(
+            target=_notify_announcement, args=(announcement,), daemon=True,
+        ).start()
 
 @transaction.atomic
 def create_sale(gym, items, user, member=None):
@@ -1516,6 +1605,13 @@ def create_sale(gym, items, user, member=None):
     last unit can't both succeed — the second one matches zero rows and
     we roll the whole sale back. A read-then-write would let both through
     and drive stock negative.
+
+    select_for_update() on the initial read additionally locks the row for
+    the rest of this transaction, so the "prior quantity" read here and the
+    decrement below are atomic as a pair — needed to detect the >0-to-0
+    transition for the out-of-stock notification without a race where two
+    concurrent sales both see stock_quantity == 1 and both believe they're
+    the one hitting zero.
     """
     if not items:
         raise ValidationError({"items": "At least one item is required."})
@@ -1541,11 +1637,14 @@ def create_sale(gym, items, user, member=None):
     for pid in order:
         qty = merged[pid]
         try:
-            product = Product.objects.get(pk=pid, gym=gym, is_active=True)
+            product = Product.objects.select_for_update().get(
+                pk=pid, gym=gym, is_active=True,
+            )
         except (Product.DoesNotExist, ValueError, TypeError):
             # 404, not 403 — never confirms another gym's product id exists.
             raise Http404("Product not found.")
 
+        prior_qty = product.stock_quantity
         updated = (Product.objects
                    .filter(pk=product.pk, stock_quantity__gte=qty)
                    .update(stock_quantity=F("stock_quantity") - qty))
@@ -1554,6 +1653,12 @@ def create_sale(gym, items, user, member=None):
                 "detail": f"Not enough stock for {product.name}. "
                           f"{product.stock_quantity} left."
             })
+
+        if prior_qty > 0 and prior_qty - qty == 0:
+            # Fires after commit, not here — the row lock from
+            # select_for_update() is still held at this point, and the
+            # FCM call shouldn't run while it's blocking other sales.
+            transaction.on_commit(lambda p=product: _notify_out_of_stock(p))
 
         line_total = product.price * qty
         total += line_total
@@ -1611,6 +1716,13 @@ class ProductViewSet(GymScopedViewSet):
         reason = s.validated_data.get("reason", "")
 
         with transaction.atomic():
+            # Locked for the same reason as create_sale's decrement: the
+            # prior-quantity read and the update need to be atomic as a
+            # pair to detect a >0-to-0 transition safely under concurrent
+            # adjustments/sales on the same product.
+            locked_product = Product.objects.select_for_update().get(pk=product.pk)
+            prior_qty = locked_product.stock_quantity
+
             # stock_quantity + delta >= 0  <=>  stock_quantity >= -delta.
             # For a positive delta, -delta is <= 0, so this always passes.
             updated = (Product.objects
@@ -1626,6 +1738,9 @@ class ProductViewSet(GymScopedViewSet):
                 gym=self.gym, product=product, delta=delta,
                 reason=reason, created_by=request.user,
             )
+
+            if prior_qty > 0 and prior_qty + delta == 0:
+                transaction.on_commit(lambda p=product: _notify_out_of_stock(p))
 
         product.refresh_from_db()
         return Response(ProductSerializer(product).data, status=status.HTTP_200_OK)

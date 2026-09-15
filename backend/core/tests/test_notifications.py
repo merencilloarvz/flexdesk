@@ -1,21 +1,27 @@
 import json
+import threading
 from datetime import date, datetime, timedelta, timezone as dt_timezone
 from types import SimpleNamespace
 from unittest import mock
 
 from django.core.management import call_command
-from django.test import TestCase, override_settings
+from django.db import connections
+from django.test import TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 from firebase_admin import exceptions as fb_exceptions
 from firebase_admin import messaging
 from rest_framework import status
-from rest_framework.test import APITestCase
+from rest_framework.test import APIClient, APITestCase
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from core import notifications
-from core.models import (DeviceToken, Gym, Location, Member, Membership,
-                         MembershipPlan, NotificationSend, StaffProfile, User)
+from core.models import (Announcement, DeviceToken, Gym, Location, Member,
+                         Membership, MembershipPlan, NotificationSend,
+                         Product, StaffProfile, User)
+from core.tests.test_pos import (make_gym, make_location, make_member_user,
+                                 make_product, make_staff_user)
 from core.utils import gym_today
+from core.views import _notify_announcement, create_sale
 
 API = "/api/v1"
 
@@ -369,3 +375,264 @@ class DailyNotificationsCommandTests(TestCase):
 
         sent_to_users = [call.args[0][0] for call in send_mock.call_args_list]
         self.assertIn(member.user, sent_to_users)
+
+
+class AnnouncementNotificationTests(APITestCase):
+    def setUp(self):
+        self.gym = make_gym()
+        self.location = make_location(self.gym)
+        self.owner = make_staff_user(self.gym, "annowner@test.com",
+                                     role=StaffProfile.OWNER, location=self.location)
+        self.member_user = make_member_user(self.gym, self.location, "annmember@test.com")
+
+        self.other_gym = make_gym("Other Ann Gym")
+        self.other_location = make_location(self.other_gym)
+        self.other_member_user = make_member_user(
+            self.other_gym, self.other_location, "otherannmember@test.com")
+
+    def as_owner(self):
+        c = APIClient()
+        c.force_authenticate(user=self.owner)
+        return c
+
+    def _post_announcement(self):
+        return self.as_owner().post(f"{API}/announcements/", {
+            "title": "Gym closed Sunday", "body": "We're closed this Sunday for cleaning.",
+        }, format="json")
+
+    def _run_announcement_thread_inline(self):
+        """
+        The view fires _notify_announcement on a real background thread
+        (see AnnouncementViewSet.perform_create) so the create response
+        doesn't wait on it. Tests need the thread's work done before they
+        assert, so this patches threading.Thread to run the target inline
+        and returns a dummy object with a no-op start/join, capturing the
+        real thread for the caller to join instead.
+        """
+        started = []
+
+        class ImmediateThread:
+            def __init__(self, target=None, args=(), daemon=None):
+                self._target = target
+                self._args = args
+
+            def start(self):
+                self._target(*self._args)
+                started.append(True)
+
+            def join(self):
+                pass
+
+        return mock.patch("core.views.threading.Thread", ImmediateThread)
+
+    def test_announcement_notifies_members_of_same_gym_only(self):
+        with self._run_announcement_thread_inline():
+            with mock.patch("core.views.send_to_users", return_value=(0, 0)) as send_mock:
+                resp = self._post_announcement()
+
+        self.assertIn(resp.status_code, (200, 201))
+        send_mock.assert_called_once()
+        recipients = send_mock.call_args.args[0]
+        self.assertIn(self.member_user, recipients)
+        self.assertNotIn(self.other_member_user, recipients)
+        self.assertNotIn(self.owner, recipients)
+
+    def test_announcement_creates_notification_send_row_per_member(self):
+        with self._run_announcement_thread_inline():
+            with mock.patch("core.views.send_to_users", return_value=(0, 0)):
+                resp = self._post_announcement()
+
+        announcement_id = resp.data["id"]
+        self.assertTrue(
+            NotificationSend.objects.filter(
+                user=self.member_user, kind="announcement", subject_id=announcement_id,
+            ).exists()
+        )
+
+    def test_announcement_send_failure_does_not_fail_the_create_request(self):
+        with self._run_announcement_thread_inline():
+            with mock.patch("core.views.send_to_users", side_effect=RuntimeError("boom")):
+                resp = self._post_announcement()
+
+        self.assertIn(resp.status_code, (200, 201))
+        self.assertEqual(Announcement.objects.count(), 1)
+
+    def test_announcement_hands_the_send_to_a_daemon_background_thread(self):
+        # Confirms the view really defers to a background thread (rather
+        # than running notify inline) without actually letting a second
+        # thread touch this test's uncommitted transaction — a real
+        # second thread would use its own DB connection and couldn't see
+        # the gym/member rows created in setUp, which are never committed
+        # under APITestCase. core.views.notifications lives in the same
+        # process, so asserting on the Thread construction is enough.
+        with mock.patch("core.views.threading.Thread") as thread_cls:
+            thread_cls.return_value = mock.Mock()
+            resp = self._post_announcement()
+
+        self.assertIn(resp.status_code, (200, 201))
+        thread_cls.assert_called_once()
+        _, kwargs = thread_cls.call_args
+        self.assertEqual(kwargs["target"], _notify_announcement)
+        self.assertTrue(kwargs["daemon"])
+        thread_cls.return_value.start.assert_called_once()
+
+
+class OutOfStockNotificationTests(APITestCase):
+    def setUp(self):
+        self.gym = make_gym("Stock Gym")
+        self.location = make_location(self.gym)
+        self.owner = make_staff_user(self.gym, "stockowner@test.com",
+                                     role=StaffProfile.OWNER, location=self.location)
+        self.staff = make_staff_user(self.gym, "stockstaff@test.com",
+                                     role=StaffProfile.STAFF, location=self.location)
+        self.member_user = make_member_user(self.gym, self.location, "stockmember@test.com")
+        self.product = make_product(self.gym, stock=1)
+
+    def as_staff(self):
+        c = APIClient()
+        c.force_authenticate(user=self.staff)
+        return c
+
+    def as_owner(self):
+        c = APIClient()
+        c.force_authenticate(user=self.owner)
+        return c
+
+    def test_stock_hitting_exactly_zero_sends_once_to_owner_and_staff(self):
+        with mock.patch("core.views.send_to_users", return_value=(0, 0)) as send_mock:
+            with self.captureOnCommitCallbacks(execute=True):
+                create_sale(
+                    gym=self.gym,
+                    items=[{"product_id": self.product.id, "quantity": 1}],
+                    user=self.staff,
+                )
+
+        send_mock.assert_called_once()
+        recipients = send_mock.call_args.args[0]
+        self.assertIn(self.owner, recipients)
+        self.assertIn(self.staff, recipients)
+        self.assertNotIn(self.member_user, recipients)
+        self.assertEqual(send_mock.call_args.kwargs["data"]["type"], "out_of_stock")
+        self.assertEqual(send_mock.call_args.kwargs["data"]["id"], str(self.product.id))
+
+    def test_selling_already_zero_stock_does_not_notify_again(self):
+        self.product.stock_quantity = 0
+        self.product.save(update_fields=["stock_quantity"])
+
+        with mock.patch("core.views.send_to_users", return_value=(0, 0)) as send_mock:
+            with self.captureOnCommitCallbacks(execute=True):
+                with self.assertRaises(Exception):
+                    create_sale(
+                        gym=self.gym,
+                        items=[{"product_id": self.product.id, "quantity": 1}],
+                        user=self.staff,
+                    )
+
+        send_mock.assert_not_called()
+
+    def test_partial_stock_not_hitting_zero_does_not_notify(self):
+        self.product.stock_quantity = 5
+        self.product.save(update_fields=["stock_quantity"])
+
+        with mock.patch("core.views.send_to_users", return_value=(0, 0)) as send_mock:
+            with self.captureOnCommitCallbacks(execute=True):
+                create_sale(
+                    gym=self.gym,
+                    items=[{"product_id": self.product.id, "quantity": 2}],
+                    user=self.staff,
+                )
+
+        send_mock.assert_not_called()
+
+    def test_restock_then_zero_again_notifies_twice_with_distinct_kinds(self):
+        with mock.patch("core.views.send_to_users", return_value=(0, 0)) as send_mock:
+            with self.captureOnCommitCallbacks(execute=True):
+                create_sale(
+                    gym=self.gym,
+                    items=[{"product_id": self.product.id, "quantity": 1}],
+                    user=self.staff,
+                )
+
+            self.product.stock_quantity = 3
+            self.product.save(update_fields=["stock_quantity"])
+
+            with self.captureOnCommitCallbacks(execute=True):
+                create_sale(
+                    gym=self.gym,
+                    items=[{"product_id": self.product.id, "quantity": 3}],
+                    user=self.staff,
+                )
+
+        self.assertEqual(send_mock.call_count, 2)
+        rows = NotificationSend.objects.filter(
+            user=self.owner, subject_id=self.product.id, kind__startswith="out_of_stock",
+        )
+        self.assertEqual(rows.count(), 2)
+        kinds = set(rows.values_list("kind", flat=True))
+        self.assertEqual(len(kinds), 2)
+
+    def test_stock_adjustment_hitting_zero_notifies(self):
+        with mock.patch("core.views.send_to_users", return_value=(0, 0)) as send_mock:
+            with self.captureOnCommitCallbacks(execute=True):
+                resp = self.as_owner().post(
+                    f"{API}/products/{self.product.id}/adjust/",
+                    {"delta": -1, "reason": "damaged"}, format="json",
+                )
+
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        send_mock.assert_called_once()
+
+    def test_out_of_stock_send_failure_does_not_fail_the_sale(self):
+        with mock.patch("core.views.send_to_users", side_effect=RuntimeError("boom")):
+            with self.captureOnCommitCallbacks(execute=True):
+                sale = create_sale(
+                    gym=self.gym,
+                    items=[{"product_id": self.product.id, "quantity": 1}],
+                    user=self.staff,
+                )
+        self.assertIsNotNone(sale)
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 0)
+
+
+class ConcurrentOutOfStockNotificationTests(TransactionTestCase):
+    def setUp(self):
+        self.gym = make_gym("Concurrent Stock Gym")
+        self.location = make_location(self.gym)
+        self.owner = make_staff_user(self.gym, "concurrentowner@test.com",
+                                     role=StaffProfile.OWNER, location=self.location)
+        self.product = make_product(self.gym, stock=1)
+
+    def test_two_concurrent_sales_of_last_unit_notify_exactly_once(self):
+        results = []
+
+        def sell():
+            connections.close_all()
+            try:
+                create_sale(
+                    gym=self.gym,
+                    items=[{"product_id": self.product.id, "quantity": 1}],
+                    user=self.owner,
+                )
+                results.append("ok")
+            except Exception:
+                results.append("fail")
+            finally:
+                connections.close_all()
+
+        with mock.patch("core.views.send_to_users", return_value=(0, 0)) as send_mock:
+            t1 = threading.Thread(target=sell)
+            t2 = threading.Thread(target=sell)
+            t1.start()
+            t2.start()
+            t1.join()
+            t2.join()
+
+        self.assertEqual(results.count("ok"), 1)
+        self.assertEqual(results.count("fail"), 1)
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 0)
+        # on_commit callbacks run for real in TransactionTestCase (each
+        # thread's transaction actually commits), so the notification for
+        # the one successful sale should have fired exactly once.
+        self.assertEqual(send_mock.call_count, 1)
