@@ -236,33 +236,12 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
             icon: const Icon(Icons.arrow_back, color: AppColors.ink),
             onPressed: () => Navigator.of(context).pop(_dirty),
           ),
-          title: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'Inventory',
-                style: TextStyle(
-                  color: AppColors.ink,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: AppColors.accentTealBg,
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  '${allProducts.length} items',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.accentTeal,
-                  ),
-                ),
-              ),
-            ],
+          title: const Text(
+            'Inventory',
+            style: TextStyle(
+              color: AppColors.ink,
+              fontWeight: FontWeight.w700,
+            ),
           ),
         ),
         body: SafeArea(
@@ -289,13 +268,32 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                       ],
                       Row(
                         children: [
-                          Text(
-                            'INVENTORY ITEMS · ${allProducts.length} Products',
-                            style: const TextStyle(
+                          const Text(
+                            'INVENTORY ITEMS',
+                            style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w700,
                               letterSpacing: 0.4,
                               color: AppColors.muted,
+                            ),
+                          ),
+                          const Spacer(),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppColors.fieldBg,
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Text(
+                              '${allProducts.length} Products',
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.muted,
+                              ),
                             ),
                           ),
                         ],
