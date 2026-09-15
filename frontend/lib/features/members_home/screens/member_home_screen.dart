@@ -172,6 +172,16 @@ class _MemberHomeScreenState extends ConsumerState<MemberHomeScreen>
                   const _NfcStatusPill(),
                   const SizedBox(height: 14),
 
+                  // Phase 5 Part C — membership renewal banner, above
+                  // the card per S3. Derived entirely from stats
+                  // (itself sourced from the cached /me/summary/ via
+                  // memberStatsProvider) — no new call, no new
+                  // provider.
+                  _MembershipBanner(
+                    status: statusFor(stats.currentEndDate, today),
+                    daysLeft: daysLeft,
+                  ),
+
                   // 4. VIP Digital Membership Card (Hero Card)
                   _VipMembershipCard(
                     gymName: user.gym?.name ?? '',
@@ -481,6 +491,85 @@ class _NfcStatusPill extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Phase 5 Part C — membership renewal banner
+// ---------------------------------------------------------------------------
+
+/// C3's tone requirement is the whole point of this widget: plain,
+/// factual, no urgency language, no countdown, no red — a neutral gray
+/// card that reads like information, not a warning. Dismissible for
+/// the session only (C2) — in-memory State, never persisted, so it
+/// comes back next time the screen mounts because the situation is
+/// still true.
+class _MembershipBanner extends StatefulWidget {
+  const _MembershipBanner({required this.status, required this.daysLeft});
+
+  final MembershipStatus status;
+  final int? daysLeft;
+
+  @override
+  State<_MembershipBanner> createState() => _MembershipBannerState();
+}
+
+class _MembershipBannerState extends State<_MembershipBanner> {
+  bool _dismissed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    if (_dismissed) return const SizedBox.shrink();
+    if (widget.status != MembershipStatus.expiring &&
+        widget.status != MembershipStatus.expired) {
+      return const SizedBox.shrink();
+    }
+
+    final String message;
+    if (widget.status == MembershipStatus.expired) {
+      message = 'Your membership has expired — talk to the front desk';
+    } else if (widget.daysLeft == 0) {
+      message = 'Your membership ends today';
+    } else {
+      final d = widget.daysLeft ?? 0;
+      message =
+          'Your membership ends in $d ${d == 1 ? 'day' : 'days'} — talk '
+          'to the front desk to renew';
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF3F4F6),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                message,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: Color(0xFF4B5563),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            InkWell(
+              onTap: () => setState(() => _dismissed = true),
+              borderRadius: BorderRadius.circular(999),
+              child: const Padding(
+                padding: EdgeInsets.all(2),
+                child: Icon(Icons.close, size: 16, color: Color(0xFF6B7280)),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -186,6 +186,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 ),
 
                 const _TrialCountdownBanner(),
+                _RenewalsBanner(count: stats.expiringSoon),
 
                 const SizedBox(height: 20),
 
@@ -356,6 +357,65 @@ class _TrialCountdownBanner extends ConsumerWidget {
                   Icons.chevron_right,
                   size: 18,
                   color: AppColors.expiringBg,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Phase 5 B3 — "the count belongs on Home ... so it's seen without
+/// opening the screen." Derived from the same dashboardStatsProvider
+/// the Membership Mix card already watches (statusFor() over the
+/// locally-cached member list — see that provider's own doc comment
+/// on why every "expiring" count in the app routes through one place)
+/// rather than a fresh fetch of its own; hidden entirely when there's
+/// nothing to chase, same as the trial banner above it.
+class _RenewalsBanner extends StatelessWidget {
+  const _RenewalsBanner({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    if (count == 0) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Material(
+        color: AppColors.cardBg,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () => context.push('/renewals'),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.event_repeat_outlined,
+                  size: 18,
+                  color: AppColors.accentTeal,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    '$count membership${count == 1 ? '' : 's'} expiring '
+                    'this week',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.ink,
+                    ),
+                  ),
+                ),
+                const Icon(
+                  Icons.chevron_right,
+                  size: 18,
+                  color: AppColors.muted,
                 ),
               ],
             ),

@@ -9,3 +9,4 @@ staticfiles/
 backup*.txt
 cached/
 _qr_display.*
+_set_expiry.*

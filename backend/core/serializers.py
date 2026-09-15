@@ -4,7 +4,7 @@ from django.utils import timezone
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from .models import Announcement, Event, EventRegistration, EventResult
-from .models import CheckIn, Location, Member, Membership, MembershipPlan
+from .models import CheckIn, Location, Member, Membership, MembershipPlan, RenewalReminder
 from django.contrib.auth.password_validation import validate_password
 from django.utils.text import slugify
 from .models import Gym, Location, MembershipPlan, StaffProfile, Subscription, User
@@ -307,6 +307,61 @@ class MemberWriteSerializer(serializers.ModelSerializer):
                 created_by=self.context["request"].user,
             )
         return member
+
+
+class ExpiringMemberSerializer(serializers.ModelSerializer):
+    """
+    Phase 5 A2 — one row of the renewal worklist. current_plan_category
+    (not a plan name) matches how "the plan" is shown to a user
+    everywhere else in the app — MemberSerializer does the same.
+    reminder_contacted_at/reminder_contacted_by_name are annotated onto
+    the queryset by MemberViewSet.expiring(), null when nobody's
+    reached out yet.
+    """
+    full_name = serializers.CharField(read_only=True)
+    current_end_date = serializers.DateField(read_only=True)
+    current_plan_category = serializers.CharField(read_only=True)
+    days_remaining = serializers.SerializerMethodField()
+    reminder = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Member
+        fields = ["id", "full_name", "member_code", "phone",
+                  "current_plan_category", "current_end_date",
+                  "days_remaining", "reminder"]
+
+    def get_days_remaining(self, obj):
+        return (obj.current_end_date - self.context["today"]).days
+
+    def get_reminder(self, obj):
+        contacted_at = getattr(obj, "reminder_contacted_at", None)
+        if contacted_at is None:
+            return None
+        return {
+            "contacted_at": contacted_at,
+            "contacted_by": getattr(obj, "reminder_contacted_by_name", None),
+        }
+
+
+class RenewalReminderSerializer(serializers.ModelSerializer):
+    """
+    Phase 5 A3. gym/member/membership/contacted_at/contacted_by are all
+    set server-side in MemberViewSet.remind() via serializer.save(...)
+    kwargs, never from client input — only id (optional, client-
+    generated, same convention as every other write in this project)
+    and note are actually writable here.
+    """
+    id = serializers.UUIDField(required=False)
+    contacted_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = RenewalReminder
+        fields = ["id", "contacted_at", "contacted_by_name", "note"]
+        read_only_fields = ["contacted_at"]
+
+    def get_contacted_by_name(self, obj):
+        return obj.contacted_by.full_name if obj.contacted_by_id else None
+
 
 class CheckInSerializer(serializers.ModelSerializer):
     member_name = serializers.SerializerMethodField()
