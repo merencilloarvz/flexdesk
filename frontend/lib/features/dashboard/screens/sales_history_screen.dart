@@ -1,8 +1,13 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../../core/theme/colors.dart';
+import '../../../core/utils/csv_writer.dart';
 import '../providers/analytics_providers.dart';
 
 String _formatPeso(double amount) {
@@ -34,6 +39,80 @@ IconData _activityIcon(String type) {
     default:
       return Icons.directions_walk;
   }
+}
+
+String _csvTypeLabel(String type) {
+  switch (type) {
+    case 'member':
+      return 'Membership';
+    case 'retail':
+      return 'Retail POS';
+    default:
+      return 'Walk-in';
+  }
+}
+
+String _weekStatusLabel(String status) {
+  switch (status) {
+    case 'in_progress':
+      return 'In Progress';
+    case 'peak':
+      return 'Peak Week';
+    case 'opener':
+      return 'Month Opener';
+    default:
+      return 'Change';
+  }
+}
+
+/// 1D/1W export — one row per transaction, flattened out of the
+/// on-screen day groups; a Date column keeps the day info that
+/// flattening would otherwise lose. Row order matches what's shown
+/// on screen (newest first).
+String _buildGroupedCsv(List<_DayGroup> groups) {
+  final dateFormat = DateFormat('yyyy-MM-dd');
+  final rows = <List<Object?>>[];
+  for (final group in groups) {
+    final dateStr = dateFormat.format(group.date);
+    for (final t in group.transactions) {
+      rows.add([dateStr, _csvTypeLabel(t.type), t.title, t.subtitle, t.amount.toStringAsFixed(2)]);
+    }
+  }
+  return buildCsv(
+    ['Date', 'Type', 'Description', 'Details', 'Amount (PHP)'],
+    rows,
+  );
+}
+
+/// 1M export — one row per week, oldest (Week 1) first, the
+/// conventional top-to-bottom reading order for a spreadsheet even
+/// though the on-screen cards run newest-first.
+String _buildWeeklyCsv(List<_WeekRollup> weeks) {
+  final dateFormat = DateFormat('yyyy-MM-dd');
+  final chronological = weeks.reversed.toList();
+  final rows = <List<Object?>>[];
+  for (var i = 0; i < chronological.length; i++) {
+    final w = chronological[i];
+    rows.add([
+      'Week ${i + 1}',
+      dateFormat.format(w.startDate),
+      dateFormat.format(w.endDate),
+      _weekStatusLabel(w.status),
+      w.changePct?.toStringAsFixed(1) ?? '',
+      w.orderCount,
+      w.total.toStringAsFixed(2),
+      (w.categories['membership'] ?? 0).toStringAsFixed(2),
+      (w.categories['retail'] ?? 0).toStringAsFixed(2),
+      (w.categories['walk_ins'] ?? 0).toStringAsFixed(2),
+    ]);
+  }
+  return buildCsv(
+    [
+      'Week', 'Start Date', 'End Date', 'Status', 'Change %', 'Order Count',
+      'Total (PHP)', 'Membership (PHP)', 'Retail POS (PHP)', 'Walk-ins (PHP)',
+    ],
+    rows,
+  );
 }
 
 /// One calendar day's worth of transactions, as returned by
@@ -198,6 +277,31 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
     _load();
   }
 
+  bool _exporting = false;
+
+  Future<void> _exportCsv() async {
+    if (_exporting) return;
+    setState(() => _exporting = true);
+    try {
+      final csv = _range == '1M' ? _buildWeeklyCsv(_weeks) : _buildGroupedCsv(_groups);
+      final dir = await getTemporaryDirectory();
+      final stamp = DateFormat('yyyy-MM-dd').format(DateTime.now());
+      final file = File('${dir.path}/sales-history-${_range.toLowerCase()}-$stamp.csv');
+      await file.writeAsString(csv);
+      await SharePlus.instance.share(
+        ShareParams(files: [XFile(file.path)], subject: 'Sales History ($_range)'),
+      );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Couldn't export — please try again.")),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
   void _showSearchStub() {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Search is coming soon.')),
@@ -265,7 +369,12 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
           if (period != null)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-              child: _SummaryCard(period: period, range: _range),
+              child: _SummaryCard(
+                period: period,
+                range: _range,
+                exporting: _exporting,
+                onExport: _exportCsv,
+              ),
             ),
           const Expanded(
             child: Center(
@@ -285,7 +394,12 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
       children: [
-        _SummaryCard(period: period, range: _range),
+        _SummaryCard(
+          period: period,
+          range: _range,
+          exporting: _exporting,
+          onExport: _exportCsv,
+        ),
         const SizedBox(height: 16),
         _PeriodHeader(range: _range, period: period, today: today),
         const SizedBox(height: 10),
@@ -320,8 +434,32 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
       );
     }
 
+    // 1M has no separate period-summary endpoint of its own — it's
+    // just the sum of the weeks already on screen.
+    final monthPeriod = _Period(
+      total: _weeks.fold<double>(0, (sum, w) => sum + w.total),
+      orderCount: _weeks.fold<int>(0, (sum, w) => sum + w.orderCount),
+    );
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+          child: _SummaryCard(
+            period: monthPeriod,
+            range: _range,
+            exporting: _exporting,
+            onExport: _exportCsv,
+          ),
+        ),
+        Expanded(child: _buildWeeklyRollupList()),
+      ],
+    );
+  }
+
+  Widget _buildWeeklyRollupList() {
     return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
       itemCount: _weeks.length,
       separatorBuilder: (_, _) => const SizedBox(height: 12),
       itemBuilder: (context, index) {
@@ -333,15 +471,31 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
   }
 }
 
-String _periodNoun(String range) => range == '1D' ? 'Today' : 'This Week';
+String _periodNoun(String range) {
+  switch (range) {
+    case '1D':
+      return 'Today';
+    case '1M':
+      return 'This Month';
+    default:
+      return 'This Week';
+  }
+}
 
-/// Total + order count + a stubbed Export button (disabled — CSV/PDF
-/// export is a separate, not-yet-decided task).
+/// Total + order count + an Export button that shares the currently
+/// viewed range as a CSV via the platform share sheet.
 class _SummaryCard extends StatelessWidget {
-  const _SummaryCard({required this.period, required this.range});
+  const _SummaryCard({
+    required this.period,
+    required this.range,
+    required this.exporting,
+    required this.onExport,
+  });
 
   final _Period period;
   final String range;
+  final bool exporting;
+  final VoidCallback onExport;
 
   @override
   Widget build(BuildContext context) {
@@ -385,29 +539,30 @@ class _SummaryCard extends StatelessWidget {
               ],
             ),
           ),
-          // Export (CSV/PDF) is a separate task — shown but disabled
-          // rather than wired to a fake action.
-          Tooltip(
-            message: 'Export coming soon',
-            child: TextButton.icon(
-              onPressed: null,
-              icon: const Icon(Icons.ios_share, size: 15),
-              label: const Text('Export'),
-              style: TextButton.styleFrom(
-                foregroundColor: AppColors.muted,
-                disabledForegroundColor: AppColors.muted,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 6,
-                ),
-                backgroundColor: AppColors.fieldBg,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                textStyle: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                ),
+          TextButton.icon(
+            onPressed: exporting ? null : onExport,
+            icon: exporting
+                ? const SizedBox(
+                    width: 15,
+                    height: 15,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: AppColors.accentTeal,
+                    ),
+                  )
+                : const Icon(Icons.ios_share, size: 15),
+            label: Text(exporting ? 'Exporting…' : 'Export'),
+            style: TextButton.styleFrom(
+              foregroundColor: AppColors.accentTeal,
+              disabledForegroundColor: AppColors.muted,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              backgroundColor: AppColors.accentTealBg,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(999),
+              ),
+              textStyle: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ),
