@@ -978,3 +978,8 @@ class StockAdjustmentInputSerializer(serializers.Serializer):
         if value == 0:
             raise serializers.ValidationError("Delta cannot be zero.")
         return value
+
+
+class DeviceTokenSerializer(serializers.Serializer):
+    token = serializers.CharField(max_length=255)
+    platform = serializers.ChoiceField(choices=["android", "ios"])

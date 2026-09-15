@@ -50,6 +50,12 @@ PAYMONGO_WEBHOOK_SECRET = config("PAYMONGO_WEBHOOK_SECRET", default="")
 PAYMONGO_SUBSCRIPTION_PRICE_CENTAVOS = config(
     "PAYMONGO_SUBSCRIPTION_PRICE_CENTAVOS", default=0, cast=int)
 
+# Push notifications (Phase 4). The full JSON contents of the Firebase
+# service account key, as one env var — a secret, never committed. Empty
+# by default so local dev and any host without it configured no-ops
+# sending instead of failing: see core/notifications.py.
+FIREBASE_SERVICE_ACCOUNT_JSON = config("FIREBASE_SERVICE_ACCOUNT_JSON", default="")
+
 # Railway terminates TLS in front of the app, so Django sees plain HTTP
 # unless told otherwise. SECURE_PROXY_SSL_HEADER and SECURE_SSL_REDIRECT
 # must go together — without the first, the second creates an infinite
