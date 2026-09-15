@@ -77,14 +77,52 @@ class _Period {
   }
 }
 
+/// One 7-day (or, for the newest bucket, shorter) rollup, as returned
+/// by /analytics/sales-history/ for range=1M.
+class _WeekRollup {
+  const _WeekRollup({
+    required this.startDate,
+    required this.endDate,
+    required this.total,
+    required this.orderCount,
+    required this.categories,
+    required this.status,
+    required this.changePct,
+  });
+
+  final DateTime startDate;
+  final DateTime endDate;
+  final double total;
+  final int orderCount;
+  final Map<String, double> categories;
+
+  /// 'in_progress' | 'peak' | 'opener' | 'change'.
+  final String status;
+  final double? changePct;
+
+  factory _WeekRollup.fromJson(Map<String, dynamic> json) {
+    return _WeekRollup(
+      startDate: DateTime.parse(json['start_date'] as String),
+      endDate: DateTime.parse(json['end_date'] as String),
+      total: double.parse(json['total'].toString()),
+      orderCount: json['order_count'] as int,
+      categories: (json['categories'] as Map<String, dynamic>).map(
+        (k, v) => MapEntry(k, double.parse(v.toString())),
+      ),
+      status: json['status'] as String,
+      changePct: (json['change_pct'] as num?)?.toDouble(),
+    );
+  }
+}
+
 /// Full transaction list behind the Activity Log card's "View All"
 /// link — same three sources (walk-in check-ins, memberships, sales)
 /// and the same 1D/1W/1M ranges as Sales Overview.
 ///
-/// 1D/1W show transactions grouped by calendar day (Phase A). 1M
-/// still shows the older flat, paginated list for now — Phase B
-/// replaces it with weekly rollup cards, matching the reference
-/// design's very different layout for that range.
+/// 1D/1W show transactions grouped by calendar day; 1M shows weekly
+/// rollup cards instead (week range, total, category breakdown,
+/// status) — a genuinely different layout for that range, not a
+/// reshape of the day-grouped list.
 class SalesHistoryScreen extends ConsumerStatefulWidget {
   const SalesHistoryScreen({super.key, required this.gymId});
 
@@ -104,10 +142,8 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
   _Period? _period;
   List<_DayGroup> _groups = const [];
 
-  // 1M state — unchanged flat/paginated shape from before Phase A.
-  List<RecentActivity> _items = const [];
-  String? _nextUrl;
-  bool _loadingMore = false;
+  // 1M state.
+  List<_WeekRollup> _weeks = const [];
 
   @override
   void initState() {
@@ -126,21 +162,19 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
       final api = ref.read(analyticsApiProvider);
       final json = await api.fetchSalesHistory(range: _range);
       if (!mounted) return;
-      if (_isGrouped) {
+      if (_range == '1M') {
+        setState(() {
+          _weeks = (json['weeks'] as List)
+              .map((w) => _WeekRollup.fromJson(w as Map<String, dynamic>))
+              .toList();
+          _loading = false;
+        });
+      } else {
         setState(() {
           _period = _Period.fromJson(json['period'] as Map<String, dynamic>);
           _groups = (json['groups'] as List)
               .map((g) => _DayGroup.fromJson(g as Map<String, dynamic>))
               .toList();
-          _loading = false;
-        });
-      } else {
-        final results = json['results'] as List;
-        setState(() {
-          _items = results
-              .map((r) => RecentActivity.fromJson(r as Map<String, dynamic>))
-              .toList();
-          _nextUrl = json['next'] as String?;
           _loading = false;
         });
       }
@@ -153,40 +187,13 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
     }
   }
 
-  Future<void> _loadMore() async {
-    if (_nextUrl == null || _loadingMore) return;
-    _loadingMore = true;
-    try {
-      final api = ref.read(analyticsApiProvider);
-      final json = await api.fetchSalesHistory(
-        range: _range,
-        pageUrl: _nextUrl,
-      );
-      final results = json['results'] as List;
-      if (!mounted) return;
-      setState(() {
-        _items = [
-          ..._items,
-          ...results.map(
-            (r) => RecentActivity.fromJson(r as Map<String, dynamic>),
-          ),
-        ];
-        _nextUrl = json['next'] as String?;
-        _loadingMore = false;
-      });
-    } catch (_) {
-      _loadingMore = false;
-    }
-  }
-
   void _setRange(String range) {
     if (range == _range) return;
     setState(() {
       _range = range;
       _period = null;
       _groups = const [];
-      _items = const [];
-      _nextUrl = null;
+      _weeks = const [];
     });
     _load();
   }
@@ -247,7 +254,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
         ),
       );
     }
-    return _isGrouped ? _buildGroupedBody() : _buildFlatBody();
+    return _isGrouped ? _buildGroupedBody() : _buildWeeklyRollupBody();
   }
 
   Widget _buildGroupedBody() {
@@ -303,8 +310,8 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
     );
   }
 
-  Widget _buildFlatBody() {
-    if (_items.isEmpty) {
+  Widget _buildWeeklyRollupBody() {
+    if (_weeks.isEmpty) {
       return const Center(
         child: Text(
           'No transactions in this range.',
@@ -313,25 +320,14 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
       );
     }
 
-    final hasMore = _nextUrl != null;
     return ListView.separated(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-      itemCount: _items.length + (hasMore ? 1 : 0),
+      itemCount: _weeks.length,
       separatorBuilder: (_, _) => const SizedBox(height: 12),
       itemBuilder: (context, index) {
-        if (index >= _items.length) {
-          // A lazily-built sentinel row: becoming visible is the
-          // trigger to fetch the next page, giving infinite scroll
-          // without a separate ScrollController.
-          WidgetsBinding.instance.addPostFrameCallback((_) => _loadMore());
-          return const Padding(
-            padding: EdgeInsets.symmetric(vertical: 16),
-            child: Center(
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
-          );
-        }
-        return _SalesHistoryRow(item: _items[index]);
+        // Returned newest-first; the oldest (last) entry is Week 1.
+        final weekNumber = _weeks.length - index;
+        return _WeekRollupCard(week: _weeks[index], weekNumber: weekNumber);
       },
     );
   }
@@ -662,5 +658,215 @@ class _SalesHistoryRow extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+String _weekDateRangeLabel(DateTime start, DateTime end) {
+  if (start.month == end.month) {
+    return '${DateFormat('MMM d').format(start)} – ${DateFormat('d').format(end)}';
+  }
+  return '${DateFormat('MMM d').format(start)} – ${DateFormat('MMM d').format(end)}';
+}
+
+/// One week's rollup — range, status, total, and a
+/// Membership/Retail/Walk-ins breakdown. `weekNumber` counts from the
+/// oldest bucket (Week 1) even though the list itself is newest-first.
+class _WeekRollupCard extends StatelessWidget {
+  const _WeekRollupCard({required this.week, required this.weekNumber});
+
+  final _WeekRollup week;
+  final int weekNumber;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.cardBg,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(
+                  'Week $weekNumber (${_weekDateRangeLabel(week.startDate, week.endDate)})',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.ink,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              _WeekStatusBadge(status: week.status, changePct: week.changePct),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '${week.orderCount} order${week.orderCount == 1 ? '' : 's'} registered',
+            style: const TextStyle(fontSize: 11, color: AppColors.muted),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _formatPeso(week.total),
+            style: const TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+              color: AppColors.ink,
+              height: 1,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: _CategoryAmount(
+                  label: 'Membership',
+                  amount: week.categories['membership'] ?? 0,
+                  color: AppColors.accentTeal,
+                ),
+              ),
+              Expanded(
+                child: _CategoryAmount(
+                  label: 'Retail POS',
+                  amount: week.categories['retail'] ?? 0,
+                  color: AppColors.categoryAmber,
+                ),
+              ),
+              Expanded(
+                child: _CategoryAmount(
+                  label: 'Walk-ins',
+                  amount: week.categories['walk_ins'] ?? 0,
+                  color: AppColors.categoryTeal,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CategoryAmount extends StatelessWidget {
+  const _CategoryAmount({
+    required this.label,
+    required this.amount,
+    required this.color,
+  });
+
+  final String label;
+  final double amount;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(
+              width: 6,
+              height: 6,
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            ),
+            const SizedBox(width: 5),
+            Expanded(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.muted,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 3),
+        Text(
+          _formatPeso(amount),
+          style: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: AppColors.ink,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// "IN PROGRESS" (live pill) / "Peak week" (highlighted pill) /
+/// "Month opener" (plain muted text, week 1 only) / "+12.0% vs last
+/// wk" (green/red pill, same up-down convention as the Sales Overview
+/// card's own revenue-change badge).
+class _WeekStatusBadge extends StatelessWidget {
+  const _WeekStatusBadge({required this.status, required this.changePct});
+
+  final String status;
+  final double? changePct;
+
+  Widget _pill(String text, Color background, Color foreground) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          color: foreground,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    switch (status) {
+      case 'in_progress':
+        return _pill('IN PROGRESS', AppColors.successBg, AppColors.linkGreen);
+      case 'peak':
+        return _pill(
+          'Peak week',
+          AppColors.categoryAmber.withValues(alpha: 0.16),
+          AppColors.categoryAmber,
+        );
+      case 'opener':
+        return const Text(
+          'Month opener',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: AppColors.muted,
+          ),
+        );
+      case 'change':
+      default:
+        final pct = changePct;
+        if (pct == null) {
+          return const Text(
+            'vs last week',
+            style: TextStyle(fontSize: 11, color: AppColors.muted),
+          );
+        }
+        final positive = pct >= 0;
+        return _pill(
+          '${positive ? '+' : ''}${pct.toStringAsFixed(1)}% vs last wk',
+          positive ? AppColors.successBg : AppColors.errorBg,
+          positive ? AppColors.linkGreen : AppColors.errorText,
+        );
+    }
   }
 }

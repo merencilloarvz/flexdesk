@@ -8,7 +8,6 @@ from rest_framework.decorators import action
 from rest_framework.generics import ListAPIView, RetrieveAPIView
 from rest_framework.response import Response
 from rest_framework.exceptions import MethodNotAllowed, ValidationError
-from rest_framework.pagination import PageNumberPagination
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.views import TokenObtainPairView
 from django.utils import timezone
@@ -977,6 +976,98 @@ def _grouped_sales_history(gym, tz, start_dt, end_dt):
     }
 
 
+_CATEGORY_KEY = {"member": "membership", "retail": "retail", "walk_in": "walk_ins"}
+
+
+def _weekly_rollups(gym, tz, start_date, today):
+    """
+    SalesHistoryView's 1M shape: transactions bucketed into 7-day
+    chunks counted from start_date -- same anchor the chart's own 1M
+    bucketing uses. 30 isn't divisible by 7, so the newest bucket can
+    be a short trailing partial week; that's expected, not a bug.
+
+    Each bucket gets a total, order count, and a
+    membership/retail/walk_ins amount breakdown, plus a status:
+    - the newest bucket (the one that reaches `today`) is always
+      "in_progress" -- more of today's transactions could still land
+      before the day ends.
+    - the highest-total bucket among the REST is "peak" -- an
+      in-progress bucket hasn't finished accumulating yet, so it
+      can't fairly win that comparison.
+    - the oldest bucket is "opener" (no earlier bucket to diff
+      against) unless it's also the peak, which wins.
+    - everything else is "change" with change_pct vs. the previous
+      (chronologically earlier) bucket's total; a zero-total previous
+      bucket leaves change_pct null rather than dividing by zero.
+    """
+    start_dt = datetime.combine(start_date, time.min, tzinfo=tz)
+    end_dt = datetime.combine(today + timedelta(days=1), time.min, tzinfo=tz)
+    rows = _activity_rows_raw(gym, tz, start_dt, end_dt)
+
+    bucket_bounds = []
+    d = start_date
+    while d <= today:
+        bucket_end = min(d + timedelta(days=6), today)
+        bucket_bounds.append((d, bucket_end))
+        d = bucket_end + timedelta(days=1)
+
+    buckets = [
+        {
+            "start_date": b_start, "end_date": b_end,
+            "total": Decimal("0"), "order_count": 0,
+            "categories": {"membership": Decimal("0"), "retail": Decimal("0"),
+                          "walk_ins": Decimal("0")},
+        }
+        for b_start, b_end in bucket_bounds
+    ]
+
+    for r in rows:
+        day = r["at"].astimezone(tz).date()
+        for bucket in buckets:
+            if bucket["start_date"] <= day <= bucket["end_date"]:
+                bucket["total"] += r["amount"]
+                bucket["order_count"] += 1
+                bucket["categories"][_CATEGORY_KEY[r["type"]]] += r["amount"]
+                break
+
+    # The loop above always stops once bucket_end reaches `today`, so
+    # the last bucket built is always the one containing it.
+    in_progress_idx = len(buckets) - 1
+    completed_indexes = [i for i in range(len(buckets)) if i != in_progress_idx]
+    peak_idx = (
+        max(completed_indexes, key=lambda i: buckets[i]["total"])
+        if completed_indexes else None
+    )
+
+    result = []
+    for i, b in enumerate(buckets):
+        if i == in_progress_idx:
+            status, change_pct = "in_progress", None
+        elif i == peak_idx:
+            status, change_pct = "peak", None
+        elif i == 0:
+            status, change_pct = "opener", None
+        else:
+            prev_total = buckets[i - 1]["total"]
+            status = "change"
+            change_pct = (
+                None if prev_total == 0
+                else round(float((b["total"] - prev_total) / prev_total * 100), 1)
+            )
+        result.append({
+            "start_date": b["start_date"].isoformat(),
+            "end_date": b["end_date"].isoformat(),
+            "total": _money_str(b["total"]),
+            "order_count": b["order_count"],
+            "categories": {k: _money_str(v) for k, v in b["categories"].items()},
+            "status": status,
+            "change_pct": change_pct,
+        })
+
+    result.reverse()  # newest first
+    return {"weeks": result}
+
+
 class ActivityLogView(APIView):
     """
     Owner-only "Today's Activity Log" feed for the dashboard — merges
@@ -1014,8 +1105,8 @@ class SalesHistoryView(APIView):
     - 1D/1W: grouped by gym-local calendar day, {period, groups}. Not
       paginated -- a day or week's worth of transactions is small
       enough to return in full (see _grouped_sales_history).
-    - 1M: flat, paginated list (unchanged for now). Phase 2 replaces
-      this with weekly rollup cards, matching the reference design.
+    - 1M: weekly rollup cards, {weeks: [...]} -- see _weekly_rollups.
+      Also not paginated: at most ~5 buckets for a 30-day window.
     """
     permission_classes = [IsGymStaff, IsOwner, SubscriptionActive]
 
@@ -1029,17 +1120,13 @@ class SalesHistoryView(APIView):
         tz = ZoneInfo(gym.timezone)
         today = gym_today(gym)
         start_date = today - timedelta(days=n - 1)
+
+        if range_key == "1M":
+            return Response(_weekly_rollups(gym, tz, start_date, today))
+
         start_dt = datetime.combine(start_date, time.min, tzinfo=tz)
         end_dt = datetime.combine(today + timedelta(days=1), time.min, tzinfo=tz)
-
-        if range_key in ("1D", "1W"):
-            return Response(_grouped_sales_history(gym, tz, start_dt, end_dt))
-
-        transactions = _activity_rows(gym, tz, start_dt, end_dt)
-
-        paginator = PageNumberPagination()
-        page = paginator.paginate_queryset(transactions, request, view=self)
-        return paginator.get_paginated_response(page)
+        return Response(_grouped_sales_history(gym, tz, start_dt, end_dt))
 
 
 class CheckInViewSet(GymScopedViewSet):
