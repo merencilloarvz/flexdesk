@@ -18,6 +18,8 @@ const Color _cAccentTealBg = Color(0xFFE1F5EE);
 const Color _cErrorText = Color(0xFF9E3125);
 const Color _cErrorBg = Color(0xFFFCEBE8);
 const Color _cDisabledBg = Color(0xFFE2E5E3);
+const Color _cStatusActive = Color(0xFF1F9D63);
+const Color _cStatusInactive = Color(0xFFB0413E);
 
 const List<String> _durationUnits = ['DAY', 'WEEK', 'MONTH', 'YEAR'];
 
@@ -141,34 +143,6 @@ class _ManagePlansScreenState extends ConsumerState<ManagePlansScreen> {
                     TextButton(
                       onPressed: _logout,
                       child: const Text('Log out'),
-                    )
-                  else
-                    plansAsync.when(
-                      data: (allPlans) {
-                        final visible = allPlans
-                            .where((p) => !p.isDayPass)
-                            .length;
-                        return Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 5,
-                          ),
-                          decoration: BoxDecoration(
-                            color: _cAccentTealBg,
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: Text(
-                            '$visible Total',
-                            style: const TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: _cAccentTeal,
-                            ),
-                          ),
-                        );
-                      },
-                      loading: () => const SizedBox.shrink(),
-                      error: (_, _) => const SizedBox.shrink(),
                     ),
                 ],
               ),
@@ -287,21 +261,25 @@ class _ManagePlansScreenState extends ConsumerState<ManagePlansScreen> {
                               ),
                       )
                     : FilledButton.icon(
-                  onPressed: () => openPlanForm(context, gymId: widget.gymId),
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text(
-                    'Add Plan',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-                  ),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: _cAccentTeal,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                  ),
-                ),
+                        onPressed: () =>
+                            openPlanForm(context, gymId: widget.gymId),
+                        icon: const Icon(Icons.add, size: 18),
+                        label: const Text(
+                          'Add New Plan',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: _cAccentTeal,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                        ),
+                      ),
               ),
             ],
           ),
@@ -330,13 +308,14 @@ class _FilterTab extends StatelessWidget {
         duration: const Duration(milliseconds: 160),
         padding: const EdgeInsets.symmetric(vertical: 8),
         decoration: BoxDecoration(
-          color: selected ? _cCardBg : Colors.transparent,
+          color: selected ? _cAccentTeal : Colors.transparent,
           borderRadius: BorderRadius.circular(9),
           boxShadow: selected
               ? [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.06),
-                    blurRadius: 4,
+                    color: Colors.black.withValues(alpha: 0.12),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
                   ),
                 ]
               : null,
@@ -347,7 +326,7 @@ class _FilterTab extends StatelessWidget {
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w600,
-            color: selected ? _cAccentTeal : _cMuted,
+            color: selected ? Colors.white : _cMuted,
           ),
         ),
       ),
@@ -398,115 +377,98 @@ class _PlanTile extends ConsumerWidget {
     final durationLabel =
         '${plan.durationValue} ${plan.durationUnit.toLowerCase()}'
         '${plan.durationValue == 1 ? '' : 's'}';
+    final statusColor = plan.isActive ? _cStatusActive : _cStatusInactive;
+    final statusLabel = plan.isActive ? 'Active Tier' : 'Inactive Tier';
 
     return Container(
       decoration: BoxDecoration(
         color: _cCardBg,
         borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      child: Column(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Row(
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  plan.name,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: _cInk,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                  textBaseline: TextBaseline.alphabetic,
                   children: [
-                    Flexible(
-                      child: Text(
-                        plan.name,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          color: _cInk,
-                        ),
+                    Text(
+                      '₱${pesos.toStringAsFixed(0)}',
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        color: _cInk,
                       ),
                     ),
-                    if (plan.category.isNotEmpty) ...[
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 3,
-                        ),
-                        decoration: BoxDecoration(
-                          color: _cAccentTealBg,
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: Text(
-                          plan.category.toUpperCase(),
-                          style: const TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                            color: _cAccentTeal,
-                          ),
-                        ),
-                      ),
-                    ],
-                    if (!plan.isActive) ...[
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 3,
-                        ),
-                        decoration: BoxDecoration(
-                          color: _cErrorBg,
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: const Text(
-                          'INACTIVE',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                            color: _cErrorText,
-                          ),
-                        ),
-                      ),
-                    ],
+                    const SizedBox(width: 4),
+                    Text(
+                      '/ $durationLabel',
+                      style: const TextStyle(fontSize: 12, color: _cMuted),
+                    ),
                   ],
                 ),
-              ),
-              IconButton(
-                icon: const Icon(
-                  Icons.edit_outlined,
-                  size: 19,
-                  color: _cSubtle,
+                const SizedBox(height: 6),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: statusColor,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      statusLabel,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: statusColor,
+                      ),
+                    ),
+                  ],
                 ),
-                onPressed: () =>
-                    _openPlanForm(context, gymId: gymId, existing: plan),
-              ),
-              IconButton(
-                icon: const Icon(
-                  Icons.delete_outline,
-                  size: 19,
-                  color: _cErrorText,
-                ),
-                onPressed: () => _confirmDelete(context, ref, plan),
-              ),
-            ],
+              ],
+            ),
           ),
-          const SizedBox(height: 6),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Text(
-                '₱${pesos.toStringAsFixed(0)}',
-                style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700,
-                  color: _cInk,
-                ),
-              ),
-              const SizedBox(width: 4),
-              Text(
-                '/ $durationLabel',
-                style: const TextStyle(fontSize: 12, color: _cMuted),
-              ),
-            ],
+          const SizedBox(width: 8),
+          _TileIconButton(
+            icon: Icons.edit_outlined,
+            background: _cFieldBg,
+            iconColor: _cSubtle,
+            onPressed: () =>
+                _openPlanForm(context, gymId: gymId, existing: plan),
+          ),
+          const SizedBox(width: 8),
+          _TileIconButton(
+            icon: Icons.delete_outline,
+            background: _cErrorBg,
+            iconColor: _cErrorText,
+            onPressed: () => _confirmDelete(context, ref, plan),
           ),
         ],
       ),
@@ -552,6 +514,40 @@ class _PlanTile extends ConsumerWidget {
         );
       }
     }
+  }
+}
+
+/// Small square icon button used for the edit/delete actions on each
+/// plan tile — a rounded, tinted square rather than a bare IconButton,
+/// to match the compact action pair shown in the design.
+class _TileIconButton extends StatelessWidget {
+  const _TileIconButton({
+    required this.icon,
+    required this.background,
+    required this.iconColor,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final Color background;
+  final Color iconColor;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: background,
+      borderRadius: BorderRadius.circular(9),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(9),
+        onTap: onPressed,
+        child: SizedBox(
+          width: 30,
+          height: 30,
+          child: Icon(icon, size: 16, color: iconColor),
+        ),
+      ),
+    );
   }
 }
 
