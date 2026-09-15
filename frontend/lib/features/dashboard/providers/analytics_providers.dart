@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api/dio_client.dart';
 import '../data/analytics_api.dart';
 
+const activityLogLimit = 5;
+
 const List<String> analyticsRanges = ['1D', '1W', '1M'];
 
 final analyticsRangeProvider = StateProvider<String>((ref) => '1M');
@@ -96,4 +98,42 @@ final analyticsProvider =
       final api = ref.watch(analyticsApiProvider);
       final json = await api.fetchAnalytics(args.range);
       return AnalyticsSnapshot.fromJson(json);
+    });
+
+/// One row in "Today's Activity Log". [type] drives which icon/avatar
+/// the UI shows — kept as a plain string here so this model stays
+/// UI-agnostic; 'walk_in' | 'member' | 'retail' from the backend today.
+class RecentActivity {
+  const RecentActivity({
+    required this.type,
+    required this.title,
+    required this.subtitle,
+    required this.amount,
+  });
+
+  final String type;
+  final String title;
+  final String subtitle;
+  final double amount;
+
+  factory RecentActivity.fromJson(Map<String, dynamic> json) {
+    return RecentActivity(
+      type: json['type'] as String? ?? 'other',
+      title: json['title'] as String,
+      subtitle: json['subtitle'] as String,
+      amount: double.parse(json['amount'].toString()),
+    );
+  }
+}
+
+/// Always "today" for the gym, regardless of the Sales Overview range
+/// toggle — same as the check-ins badge on [AnalyticsSnapshot].
+final activityLogProvider =
+    FutureProvider.family<List<RecentActivity>, String>((ref, gymId) async {
+      final api = ref.watch(analyticsApiProvider);
+      final json = await api.fetchActivityLog(limit: activityLogLimit);
+      final activities = json['activities'] as List;
+      return activities
+          .map((a) => RecentActivity.fromJson(a as Map<String, dynamic>))
+          .toList();
     });

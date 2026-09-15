@@ -792,6 +792,98 @@ class AnalyticsView(APIView):
             },
         })
 
+
+def _fmt_time(dt, tz):
+    # No platform-specific strftime flags ("%-I"/"%#I") — this runs the
+    # same on Windows dev machines and Linux deploys.
+    local = dt.astimezone(tz)
+    hour = local.hour % 12 or 12
+    period = "AM" if local.hour < 12 else "PM"
+    return f"{hour}:{local.minute:02d} {period}"
+
+
+class ActivityLogView(APIView):
+    """
+    Owner-only "Today's Activity Log" feed for the dashboard — merges
+    today's walk-in check-ins, membership purchases/renewals, and POS
+    sales into one newest-first list. Read-only: doesn't touch any of
+    the three sources' own write paths, just reads and re-shapes them.
+    """
+    permission_classes = [IsGymStaff, IsOwner, SubscriptionActive]
+
+    def get(self, request):
+        gym = request.user.gym
+        tz = ZoneInfo(gym.timezone)
+        today = gym_today(gym)
+        start_dt = datetime.combine(today, time.min, tzinfo=tz)
+        end_dt = start_dt + timedelta(days=1)
+
+        try:
+            limit = int(request.query_params.get("limit", 5))
+        except ValueError:
+            raise ValidationError({"limit": "Must be an integer."})
+        limit = max(1, min(limit, 20))
+
+        activities = []
+
+        walkins = CheckIn.objects.filter(
+            gym=gym, visit_type=CheckIn.WALKIN, voided_at__isnull=True,
+            checked_in_at__gte=start_dt, checked_in_at__lt=end_dt,
+        )
+        for c in walkins:
+            activities.append({
+                "type": "walk_in",
+                "title": c.visitor_name or "Walk-in",
+                "subtitle": f"Walk-in Pass · {_fmt_time(c.checked_in_at, tz)}",
+                "amount": _money_str(c.amount_charged),
+                "at": c.checked_in_at,
+            })
+
+        memberships = Membership.objects.filter(
+            gym=gym, created_at__gte=start_dt, created_at__lt=end_dt,
+        ).select_related("member")
+        for m in memberships:
+            kind = "Renewal" if m.previous_id else "New Membership"
+            duration = (
+                f"{m.duration_value}-{m.duration_unit.title()}"
+                if m.duration_value and m.duration_unit else ""
+            )
+            subtitle_label = f"{duration} {kind}".strip() if duration else kind
+            activities.append({
+                "type": "member",
+                "title": m.member.full_name,
+                "subtitle": f"{subtitle_label} · {_fmt_time(m.created_at, tz)}",
+                "amount": _money_str(m.price_paid),
+                "at": m.created_at,
+            })
+
+        sales = Sale.objects.filter(
+            gym=gym, voided_at__isnull=True,
+            sold_at__gte=start_dt, sold_at__lt=end_dt,
+        ).prefetch_related("items")
+        for s in sales:
+            items = list(s.items.all())
+            if items:
+                title = items[0].product_name
+                if len(items) > 1:
+                    title = f"{title} +{len(items) - 1} more"
+            else:
+                title = "Retail sale"
+            activities.append({
+                "type": "retail",
+                "title": title,
+                "subtitle": f"Retail POS · {_fmt_time(s.sold_at, tz)}",
+                "amount": _money_str(s.total_amount),
+                "at": s.sold_at,
+            })
+
+        activities.sort(key=lambda a: a["at"], reverse=True)
+        for a in activities:
+            del a["at"]
+
+        return Response({"activities": activities[:limit]})
+
+
 class CheckInViewSet(GymScopedViewSet):
     queryset = CheckIn.objects.all()
     search_fields = ["member__first_name", "member__last_name",
