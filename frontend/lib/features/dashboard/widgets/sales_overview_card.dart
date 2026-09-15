@@ -434,6 +434,13 @@ class _ChartWithPeakState extends State<_ChartWithPeak> {
                           sideTitles: SideTitles(
                             showTitles: true,
                             reservedSize: _bottomAxisHeight,
+                            // Without this, fl_chart auto-picks its own
+                            // interval (~1 tick/40px) instead of calling
+                            // us once per data point — on a short series
+                            // that interval lands below 1, so multiple
+                            // ticks round to the same index and render
+                            // the same label twice, overlapping.
+                            interval: 1,
                             getTitlesWidget: (value, meta) {
                               final i = value.round();
                               final isLast = i == series.length - 1;
