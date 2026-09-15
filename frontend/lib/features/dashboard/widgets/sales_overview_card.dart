@@ -17,6 +17,52 @@ String _formatPeso(double amount) {
 
 const _weekdayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
+/// One rendered point on the chart's x-axis — either a raw daily
+/// [RevenuePoint] (1W and shorter) or a week-bucket sum (1M), so the
+/// chart and the peak bubble can share one shape regardless of range.
+class _ChartPoint {
+  const _ChartPoint({
+    required this.amount,
+    required this.axisLabel,
+    required this.peakLabel,
+  });
+
+  final double amount;
+  final String axisLabel;
+  final String peakLabel;
+}
+
+/// Builds the points the chart actually plots. 1M has ~30 daily points
+/// from the API — too dense for weekday labels — so it's bucketed into
+/// 7-day "Week N" chunks here, purely for display; the underlying daily
+/// totals from the API are untouched.
+List<_ChartPoint> _buildChartPoints(AnalyticsSnapshot snapshot) {
+  final series = snapshot.series;
+  if (snapshot.range == '1M' && series.length > 7) {
+    final points = <_ChartPoint>[];
+    for (var start = 0; start < series.length; start += 7) {
+      final end = (start + 7 < series.length) ? start + 7 : series.length;
+      final sum = series
+          .sublist(start, end)
+          .fold<double>(0, (s, p) => s + p.amount);
+      final weekNum = points.length + 1;
+      points.add(
+        _ChartPoint(
+          amount: sum,
+          axisLabel: 'Week $weekNum',
+          peakLabel: 'Week $weekNum',
+        ),
+      );
+    }
+    return points;
+  }
+
+  return series.map((p) {
+    final label = _weekdayLabels[p.date.weekday - 1];
+    return _ChartPoint(amount: p.amount, axisLabel: label, peakLabel: label);
+  }).toList();
+}
+
 // Maps each backend category key to its legend/bar color, icon, and a
 // short static subtitle. The subtitle text is descriptive copy only —
 // not data from the server — same pattern as the color mapping below.
@@ -174,7 +220,8 @@ class _SalesContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final changePct = snapshot.revenueChangePct;
-    final showWeekdayLabels = snapshot.series.length <= 7;
+    final chartPoints = _buildChartPoints(snapshot);
+    final showAxisLabels = chartPoints.length <= 7;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -221,105 +268,19 @@ class _SalesContent extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 22),
-        // -------------------------------------------------------------
-        // CHART — left exactly as-is. Not touched this pass; waiting on
-        // the earlier hourly-bar version (or confirmation this daily
-        // line chart is the one to keep) before changing anything here.
-        // -------------------------------------------------------------
         SizedBox(
-          height: showWeekdayLabels ? 210 : 190,
-          child: snapshot.series.length < 2
+          height: showAxisLabels ? 210 : 190,
+          child: chartPoints.length < 2
               ? const Center(
                   child: Text(
                     'Not enough data yet',
                     style: TextStyle(color: AppColors.muted, fontSize: 12),
                   ),
                 )
-              : LineChart(
-                  LineChartData(
-                    minX: 0,
-                    maxX: (snapshot.series.length - 1).toDouble(),
-                    gridData: const FlGridData(show: false),
-                    titlesData: FlTitlesData(
-                      show: showWeekdayLabels,
-                      topTitles: const AxisTitles(),
-                      rightTitles: const AxisTitles(),
-                      leftTitles: const AxisTitles(),
-                      bottomTitles: AxisTitles(
-                        sideTitles: SideTitles(
-                          showTitles: showWeekdayLabels,
-                          reservedSize: 28,
-                          getTitlesWidget: (value, meta) {
-                            final i = value.round();
-                            if (i < 0 || i >= snapshot.series.length) {
-                              return const SizedBox.shrink();
-                            }
-                            final weekday = snapshot.series[i].date.weekday;
-                            final label = _weekdayLabels[weekday - 1];
-                            final isWeekend =
-                                weekday == DateTime.saturday ||
-                                weekday == DateTime.sunday;
-                            return Padding(
-                              padding: const EdgeInsets.only(top: 6),
-                              child: Text(
-                                label,
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w500,
-                                  color: isWeekend
-                                      ? AppColors.categoryPurple
-                                      : AppColors.muted,
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                    ),
-                    borderData: FlBorderData(show: false),
-                    lineTouchData: LineTouchData(
-                      enabled: true,
-                      touchTooltipData: LineTouchTooltipData(
-                        getTooltipColor: (_) => AppColors.ink,
-                        getTooltipItems: (spots) => spots.map((s) {
-                          return LineTooltipItem(
-                            _formatPeso(s.y),
-                            const TextStyle(
-                              color: Colors.white,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                    ),
-                    lineBarsData: [
-                      LineChartBarData(
-                        spots: [
-                          for (var i = 0; i < snapshot.series.length; i++)
-                            FlSpot(i.toDouble(), snapshot.series[i].amount),
-                        ],
-                        isCurved: true,
-                        curveSmoothness: 0.35,
-                        color: AppColors.accentTeal,
-                        barWidth: 3,
-                        dotData: const FlDotData(show: false),
-                        belowBarData: BarAreaData(
-                          show: true,
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              AppColors.accentTeal.withValues(alpha: 0.18),
-                              AppColors.accentTeal.withValues(alpha: 0.0),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+              : _RevenueChart(points: chartPoints, showAxisLabels: showAxisLabels),
         ),
+        const SizedBox(height: 18),
+        _StatTileRow(breakdown: snapshot.breakdown),
         const SizedBox(height: 18),
         // -------------------------------------------------------------
         // REVENUE RATIO — back between the chart and the breakdown,
@@ -330,6 +291,230 @@ class _SalesContent extends StatelessWidget {
         const SizedBox(height: 16),
         _BreakdownList(breakdown: snapshot.breakdown),
       ],
+    );
+  }
+}
+
+/// The revenue line chart plus a "₱X Peak (label)" bubble floated over
+/// its highest point. Bubble position is computed as a fraction of the
+/// chart's own plotted bounds (same minY/maxY passed to LineChartData),
+/// so it lines up with the line regardless of chart size.
+class _RevenueChart extends StatelessWidget {
+  const _RevenueChart({required this.points, required this.showAxisLabels});
+
+  final List<_ChartPoint> points;
+  final bool showAxisLabels;
+
+  @override
+  Widget build(BuildContext context) {
+    var peakIndex = 0;
+    for (var i = 1; i < points.length; i++) {
+      if (points[i].amount > points[peakIndex].amount) peakIndex = i;
+    }
+    final peakAmount = points[peakIndex].amount;
+    final maxY = peakAmount <= 0 ? 1.0 : peakAmount * 1.35;
+    const minY = 0.0;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final xFraction = points.length == 1
+            ? 0.5
+            : peakIndex / (points.length - 1);
+        final yFraction = maxY == minY ? 0.0 : 1 - (peakAmount - minY) / (maxY - minY);
+        // Reserve room below for axis labels so the bubble is placed
+        // relative to the plotted area, not the whole SizedBox.
+        final plotHeight = constraints.maxHeight - (showAxisLabels ? 28 : 0);
+
+        return Stack(
+          children: [
+            LineChart(
+              LineChartData(
+                minX: 0,
+                maxX: (points.length - 1).toDouble(),
+                minY: minY,
+                maxY: maxY,
+                gridData: const FlGridData(show: false),
+                titlesData: FlTitlesData(
+                  show: showAxisLabels,
+                  topTitles: const AxisTitles(),
+                  rightTitles: const AxisTitles(),
+                  leftTitles: const AxisTitles(),
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: showAxisLabels,
+                      reservedSize: 28,
+                      getTitlesWidget: (value, meta) {
+                        final i = value.round();
+                        if (i < 0 || i >= points.length) {
+                          return const SizedBox.shrink();
+                        }
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: Text(
+                            points[i].axisLabel,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                              color: AppColors.muted,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+                borderData: FlBorderData(show: false),
+                lineTouchData: LineTouchData(
+                  enabled: true,
+                  touchTooltipData: LineTouchTooltipData(
+                    getTooltipColor: (_) => AppColors.ink,
+                    getTooltipItems: (spots) => spots.map((s) {
+                      return LineTooltipItem(
+                        _formatPeso(s.y),
+                        const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+                lineBarsData: [
+                  LineChartBarData(
+                    spots: [
+                      for (var i = 0; i < points.length; i++)
+                        FlSpot(i.toDouble(), points[i].amount),
+                    ],
+                    isCurved: true,
+                    curveSmoothness: 0.35,
+                    color: AppColors.accentTeal,
+                    barWidth: 3,
+                    dotData: const FlDotData(show: false),
+                    belowBarData: BarAreaData(
+                      show: true,
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          AppColors.accentTeal.withValues(alpha: 0.18),
+                          AppColors.accentTeal.withValues(alpha: 0.0),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Positioned(
+              left: (constraints.maxWidth * xFraction - 62).clamp(
+                0,
+                constraints.maxWidth - 124,
+              ),
+              top: (plotHeight * yFraction - 40).clamp(0, plotHeight),
+              child: IgnorePointer(
+                child: _PeakBubble(
+                  amount: peakAmount,
+                  label: points[peakIndex].peakLabel,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _PeakBubble extends StatelessWidget {
+  const _PeakBubble({required this.amount, required this.label});
+
+  final double amount;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: AppColors.ink,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        '${_formatPeso(amount)} Peak ($label)',
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}
+
+/// Walk-ins / Members / Retail & POS summary row. Amounts come straight
+/// from the existing breakdown categories the API already returns —
+/// "Retail & POS" is 'event' + 'merch' combined for this summary only;
+/// the detailed list below still shows them separately.
+class _StatTileRow extends StatelessWidget {
+  const _StatTileRow({required this.breakdown});
+  final List<CategoryBreakdown> breakdown;
+
+  double _amountFor(Iterable<String> categories) {
+    return breakdown
+        .where((b) => categories.contains(b.category))
+        .fold<double>(0, (sum, b) => sum + b.amount);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final walkIns = _amountFor(const ['day_pass']);
+    final members = _amountFor(const ['membership']);
+    final retailPos = _amountFor(const ['event', 'merch']);
+
+    return Row(
+      children: [
+        Expanded(child: _StatTile(label: 'Walk-ins', amount: walkIns)),
+        const SizedBox(width: 10),
+        Expanded(child: _StatTile(label: 'Members', amount: members)),
+        const SizedBox(width: 10),
+        Expanded(child: _StatTile(label: 'Retail & POS', amount: retailPos)),
+      ],
+    );
+  }
+}
+
+class _StatTile extends StatelessWidget {
+  const _StatTile({required this.label, required this.amount});
+  final String label;
+  final double amount;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.fieldBg,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(fontSize: 11, color: AppColors.muted),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            _formatPeso(amount),
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: AppColors.ink,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
