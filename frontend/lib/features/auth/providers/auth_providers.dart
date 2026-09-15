@@ -4,6 +4,7 @@ import '../../../core/api/dio_client.dart';
 import '../../../core/api/qr_secret_storage.dart';
 import '../../../core/api/token_storage.dart';
 import '../../../core/db/app_database.dart';
+import '../../../core/notifications/push_notification_service.dart';
 import '../data/auth_api.dart';
 import '../data/auth_repository.dart';
 import '../data/auth_models.dart';
@@ -54,9 +55,17 @@ class AuthController extends Notifier<AuthState> {
   Future<void> restore() async {
     try {
       final user = await ref.read(authRepositoryProvider).restoreSession();
-      state = user != null
-          ? AuthAuthenticated(user)
-          : const AuthUnauthenticated();
+      if (user != null) {
+        state = AuthAuthenticated(user);
+        // Tokens can silently rotate between sessions — re-register on
+        // every app start while already authenticated, not just on a
+        // fresh login/claim. Never a permission prompt here: that only
+        // happens right after claim() or login(), never at launch.
+        // ignore: unawaited_futures
+        ref.read(pushNotificationServiceProvider).registerToken();
+      } else {
+        state = const AuthUnauthenticated();
+      }
     } on ApiException catch (e) {
       // Only an explicit rejection means the session is dead. A network failure
       // means we hold a valid refresh token and simply can't confirm the user yet.
@@ -71,6 +80,14 @@ class AuthController extends Notifier<AuthState> {
   Future<void> login(String email, String password) async {
     final user = await ref.read(authRepositoryProvider).login(email, password);
     state = AuthAuthenticated(user);
+    // ignore: unawaited_futures
+    ref.read(pushNotificationServiceProvider).registerToken();
+    // A no-op after this user's first login/claim ever — see
+    // PushNotificationService.requestPermissionOnce. This is what makes
+    // "ask after a staff member's first login" work: every later login
+    // for the same account is a silent no-op.
+    // ignore: unawaited_futures
+    ref.read(pushNotificationServiceProvider).requestPermissionOnce(user.id);
   }
 
   Future<void> signup({
@@ -90,6 +107,12 @@ class AuthController extends Notifier<AuthState> {
           password: password,
         );
     state = AuthAuthenticated(user);
+    // A newly-created owner account is a first-login moment too — same
+    // reasoning as claim()/login().
+    // ignore: unawaited_futures
+    ref.read(pushNotificationServiceProvider).registerToken();
+    // ignore: unawaited_futures
+    ref.read(pushNotificationServiceProvider).requestPermissionOnce(user.id);
   }
 
   Future<void> claim({
@@ -101,6 +124,13 @@ class AuthController extends Notifier<AuthState> {
         .read(authRepositoryProvider)
         .claim(email: email, claimCode: claimCode, password: password);
     state = AuthAuthenticated(user);
+    // ignore: unawaited_futures
+    ref.read(pushNotificationServiceProvider).registerToken();
+    // Right after claim — the member has just done something deliberate
+    // and has context for why notifications would help. See C1 in
+    // FLEXDESK_PHASE4_PART_B_SPEC.md.
+    // ignore: unawaited_futures
+    ref.read(pushNotificationServiceProvider).requestPermissionOnce(user.id);
   }
 
   Future<AuthUser> completePasswordChange(
@@ -132,6 +162,15 @@ class AuthController extends Notifier<AuthState> {
         throw UnsyncedDataException(dirtyCount);
       }
     }
+
+    // Must complete BEFORE the stored auth tokens are cleared below —
+    // this DELETE call needs to go out authenticated, or the row is
+    // left behind and the next person to log in on this device (a
+    // shared front-desk tablet, a member's family phone) inherits the
+    // previous account's notifications. See C2 in
+    // FLEXDESK_PHASE4_PART_B_SPEC.md — deliberately awaited, not
+    // fire-and-forget, unlike the other push calls in this file.
+    await ref.read(pushNotificationServiceProvider).deleteToken();
 
     await db.clearAllData();
     await ref.read(authRepositoryProvider).logout();
