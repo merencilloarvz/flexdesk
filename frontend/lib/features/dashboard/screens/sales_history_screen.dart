@@ -727,21 +727,18 @@ class _WeekRollupCard extends StatelessWidget {
                 child: _CategoryAmount(
                   label: 'Membership',
                   amount: week.categories['membership'] ?? 0,
-                  color: AppColors.accentTeal,
                 ),
               ),
               Expanded(
                 child: _CategoryAmount(
                   label: 'Retail POS',
                   amount: week.categories['retail'] ?? 0,
-                  color: AppColors.categoryAmber,
                 ),
               ),
               Expanded(
                 child: _CategoryAmount(
                   label: 'Walk-ins',
                   amount: week.categories['walk_ins'] ?? 0,
-                  color: AppColors.categoryTeal,
                 ),
               ),
             ],
@@ -756,39 +753,25 @@ class _CategoryAmount extends StatelessWidget {
   const _CategoryAmount({
     required this.label,
     required this.amount,
-    required this.color,
   });
 
   final String label;
   final double amount;
-  final Color color;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Container(
-              width: 6,
-              height: 6,
-              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-            ),
-            const SizedBox(width: 5),
-            Expanded(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.muted,
-                ),
-              ),
-            ),
-          ],
+        Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.w600,
+            color: AppColors.muted,
+          ),
         ),
         const SizedBox(height: 3),
         Text(
