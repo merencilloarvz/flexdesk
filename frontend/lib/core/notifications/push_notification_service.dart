@@ -115,12 +115,44 @@ class PushNotificationService {
     ].where((s) => s != null && s.isNotEmpty).join(' — ');
     if (text.isEmpty) return;
 
-    messengerKey.currentState?.showSnackBar(
-      SnackBar(
-        backgroundColor: AppColors.ink,
-        content: Text(text, style: const TextStyle(color: Colors.white)),
-      ),
-    );
+    final messenger = messengerKey.currentState;
+    if (messenger == null) return;
+
+    messenger
+      ..hideCurrentMaterialBanner()
+      ..showMaterialBanner(
+        MaterialBanner(
+          backgroundColor: AppColors.fieldBg,
+          leading: Container(
+            width: 36,
+            height: 36,
+            padding: const EdgeInsets.all(4),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+            ),
+            child: ClipOval(
+              child: Image.asset(
+                'assets/images/logo.png',
+                fit: BoxFit.contain,
+              ),
+            ),
+          ),
+          content: Text(text, style: const TextStyle(color: AppColors.ink)),
+          actions: [
+            TextButton(
+              onPressed: () => messenger.hideCurrentMaterialBanner(),
+              child: const Text('Dismiss'),
+            ),
+          ],
+        ),
+      );
+
+    // MaterialBanner doesn't auto-dismiss like SnackBar — hide it after a
+    // few seconds so it doesn't sit at the top of the screen forever.
+    Future.delayed(const Duration(seconds: 4), () {
+      messenger.hideCurrentMaterialBanner();
+    });
   }
 }
 

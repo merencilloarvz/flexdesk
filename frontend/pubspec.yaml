@@ -73,6 +73,7 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   build_runner: ^2.15.1
   drift_dev: ^2.34.5
+  flutter_launcher_icons: ^0.14.4
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -83,6 +84,7 @@ flutter:
 
   assets:
     - assets/workout_guides/
+    - assets/images/logo.png
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
 
@@ -108,3 +110,18 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/images/logo_icon.png"
+  # AppColors.accentTeal — the logo's own mark is mostly a pale/white
+  # fill, so a light adaptive background would wash it out; the app's
+  # teal accent gives it contrast and ties the icon to the in-app brand.
+  adaptive_icon_background: "#0F6E56"
+  # Scaled to ~62% of the foreground canvas (assets/images/logo_adaptive_fg.png)
+  # so the mark stays inside adaptive icons' ~66% circular safe zone
+  # instead of getting cropped by round/squircle launcher masks.
+  adaptive_icon_foreground: "assets/images/logo_adaptive_fg.png"
+
+  
