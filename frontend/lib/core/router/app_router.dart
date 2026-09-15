@@ -9,6 +9,7 @@ import '../../features/members/screens/members_list_screen.dart';
 import '../../features/members/screens/member_detail_screen.dart';
 import '../../features/members/screens/member_create_screen.dart';
 import '../../features/members/screens/manage_plans_screen.dart';
+import '../../features/members/screens/renewal_worklist_screen.dart';
 import '../../features/auth/providers/auth_providers.dart';
 import '../../features/auth/screens/role_picker_screen.dart';
 import '../../features/auth/screens/login_screen.dart';
@@ -359,6 +360,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               : '';
           return ManagePlansScreen(gymId: gymId);
         },
+      ),
+      // Top-level, outside every shell branch, same reasoning as
+      // /checkin/scan — renders above AppShell's floating
+      // bottomNavigationBar rather than behind it.
+      GoRoute(
+        path: '/renewals',
+        builder: (context, state) => const RenewalWorklistScreen(),
       ),
       GoRoute(
         path: '/schedule',
