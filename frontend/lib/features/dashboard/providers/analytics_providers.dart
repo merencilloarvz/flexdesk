@@ -25,11 +25,38 @@ class CategoryBreakdown {
     required this.label,
     required this.amount,
     required this.pct,
+    this.count,
+    this.countLabel,
   });
   final String category;
   final String label;
   final double amount;
   final double pct;
+
+  // Optional — populate from the backend when it can tell you "46
+  // guests" / "8 renewals" / "179 items". Null hides the subtitle.
+  final int? count;
+  final String? countLabel;
+}
+
+/// One row in "Today's Activity Log" (1D range). [type] drives which
+/// icon/avatar the UI shows — kept as a plain string here so this model
+/// stays UI-agnostic.
+class RecentActivity {
+  const RecentActivity({
+    required this.title,
+    required this.subtitle,
+    required this.amount,
+    required this.type,
+  });
+
+  final String title;
+  final String subtitle;
+  final double amount;
+
+  /// 'member' | 'walk_in' | 'retail' | ... — whatever your backend uses
+  /// to tag the sale. Falls back to 'other' if missing.
+  final String type;
 }
 
 class AnalyticsSnapshot {
@@ -42,6 +69,8 @@ class AnalyticsSnapshot {
     required this.checkInsToday,
     required this.checkInsYesterday,
     required this.checkInsChangePct,
+    this.transactionCount,
+    this.recentActivity = const [],
   });
 
   final String range;
@@ -53,6 +82,11 @@ class AnalyticsSnapshot {
   final int checkInsYesterday;
   final double? checkInsChangePct;
 
+  // Optional — both null/empty until the backend sends them. The card
+  // hides the pieces that depend on these rather than showing zeros.
+  final int? transactionCount;
+  final List<RecentActivity> recentActivity;
+
   factory AnalyticsSnapshot.fromJson(Map<String, dynamic> json) {
     final revenue = json['revenue'] as Map<String, dynamic>;
     final checkIns = json['check_ins'] as Map<String, dynamic>;
@@ -61,6 +95,7 @@ class AnalyticsSnapshot {
       range: json['range'] as String,
       revenueTotal: double.parse(revenue['total'] as String),
       revenueChangePct: (revenue['change_pct'] as num?)?.toDouble(),
+      transactionCount: (revenue['transaction_count'] as num?)?.toInt(),
       series: (revenue['series'] as List).map((p) {
         final m = p as Map<String, dynamic>;
         return RevenuePoint(
@@ -75,6 +110,17 @@ class AnalyticsSnapshot {
           label: m['label'] as String,
           amount: double.parse(m['amount'] as String),
           pct: (m['pct'] as num).toDouble(),
+          count: (m['count'] as num?)?.toInt(),
+          countLabel: m['count_label'] as String?,
+        );
+      }).toList(),
+      recentActivity: ((revenue['recent_activity'] as List?) ?? []).map((a) {
+        final m = a as Map<String, dynamic>;
+        return RecentActivity(
+          title: m['title'] as String,
+          subtitle: m['subtitle'] as String,
+          amount: double.parse(m['amount'].toString()),
+          type: m['type'] as String? ?? 'other',
         );
       }).toList(),
       checkInsToday: checkIns['today'] as int,
