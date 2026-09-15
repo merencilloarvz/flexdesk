@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/theme/colors.dart';
@@ -87,6 +88,18 @@ class ActivityLogCard extends ConsumerWidget {
                       fontSize: 10,
                       fontWeight: FontWeight.w600,
                       color: AppColors.muted,
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                GestureDetector(
+                  onTap: () => context.push('/sales-history'),
+                  child: const Text(
+                    'View All →',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.accentTeal,
                     ),
                   ),
                 ),

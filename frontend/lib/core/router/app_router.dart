@@ -19,6 +19,7 @@ import '../../features/auth/screens/no_gym_screen.dart';
 import '../../features/settings/screens/staff_list_screen.dart';
 import '../../features/settings/screens/staff_create_screen.dart';
 import '../../features/dashboard/screens/home_screen.dart';
+import '../../features/dashboard/screens/sales_history_screen.dart';
 import '../../features/settings/screens/settings_screen.dart';
 import '../../features/shell/app_shell.dart';
 import '../../features/checkin/check_in_screen.dart';
@@ -359,6 +360,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               ? authState.user.gym?.id ?? ''
               : '';
           return ManagePlansScreen(gymId: gymId);
+        },
+      ),
+      GoRoute(
+        path: '/sales-history',
+        builder: (context, state) {
+          final authState = ref.read(authControllerProvider);
+          final gymId = authState is AuthAuthenticated
+              ? authState.user.gym?.id ?? ''
+              : '';
+          return SalesHistoryScreen(gymId: gymId);
         },
       ),
       // Top-level, outside every shell branch, same reasoning as

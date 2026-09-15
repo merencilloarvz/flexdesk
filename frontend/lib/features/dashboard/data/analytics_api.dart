@@ -35,4 +35,25 @@ class AnalyticsApi {
       throw ApiException.from(e);
     }
   }
+
+  /// Full, paginated transaction list for the Sales History screen —
+  /// same 1D/1W/1M ranges as fetchAnalytics, uncapped. Pass [pageUrl]
+  /// (the DRF-returned "next" link) to fetch a later page instead of
+  /// page 1 of [range].
+  Future<Map<String, dynamic>> fetchSalesHistory({
+    required String range,
+    String? pageUrl,
+  }) async {
+    try {
+      final response = pageUrl != null
+          ? await _dio.get(pageUrl)
+          : await _dio.get(
+              '/analytics/sales-history/',
+              queryParameters: {'range': range},
+            );
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw ApiException.from(e);
+    }
+  }
 }

@@ -3,6 +3,7 @@ from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenRefreshView, TokenVerifyView
 
 from .views import (ActivityLogView, AnnouncementViewSet, AnalyticsView, BookingCancelView, BookingCreateView,
+                    SalesHistoryView,
                     CheckInViewSet, ClaimAccountView, EventRegistrationViewSet,
                     EventResultsView, EventViewSet, FlexTokenObtainPairView, GymSettingsView,
                     InventoryAlertsView, LogoutView, MeCheckInsView, MeEventRegistrationsView,
@@ -39,6 +40,7 @@ urlpatterns = [
     path("me/summary/", MeSummaryView.as_view(), name="me-summary"),
     path("analytics/", AnalyticsView.as_view(), name="analytics"),
     path("analytics/activity-log/", ActivityLogView.as_view(), name="activity-log"),
+    path("analytics/sales-history/", SalesHistoryView.as_view(), name="sales-history"),
     path("me/membership/", MeMembershipView.as_view(), name="me-membership"),
     path("me/check-ins/", MeCheckInsView.as_view(), name="me-check-ins"),
     path("me/bookings/", MyBookingsView.as_view(), name="me-bookings"),

@@ -8,6 +8,7 @@ from rest_framework.decorators import action
 from rest_framework.generics import ListAPIView, RetrieveAPIView
 from rest_framework.response import Response
 from rest_framework.exceptions import MethodNotAllowed, ValidationError
+from rest_framework.pagination import PageNumberPagination
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.views import TokenObtainPairView
 from django.utils import timezone
@@ -844,6 +845,138 @@ def _fmt_time(dt, tz):
     return f"{hour}:{local.minute:02d} {period}"
 
 
+def _activity_rows_raw(gym, tz, start_dt, end_dt):
+    """
+    Shared by ActivityLogView, SalesHistoryView's day-grouped 1D/1W
+    response, and (in a later phase) 1M's weekly rollups — merges
+    walk-in check-ins, membership purchases/renewals, and POS sales
+    over the given window into one newest-first list of {type, title,
+    subtitle, amount, at} rows. `amount` is kept as Decimal and `at`
+    as the raw datetime so callers can group/sum precisely; format and
+    strip them at the point each view builds its own response shape.
+    """
+    activities = []
+
+    walkins = CheckIn.objects.filter(
+        gym=gym, visit_type=CheckIn.WALKIN, voided_at__isnull=True,
+        checked_in_at__gte=start_dt, checked_in_at__lt=end_dt,
+    )
+    for c in walkins:
+        activities.append({
+            "type": "walk_in",
+            "title": c.visitor_name or "Walk-in",
+            "subtitle": f"Walk-in Pass · {_fmt_time(c.checked_in_at, tz)}",
+            "amount": c.amount_charged or Decimal("0"),
+            "at": c.checked_in_at,
+        })
+
+    memberships = Membership.objects.filter(
+        gym=gym, created_at__gte=start_dt, created_at__lt=end_dt,
+    ).select_related("member")
+    for m in memberships:
+        kind = "Renewal" if m.previous_id else "New Membership"
+        duration = (
+            f"{m.duration_value}-{m.duration_unit.title()}"
+            if m.duration_value and m.duration_unit else ""
+        )
+        subtitle_label = f"{duration} {kind}".strip() if duration else kind
+        activities.append({
+            "type": "member",
+            "title": m.member.full_name,
+            "subtitle": f"{subtitle_label} · {_fmt_time(m.created_at, tz)}",
+            "amount": m.price_paid or Decimal("0"),
+            "at": m.created_at,
+        })
+
+    sales = Sale.objects.filter(
+        gym=gym, voided_at__isnull=True,
+        sold_at__gte=start_dt, sold_at__lt=end_dt,
+    ).prefetch_related("items")
+    for s in sales:
+        items = list(s.items.all())
+        if items:
+            title = items[0].product_name
+            if len(items) > 1:
+                title = f"{title} +{len(items) - 1} more"
+        else:
+            title = "Retail sale"
+        activities.append({
+            "type": "retail",
+            "title": title,
+            "subtitle": f"Retail POS · {_fmt_time(s.sold_at, tz)}",
+            "amount": s.total_amount or Decimal("0"),
+            "at": s.sold_at,
+        })
+
+    activities.sort(key=lambda a: a["at"], reverse=True)
+    return activities
+
+
+def _activity_rows(gym, tz, start_dt, end_dt):
+    """
+    ActivityLogView's shape: {type, title, subtitle, amount} with
+    amount formatted as a string and no `at` field.
+    """
+    rows = _activity_rows_raw(gym, tz, start_dt, end_dt)
+    return [
+        {
+            "type": r["type"],
+            "title": r["title"],
+            "subtitle": r["subtitle"],
+            "amount": _money_str(r["amount"]),
+        }
+        for r in rows
+    ]
+
+
+def _grouped_sales_history(gym, tz, start_dt, end_dt):
+    """
+    SalesHistoryView's 1D/1W shape: transactions grouped by gym-local
+    calendar day, newest day first (each day's own transactions stay
+    newest-first too, since the input is already sorted that way and
+    grouping preserves order). No pagination -- a single day or week's
+    worth of transactions is small enough to return in full, and the
+    reference design shows a complete list ending in "End of ...
+    records", not a "load more".
+    """
+    rows = _activity_rows_raw(gym, tz, start_dt, end_dt)
+
+    period_total = Decimal("0")
+    groups_by_date = {}
+    order = []
+    for r in rows:
+        day = r["at"].astimezone(tz).date()
+        if day not in groups_by_date:
+            groups_by_date[day] = {"total": Decimal("0"), "transactions": []}
+            order.append(day)
+        groups_by_date[day]["total"] += r["amount"]
+        groups_by_date[day]["transactions"].append({
+            "type": r["type"],
+            "title": r["title"],
+            "subtitle": r["subtitle"],
+            "amount": _money_str(r["amount"]),
+        })
+        period_total += r["amount"]
+
+    groups = [
+        {
+            "date": day.isoformat(),
+            "total": _money_str(groups_by_date[day]["total"]),
+            "order_count": len(groups_by_date[day]["transactions"]),
+            "transactions": groups_by_date[day]["transactions"],
+        }
+        for day in order
+    ]
+
+    return {
+        "period": {
+            "total": _money_str(period_total),
+            "order_count": len(rows),
+        },
+        "groups": groups,
+    }
+
+
 class ActivityLogView(APIView):
     """
     Owner-only "Today's Activity Log" feed for the dashboard — merges
@@ -866,64 +999,47 @@ class ActivityLogView(APIView):
             raise ValidationError({"limit": "Must be an integer."})
         limit = max(1, min(limit, 20))
 
-        activities = []
-
-        walkins = CheckIn.objects.filter(
-            gym=gym, visit_type=CheckIn.WALKIN, voided_at__isnull=True,
-            checked_in_at__gte=start_dt, checked_in_at__lt=end_dt,
-        )
-        for c in walkins:
-            activities.append({
-                "type": "walk_in",
-                "title": c.visitor_name or "Walk-in",
-                "subtitle": f"Walk-in Pass · {_fmt_time(c.checked_in_at, tz)}",
-                "amount": _money_str(c.amount_charged),
-                "at": c.checked_in_at,
-            })
-
-        memberships = Membership.objects.filter(
-            gym=gym, created_at__gte=start_dt, created_at__lt=end_dt,
-        ).select_related("member")
-        for m in memberships:
-            kind = "Renewal" if m.previous_id else "New Membership"
-            duration = (
-                f"{m.duration_value}-{m.duration_unit.title()}"
-                if m.duration_value and m.duration_unit else ""
-            )
-            subtitle_label = f"{duration} {kind}".strip() if duration else kind
-            activities.append({
-                "type": "member",
-                "title": m.member.full_name,
-                "subtitle": f"{subtitle_label} · {_fmt_time(m.created_at, tz)}",
-                "amount": _money_str(m.price_paid),
-                "at": m.created_at,
-            })
-
-        sales = Sale.objects.filter(
-            gym=gym, voided_at__isnull=True,
-            sold_at__gte=start_dt, sold_at__lt=end_dt,
-        ).prefetch_related("items")
-        for s in sales:
-            items = list(s.items.all())
-            if items:
-                title = items[0].product_name
-                if len(items) > 1:
-                    title = f"{title} +{len(items) - 1} more"
-            else:
-                title = "Retail sale"
-            activities.append({
-                "type": "retail",
-                "title": title,
-                "subtitle": f"Retail POS · {_fmt_time(s.sold_at, tz)}",
-                "amount": _money_str(s.total_amount),
-                "at": s.sold_at,
-            })
-
-        activities.sort(key=lambda a: a["at"], reverse=True)
-        for a in activities:
-            del a["at"]
-
+        activities = _activity_rows(gym, tz, start_dt, end_dt)
         return Response({"activities": activities[:limit]})
+
+
+class SalesHistoryView(APIView):
+    """
+    Owner-only transaction history for the Sales History screen. Same
+    three sources as ActivityLogView, scoped to a full 1D/1W/1M window
+    like AnalyticsView instead of just today. Response shape varies by
+    range -- same precedent as AnalyticsView's own `series`, which
+    already means something different per range:
+
+    - 1D/1W: grouped by gym-local calendar day, {period, groups}. Not
+      paginated -- a day or week's worth of transactions is small
+      enough to return in full (see _grouped_sales_history).
+    - 1M: flat, paginated list (unchanged for now). Phase 2 replaces
+      this with weekly rollup cards, matching the reference design.
+    """
+    permission_classes = [IsGymStaff, IsOwner, SubscriptionActive]
+
+    def get(self, request):
+        gym = request.user.gym
+        range_key = request.query_params.get("range", "1D")
+        if range_key not in ("1D", "1W", "1M"):
+            raise ValidationError({"range": "Must be one of 1D, 1W, 1M."})
+
+        n = ANALYTICS_RANGE_DAYS[range_key]
+        tz = ZoneInfo(gym.timezone)
+        today = gym_today(gym)
+        start_date = today - timedelta(days=n - 1)
+        start_dt = datetime.combine(start_date, time.min, tzinfo=tz)
+        end_dt = datetime.combine(today + timedelta(days=1), time.min, tzinfo=tz)
+
+        if range_key in ("1D", "1W"):
+            return Response(_grouped_sales_history(gym, tz, start_dt, end_dt))
+
+        transactions = _activity_rows(gym, tz, start_dt, end_dt)
+
+        paginator = PageNumberPagination()
+        page = paginator.paginate_queryset(transactions, request, view=self)
+        return paginator.get_paginated_response(page)
 
 
 class CheckInViewSet(GymScopedViewSet):
