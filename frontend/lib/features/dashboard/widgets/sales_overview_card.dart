@@ -444,9 +444,22 @@ class _ChartWithPeakState extends State<_ChartWithPeak> {
                             getTitlesWidget: (value, meta) {
                               final i = value.round();
                               final isLast = i == series.length - 1;
-                              if (i < 0 ||
-                                  i >= series.length ||
-                                  (i % labelInterval != 0 && !isLast)) {
+                              final wouldShow =
+                                  i % labelInterval == 0 || isLast;
+                              if (i < 0 || i >= series.length || !wouldShow) {
+                                return const SizedBox.shrink();
+                              }
+                              // The forced "isLast" label doesn't follow
+                              // the regular modulo spacing, so depending
+                              // on series.length it can land right next
+                              // to the previous regular label instead of
+                              // a full step away. Drop that regular
+                              // label rather than let the two collide.
+                              final minGapToLast = (labelInterval / 2)
+                                  .ceil()
+                                  .clamp(1, labelInterval);
+                              if (!isLast &&
+                                  series.length - 1 - i < minGapToLast) {
                                 return const SizedBox.shrink();
                               }
                               final isSelected = i == selectedIndex;
