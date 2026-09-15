@@ -54,7 +54,7 @@ from .serializers import (AnnouncementSerializer, EventRegistrationSerializer,
                           ProductSerializer, SaleCreateSerializer, SaleSerializer,
                           StockAdjustmentInputSerializer, StockAdjustmentSerializer)
 from django.db.models import Sum, DecimalField
-from django.db.models.functions import Coalesce, TruncDate
+from django.db.models.functions import Coalesce, TruncDate, TruncHour
 from decimal import Decimal
 from rest_framework.permissions import IsAuthenticated
 from .permissions import ClassesEnabled, IsGymMember, IsGymStaff, IsOwner, IsOwnerOrReadOnly
@@ -704,6 +704,44 @@ def _daily_series(gym, tz, start_dt, end_dt, start_date, end_date):
     return series
 
 
+def _hourly_series(gym, tz, start_dt, end_dt, now_local):
+    """
+    1D only: one point per gym-local hour, from midnight through the
+    current in-progress hour — the intraday equivalent of
+    _daily_series's "through today, never into the future" rule.
+    Same four revenue sources and the same start_dt/end_dt query
+    window as the rest of the 1D response, just bucketed by TruncHour
+    instead of TruncDate.
+    """
+    totals = {}
+
+    def _accumulate(qs, date_field, amount_field, extra_filter):
+        rows = (
+            qs.filter(gym=gym, **extra_filter,
+                     **{f"{date_field}__gte": start_dt, f"{date_field}__lt": end_dt})
+            .annotate(hour=TruncHour(date_field, tzinfo=tz))
+            .values("hour")
+            .annotate(total=Sum(amount_field))
+        )
+        for row in rows:
+            totals[row["hour"]] = totals.get(row["hour"], Decimal("0")) + (row["total"] or Decimal("0"))
+
+    _accumulate(Membership.objects, "created_at", "price_paid", {})
+    _accumulate(CheckIn.objects, "checked_in_at", "amount_charged",
+               {"visit_type": CheckIn.WALKIN, "voided_at__isnull": True})
+    _accumulate(EventRegistration.objects, "paid_at", "amount_due",
+               {"payment_status": EventRegistration.PAID})
+    _accumulate(Sale.objects, "sold_at", "total_amount", {"voided_at__isnull": True})
+
+    series = []
+    hour = start_dt.astimezone(tz).replace(minute=0, second=0, microsecond=0)
+    last_hour = now_local.replace(minute=0, second=0, microsecond=0)
+    while hour <= last_hour:
+        series.append({"date": hour.isoformat(), "amount": _money_str(totals.get(hour))})
+        hour += timedelta(hours=1)
+    return series
+
+
 class AnalyticsView(APIView):
     """
     Owner-only revenue + check-in snapshot for the Reports/Home cards.
@@ -754,7 +792,11 @@ class AnalyticsView(APIView):
              "amount": _money_str(s_total), "pct": _pct(s_total)},
         ]
 
-        series = _daily_series(gym, tz, start_dt, end_dt, start_date, today)
+        if range_key == "1D":
+            now_local = timezone.now().astimezone(tz)
+            series = _hourly_series(gym, tz, start_dt, end_dt, now_local)
+        else:
+            series = _daily_series(gym, tz, start_dt, end_dt, start_date, today)
 
         # --- Part A: check-in badge, always today vs yesterday --------
         # Deliberately does NOT vary with `range` — see the comment on
