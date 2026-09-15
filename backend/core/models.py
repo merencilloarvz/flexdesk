@@ -779,4 +779,44 @@ class StockAdjustment(TenantScopedModel):
         self.full_clean()
         return super().save(*args, **kwargs)
 
-    
+
+class DeviceToken(models.Model):
+    # Not gym-scoped — a token belongs to a user, and the user's gym is
+    # derived (user.gym). `token` (not user+platform) is the unique key:
+    # FCM rotates tokens, and a reinstall on the same device produces a
+    # new one. Registering an existing token reassigns it to the caller
+    # rather than erroring, which is also what makes a shared-device
+    # handoff between two members safe.
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                             related_name="device_tokens")
+    token = models.CharField(max_length=255, unique=True)
+    platform = models.CharField(max_length=10)  # "android" / "ios"
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_seen_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.user.email} ({self.platform})"
+
+
+class NotificationSend(models.Model):
+    # One row per notification actually delivered, so a re-run of
+    # send_daily_notifications never repeats one — see that command.
+    # `kind` + `subject_id` identify the specific event: a membership's
+    # 3-day mark, a specific day's low-stock digest. Announcements don't
+    # get a row — they're a one-shot broadcast, not a recurring check.
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                             related_name="notification_sends")
+    kind = models.CharField(max_length=40)
+    subject_id = models.UUIDField(null=True, blank=True)
+    sent_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["user", "kind", "subject_id"],
+                                    name="uniq_notification_send"),
+        ]
+
+    def __str__(self):
+        return f"{self.user.email} — {self.kind}"

@@ -46,12 +46,14 @@ from .serializers import BookingCreateSerializer, BookingSerializer, TimeSlotSer
 from rest_framework.exceptions import PermissionDenied
 from .models import Announcement, Event, EventRegistration, EventResult
 from .models import Product, Sale, SaleItem, StockAdjustment
+from .models import DeviceToken
 from .permissions import IsGymUser, IsGymStaffOrReadOnly
 from .serializers import (AnnouncementSerializer, EventRegistrationSerializer,
                           EventResultInputSerializer, EventResultSerializer,
                           EventSerializer, MemberEventRegistrationSerializer,
                           ProductSerializer, SaleCreateSerializer, SaleSerializer,
                           StockAdjustmentInputSerializer, StockAdjustmentSerializer)
+from .serializers import DeviceTokenSerializer
 from django.db.models import Sum, DecimalField
 from django.db.models.functions import Coalesce, TruncDate
 from decimal import Decimal
@@ -1510,3 +1512,32 @@ class MeRestDaysView(APIView):
         member.rest_days = serializer.validated_data["rest_days"]
         member.save(update_fields=["rest_days", "updated_at"])
         return Response({"rest_days": member.rest_days})
+
+
+class DeviceTokenView(APIView):
+    """
+    Register/refresh (POST) or remove (DELETE) this device's push token.
+    Not gym-scoped — see DeviceToken. Any authenticated account (staff
+    or member) can call this; the token is tied to whoever is logged in
+    right now, not to their role.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        serializer = DeviceTokenSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        DeviceToken.objects.update_or_create(
+            token=serializer.validated_data["token"],
+            defaults={
+                "user": request.user,
+                "platform": serializer.validated_data["platform"],
+            },
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    def delete(self, request):
+        token = request.data.get("token", "")
+        if not token:
+            raise ValidationError({"token": "This field is required."})
+        DeviceToken.objects.filter(token=token, user=request.user).delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
