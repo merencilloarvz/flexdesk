@@ -11,6 +11,7 @@ import '../../members/providers/check_ins_provider.dart';
 import '../../members/providers/members_providers.dart';
 import '../providers/analytics_providers.dart';
 import '../widgets/sales_overview_card.dart';
+import '../widgets/activity_log_card.dart';
 import '../widgets/membership_mix_card.dart';
 import '../widgets/low_stock_alert_card.dart';
 import '../providers/low_stock_alerts_provider.dart';
@@ -71,6 +72,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     // numbers, so both need to force it, same as after recording a
     // sale (see pos_screen.dart).
     ref.invalidate(analyticsProvider);
+    ref.invalidate(activityLogProvider);
 
     try {
       final updatedUser = await ref.read(authApiProvider).me();
@@ -204,6 +206,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 // SALES
                 // ---------------------------------------------------------
                 SalesOverviewCard(gymId: gymId),
+
+                const SizedBox(height: 14),
+
+                // ---------------------------------------------------------
+                // TODAY'S ACTIVITY LOG
+                // ---------------------------------------------------------
+                ActivityLogCard(gymId: gymId),
 
                 const SizedBox(height: 14),
 
