@@ -251,24 +251,42 @@ class _SalesContent extends StatelessWidget {
   }
 }
 
-/// Line chart with a persistent "peak" callout — the bubble that sits
-/// above the highest point on the reference screens, always visible
-/// (not only on touch).
+/// Line chart where tapping a point shows a small bubble with that
+/// point's price. Tap a different point to move the bubble there, or
+/// tap the same point again to dismiss it — nothing is shown until
+/// the user taps, and at most one bubble/dot is ever visible.
 ///
 /// fl_chart auto-computes its own Y padding, which makes it impossible
 /// to reliably back out pixel coordinates for an overlay. So minY/maxY
 /// are pinned explicitly here and the overlay math reuses those exact
-/// same bounds — that's what keeps the bubble glued to the real peak
-/// dot instead of drifting.
-class _ChartWithPeak extends StatelessWidget {
+/// same bounds — that's what keeps the bubble glued to the real
+/// tapped point instead of drifting.
+class _ChartWithPeak extends StatefulWidget {
   const _ChartWithPeak({required this.series, required this.range});
 
   final List<RevenuePoint> series;
   final String range;
 
+  @override
+  State<_ChartWithPeak> createState() => _ChartWithPeakState();
+}
+
+class _ChartWithPeakState extends State<_ChartWithPeak> {
   static const _chartHeight = 200.0;
   static const _bottomAxisHeight = 28.0;
   static const _topClearance = 38.0;
+  static const _leftAxisWidth = 44.0;
+
+  int? _selectedIndex;
+
+  /// "₱1.5k" / "₱20k" style compact axis labels — one decimal below
+  /// 10k (so ₱1.0k/₱4.0k read precisely at that scale), none at or
+  /// above it (so ₱20k doesn't turn into a cluttered ₱20.0k).
+  String _formatCompactPeso(double amount) {
+    if (amount < 1000) return '₱${amount.round()}';
+    final k = amount / 1000;
+    return '₱${k.toStringAsFixed(k >= 10 ? 0 : 1)}k';
+  }
 
   /// 1M has ~30 daily points from the API — too dense for "Week N"
   /// labels to mean anything, so they're bucketed into 7-day chunks
@@ -276,7 +294,8 @@ class _ChartWithPeak extends StatelessWidget {
   /// already gives them at the granularity the labels expect (hourly*
   /// and daily respectively; *pending backend hourly support for 1D).
   List<RevenuePoint> get _displaySeries {
-    if (range != '1M' || series.length <= 7) return series;
+    final series = widget.series;
+    if (widget.range != '1M' || series.length <= 7) return series;
     final buckets = <RevenuePoint>[];
     for (var start = 0; start < series.length; start += 7) {
       final end = (start + 7 < series.length) ? start + 7 : series.length;
@@ -288,7 +307,7 @@ class _ChartWithPeak extends StatelessWidget {
   }
 
   String _pointLabel(RevenuePoint p, int index) {
-    switch (range) {
+    switch (widget.range) {
       case '1D':
         return DateFormat('h a').format(p.date);
       case '1W':
@@ -299,9 +318,23 @@ class _ChartWithPeak extends StatelessWidget {
     }
   }
 
+  void _handleTouch(FlTouchEvent event, LineTouchResponse? response) {
+    if (event is! FlTapUpEvent) return;
+    final spots = response?.lineBarSpots;
+    if (spots == null || spots.isEmpty) return;
+    final tapped = spots.first.spotIndex;
+    setState(() => _selectedIndex = _selectedIndex == tapped ? null : tapped);
+  }
+
   @override
   Widget build(BuildContext context) {
     final series = _displaySeries;
+
+    // A fresh series (range switch) can leave a stale index pointing
+    // at the wrong point, or past the end of a shorter one.
+    if (_selectedIndex != null && _selectedIndex! >= series.length) {
+      _selectedIndex = null;
+    }
 
     if (series.length < 2) {
       return const SizedBox(
@@ -317,22 +350,44 @@ class _ChartWithPeak extends StatelessWidget {
 
     final amounts = series.map((p) => p.amount).toList();
     final maxAmount = amounts.reduce((a, b) => a > b ? a : b);
-    final peakIndex = amounts.indexOf(maxAmount);
 
     const chartMinY = 0.0;
     final chartMaxY = maxAmount <= 0 ? 1.0 : maxAmount * 1.28;
     final plotHeight = _chartHeight - _bottomAxisHeight - _topClearance;
     final labelInterval = (series.length / 5).ceil().clamp(1, series.length);
+    final selectedIndex = _selectedIndex;
 
     return SizedBox(
       height: _chartHeight,
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final plotWidth = constraints.maxWidth;
-          final xFrac = peakIndex / (series.length - 1);
-          final yFrac = (maxAmount - chartMinY) / (chartMaxY - chartMinY);
-          final peakLeft = xFrac * plotWidth;
-          final peakTop = _topClearance + (1 - yFrac) * plotHeight;
+          final plotWidth = constraints.maxWidth - _leftAxisWidth;
+
+          Widget? bubble;
+          if (selectedIndex != null) {
+            final point = series[selectedIndex];
+            final xFrac = selectedIndex / (series.length - 1);
+            final yFrac =
+                (point.amount - chartMinY) / (chartMaxY - chartMinY);
+            final left = _leftAxisWidth + xFrac * plotWidth;
+            final top = _topClearance + (1 - yFrac) * plotHeight;
+            bubble = Positioned(
+              left: (left - 62).clamp(
+                _leftAxisWidth,
+                (constraints.maxWidth - 124).clamp(
+                  _leftAxisWidth,
+                  constraints.maxWidth,
+                ),
+              ),
+              top: (top - 34).clamp(0.0, _chartHeight),
+              child: IgnorePointer(
+                child: _TapBubble(
+                  amount: point.amount,
+                  label: _pointLabel(point, selectedIndex),
+                ),
+              ),
+            );
+          }
 
           return Stack(
             clipBehavior: Clip.none,
@@ -351,7 +406,30 @@ class _ChartWithPeak extends StatelessWidget {
                       titlesData: FlTitlesData(
                         topTitles: const AxisTitles(),
                         rightTitles: const AxisTitles(),
-                        leftTitles: const AxisTitles(),
+                        leftTitles: AxisTitles(
+                          sideTitles: SideTitles(
+                            showTitles: true,
+                            reservedSize: _leftAxisWidth,
+                            interval: chartMaxY / 4,
+                            getTitlesWidget: (value, meta) {
+                              // Skip the zero baseline — the reference
+                              // never shows a bare "₱0" tick, just the
+                              // ~4 real values above it.
+                              if (value <= 0) return const SizedBox.shrink();
+                              return Padding(
+                                padding: const EdgeInsets.only(right: 6),
+                                child: Text(
+                                  _formatCompactPeso(value),
+                                  style: const TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w500,
+                                    color: AppColors.muted,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
                         bottomTitles: AxisTitles(
                           sideTitles: SideTitles(
                             showTitles: true,
@@ -364,7 +442,7 @@ class _ChartWithPeak extends StatelessWidget {
                                   (i % labelInterval != 0 && !isLast)) {
                                 return const SizedBox.shrink();
                               }
-                              final isPeak = i == peakIndex;
+                              final isSelected = i == selectedIndex;
                               return Padding(
                                 padding: const EdgeInsets.only(top: 6),
                                 child: Text(
@@ -372,7 +450,7 @@ class _ChartWithPeak extends StatelessWidget {
                                   style: TextStyle(
                                     fontSize: 11,
                                     fontWeight: FontWeight.w500,
-                                    color: isPeak
+                                    color: isSelected
                                         ? AppColors.accentTeal
                                         : AppColors.muted,
                                   ),
@@ -385,50 +463,12 @@ class _ChartWithPeak extends StatelessWidget {
                       borderData: FlBorderData(show: false),
                       lineTouchData: LineTouchData(
                         enabled: true,
-                        // Fires continuously while dragging, not just on
-                        // tap-down — this is what makes scrubbing across
-                        // the line feel live rather than one-shot.
-                        touchSpotThreshold: 24,
-                        getTouchedSpotIndicator: (barData, spotIndexes) {
-                          return spotIndexes.map((i) {
-                            return TouchedSpotIndicatorData(
-                              FlLine(
-                                color: AppColors.accentTeal.withValues(
-                                  alpha: 0.4,
-                                ),
-                                strokeWidth: 1.5,
-                                dashArray: [4, 4],
-                              ),
-                              FlDotData(
-                                show: true,
-                                getDotPainter: (spot, percent, bar, index) =>
-                                    FlDotCirclePainter(
-                                      radius: 5,
-                                      color: AppColors.accentTeal,
-                                      strokeWidth: 2,
-                                      strokeColor: Colors.white,
-                                    ),
-                              ),
-                            );
-                          }).toList();
-                        },
-                        touchTooltipData: LineTouchTooltipData(
-                          getTooltipColor: (_) => AppColors.ink,
-                          getTooltipItems: (spots) => spots.map((s) {
-                            final i = s.x.round();
-                            final label = (i >= 0 && i < series.length)
-                                ? ' · ${_pointLabel(series[i], i)}'
-                                : '';
-                            return LineTooltipItem(
-                              '${_formatPeso(s.y)}$label',
-                              const TextStyle(
-                                color: Colors.white,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            );
-                          }).toList(),
-                        ),
+                        // We render the dot/bubble ourselves from
+                        // _selectedIndex — fl_chart's own built-in
+                        // indicator/tooltip would show a second one
+                        // alongside it.
+                        handleBuiltInTouches: false,
+                        touchCallback: _handleTouch,
                       ),
                       lineBarsData: [
                         LineChartBarData(
@@ -443,7 +483,7 @@ class _ChartWithPeak extends StatelessWidget {
                           dotData: FlDotData(
                             show: true,
                             checkToShowDot: (spot, _) =>
-                                spot.x.round() == peakIndex,
+                                spot.x.round() == selectedIndex,
                             getDotPainter: (spot, percent, bar, index) =>
                                 FlDotCirclePainter(
                                   radius: 4,
@@ -469,19 +509,7 @@ class _ChartWithPeak extends StatelessWidget {
                   ),
                 ),
               ),
-              Positioned(
-                left: (peakLeft - 62).clamp(
-                  0.0,
-                  (plotWidth - 124).clamp(0.0, plotWidth),
-                ),
-                top: (peakTop - 34).clamp(0.0, _chartHeight),
-                child: IgnorePointer(
-                  child: _PeakBubble(
-                    amount: maxAmount,
-                    label: _pointLabel(series[peakIndex], peakIndex),
-                  ),
-                ),
-              ),
+              ?bubble,
             ],
           );
         },
@@ -490,8 +518,8 @@ class _ChartWithPeak extends StatelessWidget {
   }
 }
 
-class _PeakBubble extends StatelessWidget {
-  const _PeakBubble({required this.amount, required this.label});
+class _TapBubble extends StatelessWidget {
+  const _TapBubble({required this.amount, required this.label});
   final double amount;
   final String label;
 
@@ -504,7 +532,7 @@ class _PeakBubble extends StatelessWidget {
         borderRadius: BorderRadius.circular(10),
       ),
       child: Text(
-        '${_formatPeso(amount)} Peak ($label)',
+        '${_formatPeso(amount)} · $label',
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: const TextStyle(
