@@ -7,17 +7,17 @@ import '../providers/plans_provider.dart';
 import '../../../core/api/api_exception.dart';
 import '../../auth/providers/auth_providers.dart';
 
-const Color _cPageBg = Color(0xFFEDEFF0);
-const Color _cInk = Color(0xFF0E1A13);
-const Color _cSubtle = Color(0xFF6B7570);
-const Color _cMuted = Color(0xFF8A938E);
-const Color _cFieldBg = Color(0xFFF5F6F7);
+const Color _cPageBg = Color(0xFFF4F7F8);
+const Color _cInk = Color(0xFF071A14);
+const Color _cSubtle = Color(0xFF66736E);
+const Color _cMuted = Color(0xFF87938F);
+const Color _cFieldBg = Color(0xFFF0F3F3);
 const Color _cCardBg = Colors.white;
-const Color _cAccentTeal = Color(0xFF0F6E56);
+const Color _cAccentTeal = Color(0xFF005C47);
 const Color _cAccentTealBg = Color(0xFFE1F5EE);
-const Color _cErrorText = Color(0xFF9E3125);
-const Color _cErrorBg = Color(0xFFFCEBE8);
-const Color _cDisabledBg = Color(0xFFE2E5E3);
+const Color _cErrorText = Color(0xFFFF6173);
+const Color _cErrorBg = Color(0xFFFCEBED);
+const Color _cDisabledBg = Color(0xFFDDE4E1);
 
 const List<String> _durationUnits = ['DAY', 'WEEK', 'MONTH', 'YEAR'];
 
@@ -31,13 +31,6 @@ class ManagePlansScreen extends ConsumerStatefulWidget {
   });
 
   final String gymId;
-
-  /// True only when this screen is standing in for the old dedicated
-  /// /setup screen — a fresh gym with nothing priced above ₱0 yet.
-  /// Reuses this screen entirely rather than maintaining a second one:
-  /// same plan list, same edit sheet, just with first-run framing (an
-  /// explanation banner, no back button, a log-out escape hatch, and a
-  /// "Save and continue" bar instead of "Add Plan") layered on top.
   final bool firstRun;
 
   @override
@@ -51,38 +44,28 @@ class _ManagePlansScreenState extends ConsumerState<ManagePlansScreen> {
   @override
   void initState() {
     super.initState();
-    // This screen only ever reads the local cache (allPlansProvider),
-    // never the API directly — same as every other screen in the app.
-    // Elsewhere that cache is already warm by the time someone arrives
-    // (Members List and Check-In both call refreshPlans() themselves),
-    // but a fresh signup lands here FIRST, on a device with an empty
-    // local DB and no other screen ever reachable to prime it — the
-    // four ₱0 seed plans exist on the server (SignupSerializer) but
-    // would never make it into view. Fetch on entry so that's no
-    // longer true for this screen specifically.
-    WidgetsBinding.instance.addPostFrameCallback((_) => _refreshPlans());
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _refreshPlans();
+    });
   }
 
   Future<void> _refreshPlans() async {
     try {
       await ref.read(plansRepositoryProvider).refreshPlans(widget.gymId);
     } catch (_) {
-      // Offline or transient — the local cache (possibly empty, for a
-      // brand-new gym) is still shown; nothing else to do here.
+      // Keep local cache visible if offline.
     }
   }
 
-  /// The exit condition out of first-run mode. Deliberately re-fetches
-  /// /auth/me/ and pushes the result into AuthController rather than
-  /// flipping a local flag — needs_setup flipping to false is a server
-  /// fact, and app_router's redirect (which reads it from there) is
-  /// what actually releases this screen to the dashboard. A reinstall
-  /// or fresh login must never drop a priced gym back into setup.
   Future<void> _continueFromFirstRun() async {
     if (_continuing) return;
+
     setState(() => _continuing = true);
+
     try {
       final updatedUser = await ref.read(authApiProvider).me();
+
       ref.read(authControllerProvider.notifier).applyUser(updatedUser);
     } catch (_) {
       if (mounted) {
@@ -93,14 +76,13 @@ class _ManagePlansScreenState extends ConsumerState<ManagePlansScreen> {
         );
       }
     } finally {
-      if (mounted) setState(() => _continuing = false);
+      if (mounted) {
+        setState(() => _continuing = false);
+      }
     }
   }
 
   Future<void> _logout() async {
-    // No confirmation dialog: this is first-run only, before any local
-    // data exists to lose, and someone who signed up by accident needs
-    // a way out, not another decision to make.
     try {
       await ref.read(authControllerProvider.notifier).logout(force: true);
     } catch (_) {}
@@ -109,6 +91,7 @@ class _ManagePlansScreenState extends ConsumerState<ManagePlansScreen> {
   @override
   Widget build(BuildContext context) {
     final plansAsync = ref.watch(allPlansProvider(widget.gymId));
+
     final hasPricedPlan =
         plansAsync.asData?.value.any((p) => p.priceCentavos > 0) ?? false;
 
@@ -116,115 +99,33 @@ class _ManagePlansScreenState extends ConsumerState<ManagePlansScreen> {
       backgroundColor: _cPageBg,
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          padding: const EdgeInsets.fromLTRB(0, 0, 0, 12),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
-                children: [
-                  if (!widget.firstRun)
-                    IconButton(
-                      onPressed: () => context.pop(),
-                      icon: const Icon(Icons.arrow_back, color: _cInk),
-                    ),
-                  Expanded(
-                    child: Text(
-                      widget.firstRun ? 'Set your pricing' : 'Manage Plans',
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w600,
-                        color: _cInk,
-                      ),
-                    ),
-                  ),
-                  if (widget.firstRun)
-                    TextButton(
-                      onPressed: _logout,
-                      child: const Text('Log out'),
-                    )
-                  else
-                    plansAsync.when(
-                      data: (allPlans) {
-                        final visible = allPlans
-                            .where((p) => !p.isDayPass)
-                            .length;
-                        return Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 5,
-                          ),
-                          decoration: BoxDecoration(
-                            color: _cAccentTealBg,
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: Text(
-                            '$visible Total',
-                            style: const TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: _cAccentTeal,
-                            ),
-                          ),
-                        );
-                      },
-                      loading: () => const SizedBox.shrink(),
-                      error: (_, _) => const SizedBox.shrink(),
-                    ),
-                ],
-              ),
-              if (widget.firstRun) ...[
-                const SizedBox(height: 6),
-                const Text(
-                  'These are the plans members will be signed up to — '
-                  'set the prices your gym charges. Add at least one '
-                  'price above ₱0 to continue. Walk-in prices are set '
-                  'from the Check-in screen.',
-                  style: TextStyle(fontSize: 13, color: _cSubtle),
-                ),
-              ],
-              const SizedBox(height: 10),
+              _buildHeader(context),
 
-              Container(
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  color: _cFieldBg,
-                  borderRadius: BorderRadius.circular(12),
+              if (widget.firstRun)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+                  child: const Text(
+                    'These are the plans members will be signed up to — '
+                    'set the prices your gym charges.',
+                    style: TextStyle(fontSize: 13, color: _cSubtle),
+                  ),
                 ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _FilterTab(
-                        label: 'All',
-                        selected: _filter == _StatusFilter.all,
-                        onTap: () =>
-                            setState(() => _filter = _StatusFilter.all),
-                      ),
-                    ),
-                    Expanded(
-                      child: _FilterTab(
-                        label: 'Active',
-                        selected: _filter == _StatusFilter.active,
-                        onTap: () =>
-                            setState(() => _filter = _StatusFilter.active),
-                      ),
-                    ),
-                    Expanded(
-                      child: _FilterTab(
-                        label: 'Inactive',
-                        selected: _filter == _StatusFilter.inactive,
-                        onTap: () =>
-                            setState(() => _filter = _StatusFilter.inactive),
-                      ),
-                    ),
-                  ],
-                ),
+
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: _buildFilterTabs(),
               ),
-              const SizedBox(height: 12),
+
+              const SizedBox(height: 10),
 
               Expanded(
                 child: plansAsync.when(
                   data: (allPlans) {
                     var plans = allPlans.where((p) => !p.isDayPass).toList();
+
                     if (_filter == _StatusFilter.active) {
                       plans = plans.where((p) => p.isActive).toList();
                     } else if (_filter == _StatusFilter.inactive) {
@@ -239,73 +140,182 @@ class _ManagePlansScreenState extends ConsumerState<ManagePlansScreen> {
                         ),
                       );
                     }
-                    return ListView.separated(
-                      itemCount: plans.length,
-                      separatorBuilder: (_, _) => const SizedBox(height: 10),
-                      itemBuilder: (context, index) =>
-                          _PlanTile(plan: plans[index], gymId: widget.gymId),
+
+                    return RefreshIndicator(
+                      color: _cAccentTeal,
+                      onRefresh: _refreshPlans,
+                      child: ListView.separated(
+                        padding: const EdgeInsets.fromLTRB(1, 0, 1, 4),
+                        itemCount: plans.length,
+                        separatorBuilder: (_, _) => const SizedBox(height: 7),
+                        itemBuilder: (context, index) {
+                          return _PlanTile(
+                            plan: plans[index],
+                            gymId: widget.gymId,
+                          );
+                        },
+                      ),
                     );
                   },
-                  loading: () =>
-                      const Center(child: CircularProgressIndicator()),
-                  error: (error, _) =>
-                      Center(child: Text('Something went wrong: $error')),
-                ),
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: widget.firstRun
-                    ? FilledButton(
-                        onPressed: hasPricedPlan && !_continuing
-                            ? _continueFromFirstRun
-                            : null,
-                        style: FilledButton.styleFrom(
-                          backgroundColor: _cAccentTeal,
-                          foregroundColor: Colors.white,
-                          disabledBackgroundColor: _cDisabledBg,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                        ),
-                        child: _continuing
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : const Text(
-                                'Save and continue',
-                                style: TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                      )
-                    : FilledButton.icon(
-                  onPressed: () => openPlanForm(context, gymId: widget.gymId),
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text(
-                    'Add Plan',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                  loading: () => const Center(
+                    child: CircularProgressIndicator(color: _cAccentTeal),
                   ),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: _cAccentTeal,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(999),
+                  error: (error, _) => Center(
+                    child: Text(
+                      'Something went wrong: $error',
+                      style: const TextStyle(color: _cSubtle),
                     ),
                   ),
+                ),
+              ),
+
+              const SizedBox(height: 8),
+
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 1),
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 46,
+                  child: widget.firstRun
+                      ? FilledButton(
+                          onPressed: hasPricedPlan && !_continuing
+                              ? _continueFromFirstRun
+                              : null,
+                          style: FilledButton.styleFrom(
+                            backgroundColor: _cAccentTeal,
+                            foregroundColor: Colors.white,
+                            disabledBackgroundColor: _cDisabledBg,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          child: _continuing
+                              ? const SizedBox(
+                                  width: 19,
+                                  height: 19,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Text(
+                                  'Save and continue',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                        )
+                      : FilledButton.icon(
+                          onPressed: () {
+                            openPlanForm(context, gymId: widget.gymId);
+                          },
+                          icon: const Icon(Icons.add, size: 16),
+                          label: const Text(
+                            'Add New Plan',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: _cAccentTeal,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                        ),
                 ),
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildHeader(BuildContext context) {
+    return SizedBox(
+      height: 38,
+      child: Row(
+        children: [
+          if (!widget.firstRun)
+            IconButton(
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+              onPressed: () => context.pop(),
+              icon: const Icon(Icons.chevron_left, size: 23, color: _cSubtle),
+            ),
+
+          if (!widget.firstRun) const SizedBox(width: 1),
+
+          Expanded(
+            child: Text(
+              widget.firstRun ? 'Set your pricing' : 'Manage Plans',
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: _cInk,
+              ),
+            ),
+          ),
+
+          if (widget.firstRun)
+            TextButton(
+              onPressed: _logout,
+              style: TextButton.styleFrom(
+                foregroundColor: _cAccentTeal,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+              ),
+              child: const Text(
+                'Log out',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFilterTabs() {
+    return Container(
+      height: 27,
+      padding: const EdgeInsets.all(2),
+      decoration: BoxDecoration(
+        color: _cFieldBg,
+        borderRadius: BorderRadius.circular(7),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _FilterTab(
+              label: 'All',
+              selected: _filter == _StatusFilter.all,
+              onTap: () {
+                setState(() => _filter = _StatusFilter.all);
+              },
+            ),
+          ),
+          Expanded(
+            child: _FilterTab(
+              label: 'Active',
+              selected: _filter == _StatusFilter.active,
+              onTap: () {
+                setState(() => _filter = _StatusFilter.active);
+              },
+            ),
+          ),
+          Expanded(
+            child: _FilterTab(
+              label: 'Inactive',
+              selected: _filter == _StatusFilter.inactive,
+              onTap: () {
+                setState(() => _filter = _StatusFilter.inactive);
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -325,29 +335,21 @@ class _FilterTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 160),
-        padding: const EdgeInsets.symmetric(vertical: 8),
+        duration: const Duration(milliseconds: 150),
+        alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: selected ? _cCardBg : Colors.transparent,
-          borderRadius: BorderRadius.circular(9),
-          boxShadow: selected
-              ? [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.06),
-                    blurRadius: 4,
-                  ),
-                ]
-              : null,
+          color: selected ? _cAccentTeal : Colors.transparent,
+          borderRadius: BorderRadius.circular(5),
         ),
         child: Text(
           label,
-          textAlign: TextAlign.center,
           style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: selected ? _cAccentTeal : _cMuted,
+            fontSize: 9,
+            fontWeight: FontWeight.w700,
+            color: selected ? Colors.white : _cMuted,
           ),
         ),
       ),
@@ -355,8 +357,7 @@ class _FilterTab extends StatelessWidget {
   }
 }
 
-/// Public entry point so other screens (the first-run setup flow) can
-/// open the same add/edit plan sheet without duplicating it.
+/// Public entry point used by other screens.
 void openPlanForm(
   BuildContext context, {
   required String gymId,
@@ -392,103 +393,104 @@ class _PlanTile extends ConsumerWidget {
   final MembershipPlan plan;
   final String gymId;
 
+  String _durationLabel() {
+    final value = plan.durationValue;
+    final unit = plan.durationUnit.toUpperCase();
+
+    if (unit == 'DAY') {
+      return value == 1 ? '1 day access' : '$value days';
+    }
+
+    if (unit == 'WEEK') {
+      return value == 1 ? '1 week' : '$value weeks';
+    }
+
+    if (unit == 'MONTH') {
+      return value == 1 ? '1 month' : '$value months';
+    }
+
+    if (unit == 'YEAR') {
+      return value == 1 ? '1 full year' : '$value years';
+    }
+
+    return '$value ${unit.toLowerCase()}';
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final pesos = plan.priceCentavos / 100;
-    final durationLabel =
-        '${plan.durationValue} ${plan.durationUnit.toLowerCase()}'
-        '${plan.durationValue == 1 ? '' : 's'}';
 
     return Container(
       decoration: BoxDecoration(
         color: _cCardBg,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(11),
+        border: Border.all(color: const Color(0xFFE5EBE9), width: 0.7),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.035),
+            blurRadius: 4,
+            offset: const Offset(0, 1),
+          ),
+        ],
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: const EdgeInsets.fromLTRB(10, 9, 7, 9),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Expanded(
-                child: Row(
-                  children: [
-                    Flexible(
-                      child: Text(
-                        plan.name,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          color: _cInk,
-                        ),
-                      ),
-                    ),
-                    if (plan.category.isNotEmpty) ...[
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 3,
-                        ),
-                        decoration: BoxDecoration(
-                          color: _cAccentTealBg,
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: Text(
-                          plan.category.toUpperCase(),
-                          style: const TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                            color: _cAccentTeal,
-                          ),
-                        ),
-                      ),
-                    ],
-                    if (!plan.isActive) ...[
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 3,
-                        ),
-                        decoration: BoxDecoration(
-                          color: _cErrorBg,
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: const Text(
-                          'INACTIVE',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                            color: _cErrorText,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
+                child: Text(
+                  plan.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: _cInk,
+                  ),
                 ),
               ),
-              IconButton(
-                icon: const Icon(
-                  Icons.edit_outlined,
-                  size: 19,
-                  color: _cSubtle,
+
+              const SizedBox(width: 4),
+
+              SizedBox(
+                width: 25,
+                height: 25,
+                child: IconButton(
+                  padding: EdgeInsets.zero,
+                  onPressed: () {
+                    _openPlanForm(context, gymId: gymId, existing: plan);
+                  },
+                  icon: const Icon(
+                    Icons.edit_outlined,
+                    size: 15,
+                    color: Color(0xFF8A9DA5),
+                  ),
                 ),
-                onPressed: () =>
-                    _openPlanForm(context, gymId: gymId, existing: plan),
               ),
-              IconButton(
-                icon: const Icon(
-                  Icons.delete_outline,
-                  size: 19,
-                  color: _cErrorText,
+
+              SizedBox(
+                width: 25,
+                height: 25,
+                child: IconButton(
+                  padding: EdgeInsets.zero,
+                  onPressed: () {
+                    _confirmDelete(context, ref, plan);
+                  },
+                  icon: const Icon(
+                    Icons.delete_outline,
+                    size: 15,
+                    color: _cErrorText,
+                  ),
                 ),
-                onPressed: () => _confirmDelete(context, ref, plan),
               ),
             ],
           ),
-          const SizedBox(height: 6),
+
+          const SizedBox(height: 1),
+
           Row(
             crossAxisAlignment: CrossAxisAlignment.baseline,
             textBaseline: TextBaseline.alphabetic,
@@ -496,15 +498,39 @@ class _PlanTile extends ConsumerWidget {
               Text(
                 '₱${pesos.toStringAsFixed(0)}',
                 style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
                   color: _cInk,
+                ),
+              ),
+              const SizedBox(width: 3),
+              Text(
+                '/ ${_durationLabel()}',
+                style: const TextStyle(fontSize: 7, color: _cMuted),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 5),
+
+          Row(
+            children: [
+              Container(
+                width: 4,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: plan.isActive ? const Color(0xFF00A878) : _cErrorText,
+                  shape: BoxShape.circle,
                 ),
               ),
               const SizedBox(width: 4),
               Text(
-                '/ $durationLabel',
-                style: const TextStyle(fontSize: 12, color: _cMuted),
+                plan.isActive ? 'Active Tier' : 'Inactive Tier',
+                style: TextStyle(
+                  fontSize: 7,
+                  fontWeight: FontWeight.w600,
+                  color: plan.isActive ? _cAccentTeal : _cErrorText,
+                ),
               ),
             ],
           ),
@@ -523,8 +549,9 @@ class _PlanTile extends ConsumerWidget {
       builder: (context) => AlertDialog(
         title: Text('Delete "${plan.name}"?'),
         content: const Text(
-          'This removes the plan entirely. If members have used it '
-          'before, turning off Active (edit → Active) is usually safer '
+          'This removes the plan entirely. '
+          'If members have used it before, '
+          'turning off Active is usually safer '
           'than deleting.',
         ),
         actions: [
@@ -539,11 +566,12 @@ class _PlanTile extends ConsumerWidget {
         ],
       ),
     );
+
     if (confirmed != true) return;
 
     try {
       await ref.read(plansRepositoryProvider).deletePlan(plan.id);
-    } catch (e) {
+    } catch (_) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -572,6 +600,7 @@ class _PlanFormSheetState extends ConsumerState<_PlanFormSheet> {
   late final TextEditingController _categoryCtrl;
   late final TextEditingController _priceCtrl;
   late final TextEditingController _durationValueCtrl;
+
   late String _durationUnit;
   late bool _isActive;
   late bool _customCategoryMode;
@@ -584,18 +613,27 @@ class _PlanFormSheetState extends ConsumerState<_PlanFormSheet> {
   @override
   void initState() {
     super.initState();
+
     final e = widget.existing;
+
     _nameCtrl = TextEditingController(text: e?.name ?? '');
+
     _categoryCtrl = TextEditingController(text: e?.category ?? '');
+
     _priceCtrl = TextEditingController(
       text: e != null ? (e.priceCentavos / 100).toStringAsFixed(2) : '',
     );
+
     _durationValueCtrl = TextEditingController(
       text: e != null ? e.durationValue.toString() : '1',
     );
+
     _durationUnit = e?.durationUnit ?? 'MONTH';
+
     _isActive = e?.isActive ?? true;
+
     final currentCategory = e?.category ?? '';
+
     _customCategoryMode =
         currentCategory.isNotEmpty &&
         !_categoryPresets.any(
@@ -621,11 +659,15 @@ class _PlanFormSheetState extends ConsumerState<_PlanFormSheet> {
 
   Future<void> _save() async {
     final name = _nameCtrl.text.trim();
+
     final price = double.tryParse(_priceCtrl.text.trim());
+
     final durationValue = int.tryParse(_durationValueCtrl.text.trim());
 
     if (name.isEmpty || price == null || durationValue == null) {
-      setState(() => _error = 'Fill in name, price, and duration.');
+      setState(() {
+        _error = 'Fill in name, price, and duration.';
+      });
       return;
     }
 
@@ -636,6 +678,7 @@ class _PlanFormSheetState extends ConsumerState<_PlanFormSheet> {
 
     try {
       final repo = ref.read(plansRepositoryProvider);
+
       if (_isEditing) {
         await repo.updatePlan(
           id: widget.existing!.id,
@@ -660,26 +703,34 @@ class _PlanFormSheetState extends ConsumerState<_PlanFormSheet> {
           isActive: _isActive,
         );
       }
-      if (mounted) Navigator.of(context).pop();
+
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
     } on ApiException catch (e) {
       if (mounted) {
         setState(() {
           _isSubmitting = false;
+
           String? specificMessage;
+
           final fieldErrors = e.fieldErrors;
+
           if (fieldErrors != null && fieldErrors.isNotEmpty) {
             final firstList = fieldErrors.values.first;
+
             if (firstList.isNotEmpty) {
               specificMessage = firstList.first;
             }
           }
+
           _error =
               specificMessage ??
               e.message ??
               "Couldn't save — check the fields and try again.";
         });
       }
-    } catch (e) {
+    } catch (_) {
       if (mounted) {
         setState(() {
           _isSubmitting = false;
@@ -767,6 +818,7 @@ class _PlanFormSheetState extends ConsumerState<_PlanFormSheet> {
                 ],
 
                 _field('Plan Name', _nameCtrl, hint: 'Monthly Regular'),
+
                 const SizedBox(height: 16),
 
                 Row(
@@ -783,7 +835,10 @@ class _PlanFormSheetState extends ConsumerState<_PlanFormSheet> {
                     GestureDetector(
                       onTap: () => setState(() {
                         _customCategoryMode = !_customCategoryMode;
-                        if (_customCategoryMode) _categoryCtrl.clear();
+
+                        if (_customCategoryMode) {
+                          _categoryCtrl.clear();
+                        }
                       }),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
@@ -807,7 +862,9 @@ class _PlanFormSheetState extends ConsumerState<_PlanFormSheet> {
                     ),
                   ],
                 ),
+
                 const SizedBox(height: 6),
+
                 if (_customCategoryMode)
                   _field('', _categoryCtrl, hint: 'e.g. Senior, Weekend Pass')
                 else
@@ -825,6 +882,7 @@ class _PlanFormSheetState extends ConsumerState<_PlanFormSheet> {
                         ),
                     ],
                   ),
+
                 const SizedBox(height: 16),
 
                 _field(
@@ -834,6 +892,7 @@ class _PlanFormSheetState extends ConsumerState<_PlanFormSheet> {
                   keyboardType: TextInputType.number,
                   prefixIcon: Icons.currency_exchange,
                 ),
+
                 const SizedBox(height: 16),
 
                 const Text(
@@ -844,72 +903,17 @@ class _PlanFormSheetState extends ConsumerState<_PlanFormSheet> {
                     color: _cSubtle,
                   ),
                 ),
+
                 const SizedBox(height: 6),
+
                 Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: Container(
-                        height: 48,
-                        decoration: BoxDecoration(
-                          color: _cFieldBg,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        alignment: Alignment.centerLeft,
-                        child: TextField(
-                          controller: _durationValueCtrl,
-                          keyboardType: TextInputType.number,
-                          enabled: !_isSubmitting,
-                          textAlignVertical: TextAlignVertical.center,
-                          style: const TextStyle(fontSize: 15),
-                          decoration: const InputDecoration(
-                            hintText: '1',
-                            border: InputBorder.none,
-                            isDense: true,
-                            contentPadding: EdgeInsets.symmetric(
-                              horizontal: 12,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
+                    Expanded(child: _durationField()),
                     const SizedBox(width: 12),
-                    Expanded(
-                      child: Container(
-                        height: 48,
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        decoration: BoxDecoration(
-                          color: _cFieldBg,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        alignment: Alignment.center,
-                        child: DropdownButtonHideUnderline(
-                          child: DropdownButton<String>(
-                            value: _durationUnit,
-                            isExpanded: true,
-                            icon: const Icon(
-                              Icons.keyboard_arrow_down,
-                              color: _cAccentTeal,
-                            ),
-                            items: _durationUnits
-                                .map(
-                                  (u) => DropdownMenuItem(
-                                    value: u,
-                                    child: Text(
-                                      '${u[0]}${u.substring(1).toLowerCase()}(s)',
-                                    ),
-                                  ),
-                                )
-                                .toList(),
-                            onChanged: (v) => setState(
-                              () => _durationUnit = v ?? _durationUnit,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
+                    Expanded(child: _durationDropdown()),
                   ],
                 ),
+
                 const SizedBox(height: 12),
 
                 Container(
@@ -958,18 +962,23 @@ class _PlanFormSheetState extends ConsumerState<_PlanFormSheet> {
                       Switch(
                         value: _isActive,
                         activeThumbColor: _cAccentTeal,
-                        onChanged: (v) => setState(() => _isActive = v),
+                        onChanged: _isSubmitting
+                            ? null
+                            : (v) => setState(() => _isActive = v),
                       ),
                     ],
                   ),
                 ),
+
                 const SizedBox(height: 4),
+
                 const Text(
-                  "Off hides this plan from new members, but keeps it in old records.",
+                  'Off hides this plan from new members, but keeps it in old records.',
                   style: TextStyle(fontSize: 11, color: _cMuted),
                 ),
 
                 const SizedBox(height: 20),
+
                 Row(
                   children: [
                     Expanded(
@@ -1026,6 +1035,58 @@ class _PlanFormSheetState extends ConsumerState<_PlanFormSheet> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _durationField() {
+    return Container(
+      height: 48,
+      decoration: BoxDecoration(
+        color: _cFieldBg,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: TextField(
+        controller: _durationValueCtrl,
+        keyboardType: TextInputType.number,
+        enabled: !_isSubmitting,
+        textAlignVertical: TextAlignVertical.center,
+        style: const TextStyle(fontSize: 15),
+        decoration: const InputDecoration(
+          hintText: '1',
+          border: InputBorder.none,
+          isDense: true,
+          contentPadding: EdgeInsets.symmetric(horizontal: 12),
+        ),
+      ),
+    );
+  }
+
+  Widget _durationDropdown() {
+    return Container(
+      height: 48,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: _cFieldBg,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: _durationUnit,
+          isExpanded: true,
+          icon: const Icon(Icons.keyboard_arrow_down, color: _cAccentTeal),
+          items: _durationUnits
+              .map(
+                (u) => DropdownMenuItem(
+                  value: u,
+                  child: Text('${u[0]}${u.substring(1).toLowerCase()}(s)'),
+                ),
+              )
+              .toList(),
+          onChanged: _isSubmitting
+              ? null
+              : (v) => setState(() => _durationUnit = v ?? _durationUnit),
+        ),
       ),
     );
   }

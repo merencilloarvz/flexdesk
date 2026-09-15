@@ -21,4 +21,18 @@ class AnalyticsApi {
       throw ApiException.from(e);
     }
   }
+
+  /// Today's merged check-in/membership/POS feed, newest first. Always
+  /// "today" — unlike fetchAnalytics, not parameterized by range.
+  Future<Map<String, dynamic>> fetchActivityLog({int limit = 5}) async {
+    try {
+      final response = await _dio.get(
+        '/analytics/activity-log/',
+        queryParameters: {'limit': limit},
+      );
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw ApiException.from(e);
+    }
+  }
 }

@@ -108,23 +108,14 @@ class _MembersListScreenState extends ConsumerState<MembersListScreen> {
                   const Text(
                     'Members',
                     style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w600,
+                      fontSize: 28,
+                      fontWeight: FontWeight.w700,
                       color: AppColors.ink,
                     ),
                   ),
                   const SizedBox(height: 4),
                   Row(
                     children: [
-                      Container(
-                        width: 6,
-                        height: 6,
-                        decoration: const BoxDecoration(
-                          color: AppColors.accentTeal,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
                       Text(
                         '${allMembers.length} total members listed',
                         style: const TextStyle(
@@ -161,53 +152,48 @@ class _MembersListScreenState extends ConsumerState<MembersListScreen> {
                   ),
                   const SizedBox(height: 14),
 
-                  Container(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    decoration: const BoxDecoration(
-                      border: Border(
-                        bottom: BorderSide(color: AppColors.border, width: 0.5),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _TabChip(
+                        label: 'All',
+                        dotColor: AppColors.accentTeal,
+                        fillColor: AppColors.accentTeal,
+                        selected: _filter == _StatusFilter.all,
+                        onTap: () =>
+                            setState(() => _filter = _StatusFilter.all),
                       ),
-                    ),
-                    child: Row(
-                      children: [
-                        _TabLabel(
-                          label: 'All',
-                          dotColor: AppColors.accentTeal,
-                          selected: _filter == _StatusFilter.all,
-                          onTap: () =>
-                              setState(() => _filter = _StatusFilter.all),
-                        ),
-                        const SizedBox(width: 16),
-                        _TabLabel(
-                          label: 'Active',
-                          // Blue override — see _activeColorOverride.
-                          dotColor: _activeColorOverride,
-                          selected: _filter == _StatusFilter.active,
-                          onTap: () =>
-                              setState(() => _filter = _StatusFilter.active),
-                        ),
-                        const SizedBox(width: 16),
-                        _TabLabel(
-                          label: 'Expiring',
-                          // Light brown — unchanged.
-                          dotColor: AppColors.expiringBg,
-                          selected: _filter == _StatusFilter.expiring,
-                          onTap: () =>
-                              setState(() => _filter = _StatusFilter.expiring),
-                        ),
-                        const SizedBox(width: 16),
-                        _TabLabel(
-                          label: 'Expired',
-                          // Red — unchanged.
-                          dotColor: AppColors.expiredBg,
-                          selected: _filter == _StatusFilter.expired,
-                          onTap: () =>
-                              setState(() => _filter = _StatusFilter.expired),
-                        ),
-                      ],
-                    ),
+                      _TabChip(
+                        label: 'Active',
+                        // Blue override — see _activeColorOverride.
+                        dotColor: _activeColorOverride,
+                        fillColor: _activeColorOverride,
+                        selected: _filter == _StatusFilter.active,
+                        onTap: () =>
+                            setState(() => _filter = _StatusFilter.active),
+                      ),
+                      _TabChip(
+                        label: 'Expiring',
+                        // Light brown — unchanged.
+                        dotColor: AppColors.expiringBg,
+                        fillColor: AppColors.expiringBg,
+                        selected: _filter == _StatusFilter.expiring,
+                        onTap: () =>
+                            setState(() => _filter = _StatusFilter.expiring),
+                      ),
+                      _TabChip(
+                        label: 'Expired',
+                        // Red — unchanged.
+                        dotColor: AppColors.expiredBg,
+                        fillColor: AppColors.expiredBg,
+                        selected: _filter == _StatusFilter.expired,
+                        onTap: () =>
+                            setState(() => _filter = _StatusFilter.expired),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 14),
 
                   Expanded(
                     child: membersAsync.when(
@@ -215,7 +201,9 @@ class _MembersListScreenState extends ConsumerState<MembersListScreen> {
                         if (members.isEmpty) {
                           return const _EmptyMembersList();
                         }
+
                         final filtered = _filtered(members, today);
+
                         if (filtered.isEmpty) {
                           return const Center(
                             child: Text(
@@ -224,6 +212,7 @@ class _MembersListScreenState extends ConsumerState<MembersListScreen> {
                             ),
                           );
                         }
+
                         return RefreshIndicator(
                           onRefresh: _refresh,
                           color: AppColors.accentTeal,
@@ -237,6 +226,7 @@ class _MembersListScreenState extends ConsumerState<MembersListScreen> {
                                 const SizedBox(height: 8),
                             itemBuilder: (context, index) {
                               final member = filtered[index];
+
                               return RepaintBoundary(
                                 key: ValueKey(member.id),
                                 child: _MemberTile(
@@ -275,16 +265,18 @@ class _MembersListScreenState extends ConsumerState<MembersListScreen> {
   }
 }
 
-class _TabLabel extends StatelessWidget {
-  const _TabLabel({
+class _TabChip extends StatelessWidget {
+  const _TabChip({
     required this.label,
     required this.dotColor,
+    required this.fillColor,
     required this.selected,
     required this.onTap,
   });
 
   final String label;
   final Color dotColor;
+  final Color fillColor;
   final bool selected;
   final VoidCallback onTap;
 
@@ -293,32 +285,21 @@ class _TabLabel extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.only(bottom: 8),
-        decoration: selected
-            ? const BoxDecoration(
-                border: Border(
-                  bottom: BorderSide(color: AppColors.accentTeal, width: 2),
-                ),
-              )
-            : null,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected ? fillColor : AppColors.cardBg,
+          borderRadius: BorderRadius.circular(999),
+          border: selected ? null : Border.all(color: AppColors.border),
+        ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 6,
-              height: 6,
-              decoration: BoxDecoration(
-                color: dotColor,
-                shape: BoxShape.circle,
-              ),
-            ),
-            const SizedBox(width: 5),
             Text(
               label,
               style: TextStyle(
                 fontSize: 13,
-                fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-                color: selected ? AppColors.ink : AppColors.subtle,
+                fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                color: selected ? Colors.white : AppColors.ink,
               ),
             ),
           ],
@@ -354,6 +335,7 @@ class _MemberTile extends StatelessWidget {
         AppColors.noMembershipIcon,
       ),
     };
+
     final labelColor = switch (status) {
       MembershipStatus.active => _activeColorOverride,
       MembershipStatus.expiring => AppColors.expiringBg,
@@ -434,6 +416,7 @@ class _MemberTile extends StatelessWidget {
 
   String _statusLabel(MembershipStatus status, int? remaining) {
     if (remaining == 0) return 'Expires today';
+
     switch (status) {
       case MembershipStatus.active:
         return 'Active';
@@ -450,6 +433,7 @@ class _MemberTile extends StatelessWidget {
     if (remaining == null) return '';
     if (remaining == 0) return '';
     if (remaining > 0) return '$remaining days left';
+
     return '${remaining.abs()} days ago';
   }
 }
