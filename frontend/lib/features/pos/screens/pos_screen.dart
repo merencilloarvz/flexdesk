@@ -195,12 +195,7 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                   : _error != null
                   ? Center(child: Text(_error!))
                   : (_products == null || _products!.isEmpty)
-                  ? const Center(
-                      child: Text(
-                        'No products yet. Add some from Manage Stock.',
-                        style: TextStyle(color: AppColors.subtle),
-                      ),
-                    )
+                  ? const SizedBox.shrink()
                   : RefreshIndicator(
                       onRefresh: _load,
                       color: AppColors.accentTeal,
