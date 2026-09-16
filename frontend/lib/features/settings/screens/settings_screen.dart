@@ -158,6 +158,14 @@ class SettingsScreen extends ConsumerWidget {
               ),
             ],
 
+            const SizedBox(height: 20),
+            _SettingsRow(
+              icon: Icons.info_outline,
+              title: 'About',
+              subtitle: 'App version, licences & credits',
+              onTap: () => context.push('/about'),
+            ),
+
             const SizedBox(height: 24),
             SizedBox(
               width: double.infinity,

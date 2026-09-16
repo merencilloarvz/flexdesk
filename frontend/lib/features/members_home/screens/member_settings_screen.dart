@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/api/api_exception.dart';
 import '../../../core/theme/colors.dart';
@@ -70,6 +71,19 @@ class MemberSettingsScreen extends ConsumerWidget {
                 "If a staff member reset your card's code, tap this",
               ),
               onTap: () => _refreshCard(context, ref),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            decoration: BoxDecoration(
+              color: AppColors.cardBg,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: ListTile(
+              leading: const Icon(Icons.info_outline),
+              title: const Text('About'),
+              subtitle: const Text('App version, licences & credits'),
+              onTap: () => context.push('/about'),
             ),
           ),
           const SizedBox(height: 16),

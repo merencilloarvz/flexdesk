@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/theme/colors.dart';
+import '../../shell/app_shell.dart';
 import '../providers/workout_guides_providers.dart';
 import '../widgets/guide_frame.dart';
 
@@ -68,97 +70,200 @@ class _GuideDetailScreenState extends ConsumerState<GuideDetailScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: Text(guide.name)),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          AspectRatio(
-            aspectRatio: 1,
-            child: Container(
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              padding: const EdgeInsets.all(24),
-              child: Stack(
-                alignment: Alignment.bottomRight,
-                children: [
-                  AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 200),
-                    child: GuideFrame(
-                      key: ValueKey(_frameIndex),
-                      assetPath: guide.framePath(guide.frames[_frameIndex]),
-                    ),
-                  ),
-                  if (guide.frames.length > 1)
+      body: SafeArea(
+        child: ListView(
+          // The nav bar floats over the shell body (AppShell.extendBody),
+          // so anything scrollable here has to reserve room for it or the
+          // last section ends up underneath it.
+          padding: EdgeInsets.fromLTRB(
+            16,
+            16,
+            16,
+            AppShell.reservedNavHeight + 24,
+          ),
+          children: [
+            AspectRatio(
+              aspectRatio: 1,
+              child: Container(
+                clipBehavior: Clip.antiAlias,
+                decoration: BoxDecoration(
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                child: Stack(
+                  children: [
                     Padding(
-                      padding: const EdgeInsets.all(8),
-                      child: FloatingActionButton.small(
-                        heroTag: 'guide_play_pause',
-                        onPressed: _togglePlay,
-                        child: Icon(_playing ? Icons.pause : Icons.play_arrow),
+                      padding: const EdgeInsets.all(24),
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 200),
+                        child: GuideFrame(
+                          key: ValueKey(_frameIndex),
+                          assetPath: guide.framePath(
+                            guide.frames[_frameIndex],
+                          ),
+                        ),
                       ),
                     ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              Chip(label: Text(guide.muscleGroup)),
-              Chip(label: Text(guide.equipment)),
-              Chip(label: Text(guide.difficulty)),
-            ],
-          ),
-          const SizedBox(height: 24),
-          Text('Steps', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
-          ...guide.steps.asMap().entries.map(
-                (entry) => Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('${entry.key + 1}. ',
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodyMedium
-                              ?.copyWith(fontWeight: FontWeight.bold)),
-                      Expanded(child: Text(entry.value)),
-                    ],
-                  ),
+                    Positioned(
+                      top: 12,
+                      left: 12,
+                      child: _RoundIconButton(
+                        icon: Icons.arrow_back,
+                        onTap: () => Navigator.of(context).pop(),
+                        background: Colors.white.withValues(alpha: 0.9),
+                        foreground: AppColors.ink,
+                      ),
+                    ),
+                    if (guide.frames.length > 1)
+                      Positioned(
+                        bottom: 12,
+                        right: 12,
+                        child: _RoundIconButton(
+                          icon: _playing ? Icons.pause : Icons.play_arrow,
+                          onTap: _togglePlay,
+                          background: AppColors.accentTeal,
+                          foreground: Colors.white,
+                          size: 44,
+                        ),
+                      ),
+                  ],
                 ),
               ),
-          if (guide.tips.isNotEmpty) ...[
+            ),
             const SizedBox(height: 16),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Theme.of(context)
-                    .colorScheme
-                    .surfaceContainerHighest
-                    .withValues(alpha: 0.5),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Tips', style: Theme.of(context).textTheme.titleSmall),
-                  const SizedBox(height: 8),
-                  for (final tip in guide.tips)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: Text('• $tip'),
+            Text(guide.name, style: Theme.of(context).textTheme.headlineSmall),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                Chip(label: Text(guide.muscleGroup)),
+                Chip(label: Text(guide.equipment)),
+                Chip(label: Text(guide.difficulty)),
+              ],
+            ),
+            const SizedBox(height: 24),
+            Text('Steps', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 12),
+            ...guide.steps.asMap().entries.map(
+              (entry) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 24,
+                      height: 24,
+                      alignment: Alignment.center,
+                      decoration: const BoxDecoration(
+                        color: AppColors.accentTeal,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Text(
+                        '${entry.key + 1}',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
                     ),
-                ],
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          entry.value,
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
+            if (guide.tips.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.lightbulb_outline,
+                          size: 18,
+                          color: AppColors.ink,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Tips',
+                          style: Theme.of(context).textTheme.titleSmall
+                              ?.copyWith(
+                                color: AppColors.ink,
+                                fontWeight: FontWeight.w700,
+                              ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    for (final tip in guide.tips)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Text('• $tip'),
+                      ),
+                  ],
+                ),
+              ),
+            ],
           ],
-        ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Small circular overlay button used both for the back arrow and the
+/// play/pause control on the illustration — same shape, different colors.
+class _RoundIconButton extends StatelessWidget {
+  const _RoundIconButton({
+    required this.icon,
+    required this.onTap,
+    required this.background,
+    required this.foreground,
+    this.size = 36,
+  });
+
+  final IconData icon;
+  final VoidCallback onTap;
+  final Color background;
+  final Color foreground;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: background,
+      shape: const CircleBorder(),
+      elevation: 2,
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onTap,
+        child: SizedBox(
+          width: size,
+          height: size,
+          child: Icon(icon, size: size * 0.55, color: foreground),
+        ),
       ),
     );
   }

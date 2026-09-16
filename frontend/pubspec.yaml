@@ -49,6 +49,7 @@ dependencies:
   fl_chart: ^0.69.0
   qr_flutter: ^4.1.0
   flutter_svg: ^2.0.10
+  workout_flutter_guide: ^0.1.0
   url_launcher: ^6.3.1
   shared_preferences: ^2.5.5
   crypto: ^3.0.6

@@ -37,6 +37,7 @@ import '../../features/scheduling/screens/time_slot_list_screen.dart';
 import '../../features/community/screens/member/community_screen.dart';
 import '../../features/workout_guides/screens/workout_guides_screen.dart';
 import '../../features/subscription/screens/subscribe_screen.dart';
+import '../../features/about/screens/about_credits_screen.dart';
 
 class _SplashScreen extends ConsumerWidget {
   const _SplashScreen();
@@ -346,6 +347,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/settings/staff/create',
         builder: (context, state) => const StaffCreateScreen(),
+      ),
+      GoRoute(
+        path: '/about',
+        builder: (context, state) => const AboutCreditsScreen(),
       ),
 
       GoRoute(

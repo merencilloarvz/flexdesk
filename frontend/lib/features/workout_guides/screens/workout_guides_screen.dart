@@ -84,29 +84,6 @@ class WorkoutGuidesScreen extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                width: 7,
-                height: 7,
-                decoration: const BoxDecoration(
-                  color: Color(0xFF0F6E56),
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: 7),
-              const Text(
-                'IRON WORKS CEBU • GUIDES',
-                style: TextStyle(
-                  fontSize: 11,
-                  letterSpacing: 1.1,
-                  fontWeight: FontWeight.w800,
-                  color: Color(0xFF0D4B39),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
           const Text(
             'Workout Guides',
             style: TextStyle(
@@ -157,12 +134,10 @@ class _MuscleGroupFilterRow extends ConsumerWidget {
               duration: const Duration(milliseconds: 150),
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               decoration: BoxDecoration(
-                color: isSelected ? const Color(0xFF0D4B39) : Colors.white,
+                color: isSelected ? AppColors.accentTeal : AppColors.cardBg,
                 borderRadius: BorderRadius.circular(999),
                 border: Border.all(
-                  color: isSelected
-                      ? const Color(0xFF0D4B39)
-                      : const Color(0xFFCBD5E1),
+                  color: isSelected ? AppColors.accentTeal : AppColors.border,
                 ),
               ),
               child: Text(
@@ -170,7 +145,7 @@ class _MuscleGroupFilterRow extends ConsumerWidget {
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
-                  color: isSelected ? Colors.white : const Color(0xFF334155),
+                  color: isSelected ? Colors.white : AppColors.subtle,
                 ),
               ),
             ),
@@ -207,36 +182,50 @@ class _GuideCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Expanded(
-              child: Container(
-                color: const Color(0xFFF1F5F3),
-                padding: const EdgeInsets.all(12),
-                child: GuideFrame(assetPath: guide.thumbnailAsset),
+              child: Stack(
+                children: [
+                  Container(
+                    width: double.infinity,
+                    color: const Color(0xFFF1F5F3),
+                    padding: const EdgeInsets.all(12),
+                    child: GuideFrame(assetPath: guide.thumbnailAsset),
+                  ),
+                  Positioned(
+                    top: 8,
+                    left: 8,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.85),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        guide.muscleGroup,
+                        style: const TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.accentTeal,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    guide.name,
-                    style: const TextStyle(
-                      fontSize: 13.5,
-                      fontWeight: FontWeight.w800,
-                      color: Color(0xFF0E1A13),
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    guide.muscleGroup,
-                    style: const TextStyle(
-                      fontSize: 11.5,
-                      color: Color(0xFF6B7570),
-                    ),
-                  ),
-                ],
+              child: Text(
+                guide.name,
+                style: const TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF0E1A13),
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
           ],

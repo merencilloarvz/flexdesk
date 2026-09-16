@@ -1,6 +1,7 @@
 [
   {
     "slug": "push-up",
+    "package_slug": "push-up",
     "name": "Push-up",
     "muscle_group": "Chest",
     "equipment": "Bodyweight",
@@ -18,6 +19,7 @@
   },
   {
     "slug": "bodyweight-squat",
+    "package_slug": "bodyweight-squat",
     "name": "Bodyweight Squat",
     "muscle_group": "Legs",
     "equipment": "Bodyweight",
@@ -35,6 +37,7 @@
   },
   {
     "slug": "plank",
+    "package_slug": "plank",
     "name": "Plank",
     "muscle_group": "Core",
     "equipment": "Bodyweight",
@@ -52,6 +55,7 @@
   },
   {
     "slug": "forward-lunge",
+    "package_slug": "forward-lunge",
     "name": "Forward Lunge",
     "muscle_group": "Legs",
     "equipment": "Bodyweight",
@@ -69,6 +73,7 @@
   },
   {
     "slug": "deadlift",
+    "package_slug": "deadlift",
     "name": "Barbell Deadlift",
     "muscle_group": "Back",
     "equipment": "Barbell",
@@ -86,6 +91,7 @@
   },
   {
     "slug": "bench-press",
+    "package_slug": "bench-press",
     "name": "Barbell Bench Press",
     "muscle_group": "Chest",
     "equipment": "Barbell",
@@ -103,6 +109,7 @@
   },
   {
     "slug": "dumbbell-bent-over-row",
+    "package_slug": "dumbbell-bent-over-row",
     "name": "Dumbbell Bent-Over Row",
     "muscle_group": "Back",
     "equipment": "Dumbbell",
@@ -120,6 +127,7 @@
   },
   {
     "slug": "standing-dumbbell-press",
+    "package_slug": "standing-dumbbell-press",
     "name": "Standing Dumbbell Shoulder Press",
     "muscle_group": "Shoulders",
     "equipment": "Dumbbell",
@@ -137,6 +145,7 @@
   },
   {
     "slug": "lat-pulldown",
+    "package_slug": "lat-pulldown",
     "name": "Lat Pulldown",
     "muscle_group": "Back",
     "equipment": "Machine",
@@ -154,6 +163,7 @@
   },
   {
     "slug": "bicycle-crunch",
+    "package_slug": "bicycle-crunch",
     "name": "Bicycle Crunch",
     "muscle_group": "Core",
     "equipment": "Bodyweight",
@@ -171,6 +181,7 @@
   },
   {
     "slug": "glute-bridge",
+    "package_slug": "glute-bridge",
     "name": "Glute Bridge",
     "muscle_group": "Glutes",
     "equipment": "Bodyweight",
@@ -188,6 +199,7 @@
   },
   {
     "slug": "calf-raise",
+    "package_slug": "calf-raise",
     "name": "Calf Raise",
     "muscle_group": "Legs",
     "equipment": "Bodyweight",
