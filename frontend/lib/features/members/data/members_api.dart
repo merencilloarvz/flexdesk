@@ -128,6 +128,18 @@ class MembersApi {
     }
   }
 
+  /// Front-desk password reset, via `POST /members/{id}/reset-password/`.
+  /// Server generates the temp password and returns it once in the
+  /// response — never cached in Drift, same reasoning as issueClaimCode.
+  Future<String> resetPassword(String memberId) async {
+    try {
+      final response = await _dio.post('/members/$memberId/reset-password/');
+      return (response.data as Map<String, dynamic>)['temp_password'] as String;
+    } on DioException catch (e) {
+      throw ApiException.from(e);
+    }
+  }
+
   /// Phase 5 A3 — marks [memberId] as contacted about their upcoming
   /// renewal, via `POST /members/{id}/remind/`. Requires a connection
   /// (standing rule 9); never queues offline — see the spec's S4.

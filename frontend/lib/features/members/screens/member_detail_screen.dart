@@ -62,6 +62,7 @@ class _MemberDetailScreenState extends ConsumerState<MemberDetailScreen> {
   bool _isIssuingCode = false;
   String? _claimError;
   Map<String, dynamic>? _issuedCode;
+  bool _isResettingPassword = false;
 
   @override
   void initState() {
@@ -126,6 +127,115 @@ class _MemberDetailScreenState extends ConsumerState<MemberDetailScreen> {
         });
       }
     }
+  }
+
+  Future<void> _confirmAndResetPassword(String memberName) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Reset password for $memberName?'),
+        content: const Text(
+          "They'll need to set a new one on next login.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Reset'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    setState(() => _isResettingPassword = true);
+    try {
+      final tempPassword = await ref
+          .read(membersRepositoryProvider)
+          .resetPassword(widget.memberId);
+      if (mounted) _showTempPasswordDialog(memberName, tempPassword);
+    } on ApiException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.message)));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Couldn't reach the server. Check your connection."),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isResettingPassword = false);
+    }
+  }
+
+  void _showTempPasswordDialog(String memberName, String tempPassword) {
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('New password for $memberName'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+              decoration: BoxDecoration(
+                color: _cFieldBg,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    tempPassword,
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 2,
+                      fontFamily: 'monospace',
+                      color: _cInk,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  InkWell(
+                    onTap: () {
+                      Clipboard.setData(ClipboardData(text: tempPassword));
+                      ScaffoldMessenger.of(
+                        context,
+                      ).showSnackBar(const SnackBar(content: Text('Password copied')));
+                    },
+                    borderRadius: BorderRadius.circular(6),
+                    child: const Padding(
+                      padding: EdgeInsets.all(2),
+                      child: Icon(Icons.copy_outlined, size: 18, color: _cAccentTeal),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              "Read this out to the member — it won't be shown again.",
+              style: TextStyle(fontSize: 12, color: _cMuted),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Done'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _confirmAndArchive() async {
@@ -241,6 +351,10 @@ class _MemberDetailScreenState extends ConsumerState<MemberDetailScreen> {
             claimError: _claimError,
             issuedCode: _issuedCode,
             onIssueCode: _issueClaimCode,
+            isResettingPassword: _isResettingPassword,
+            onResetPassword: () => _confirmAndResetPassword(
+              '${member.firstName} ${member.lastName}'.trim(),
+            ),
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
@@ -266,6 +380,8 @@ class _MemberDetailBody extends ConsumerWidget {
     required this.claimError,
     required this.issuedCode,
     required this.onIssueCode,
+    required this.isResettingPassword,
+    required this.onResetPassword,
   });
 
   final Member member;
@@ -281,6 +397,8 @@ class _MemberDetailBody extends ConsumerWidget {
   final String? claimError;
   final Map<String, dynamic>? issuedCode;
   final VoidCallback onIssueCode;
+  final bool isResettingPassword;
+  final VoidCallback onResetPassword;
 
   void _copyToClipboard(BuildContext context, String value, String label) {
     if (value.isEmpty) return;
@@ -496,19 +614,30 @@ class _MemberDetailBody extends ConsumerWidget {
                 ),
               ),
 
-              if (isOwner) ...[
-                const SizedBox(height: 20),
-                _ClaimPassCard(
-                  gymName: gymName,
-                  memberName: '${member.firstName} ${member.lastName}'.trim(),
-                  hasAccount: hasAccount,
-                  isCheckingAccount: isCheckingAccount,
-                  isIssuingCode: isIssuingCode,
-                  claimError: claimError,
-                  issuedCode: issuedCode,
-                  onIssueCode: onIssueCode,
-                ),
-              ],
+              // No role gate here — this whole screen is staff/owner-only
+              // (members have their own separate self-view), and both
+              // sub-actions the card exposes (issue/regenerate claim code,
+              // reset password) are IsGymStaff-level on the backend, not
+              // owner-restricted. The card's own build() already handles
+              // isCheckingAccount / hasAccount==true / hasAccount==false as
+              // its three states, so gating visibility here on hasAccount
+              // duplicated that logic AND was wrong: while the check was
+              // still in flight (or failed), hasAccount stayed null and a
+              // non-owner saw nothing at all — not even the loading spinner
+              // an owner got for free via the isOwner bypass.
+              const SizedBox(height: 20),
+              _ClaimPassCard(
+                gymName: gymName,
+                memberName: '${member.firstName} ${member.lastName}'.trim(),
+                hasAccount: hasAccount,
+                isCheckingAccount: isCheckingAccount,
+                isIssuingCode: isIssuingCode,
+                claimError: claimError,
+                issuedCode: issuedCode,
+                onIssueCode: onIssueCode,
+                isResettingPassword: isResettingPassword,
+                onResetPassword: onResetPassword,
+              ),
 
               const SizedBox(height: 20),
               Row(
@@ -751,6 +880,8 @@ class _ClaimPassCard extends StatefulWidget {
     required this.claimError,
     required this.issuedCode,
     required this.onIssueCode,
+    required this.isResettingPassword,
+    required this.onResetPassword,
   });
 
   final String gymName;
@@ -761,6 +892,8 @@ class _ClaimPassCard extends StatefulWidget {
   final String? claimError;
   final Map<String, dynamic>? issuedCode;
   final VoidCallback onIssueCode;
+  final bool isResettingPassword;
+  final VoidCallback onResetPassword;
 
   @override
   State<_ClaimPassCard> createState() => _ClaimPassCardState();
@@ -808,13 +941,51 @@ class _ClaimPassCardState extends State<_ClaimPassCard> {
     }
 
     if (widget.hasAccount == true) {
-      return const Row(
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.check_circle, size: 18, color: _cActiveBg),
-          SizedBox(width: 8),
-          Text(
-            'This member has set up their account.',
-            style: TextStyle(fontSize: 13, color: _cInk),
+          const Row(
+            children: [
+              Icon(Icons.check_circle, size: 18, color: _cActiveBg),
+              SizedBox(width: 8),
+              Text(
+                'This member has set up their account.',
+                style: TextStyle(fontSize: 13, color: _cInk),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          InkWell(
+            onTap: widget.isResettingPassword ? null : widget.onResetPassword,
+            borderRadius: BorderRadius.circular(6),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                widget.isResettingPassword
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: _cAccentTeal,
+                        ),
+                      )
+                    : const Icon(
+                        Icons.lock_reset,
+                        size: 16,
+                        color: _cAccentTeal,
+                      ),
+                const SizedBox(width: 6),
+                const Text(
+                  'Reset app password',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: _cAccentTeal,
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       );

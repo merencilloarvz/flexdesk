@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../core/api/api_exception.dart';
 import '../providers/auth_providers.dart';
+
+const _supportEmail = 'flexdeskisufst@gmail.com';
 
 enum AuthRole { owner, member }
 
@@ -60,6 +63,35 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       if (mounted) {
         setState(() => _isSubmitting = false);
       }
+    }
+  }
+
+  // Informational only — there's no self-service reset flow. Members are
+  // resolved in person at the front desk (MemberViewSet.reset_password);
+  // owners email support directly since there's no email provider
+  // configured to verify an owner's identity remotely.
+  void _showForgotPasswordMessage() {
+    if (widget.role == AuthRole.member) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('See gym staff to reset your password.')),
+      );
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('Email $_supportEmail to reset your password.'),
+        action: SnackBarAction(label: 'Email', onPressed: _emailSupport),
+      ),
+    );
+  }
+
+  Future<void> _emailSupport() async {
+    try {
+      await launchUrl(Uri(scheme: 'mailto', path: _supportEmail));
+    } catch (_) {
+      // Best-effort — no mail client configured. The address is still
+      // visible in the snackbar text.
     }
   }
 
@@ -173,7 +205,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         Padding(
                           padding: const EdgeInsets.only(bottom: 6),
                           child: GestureDetector(
-                            onTap: () {},
+                            onTap: _showForgotPasswordMessage,
                             child: const Text(
                               'Forgot password?',
                               style: TextStyle(

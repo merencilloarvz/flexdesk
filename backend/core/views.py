@@ -27,7 +27,7 @@ from .serializers import (CheckInSerializer, CheckInWriteSerializer,
                           MembershipSerializer, MemberWriteSerializer,
                           RenewalReminderSerializer, SubscriptionSerializer,
                           VerifyQrSerializer)
-from .utils import generate_claim_code, gym_today
+from .utils import generate_claim_code, generate_temp_password, gym_today
 
 from rest_framework.permissions import AllowAny
 from rest_framework.views import APIView
@@ -58,6 +58,7 @@ from .serializers import (AnnouncementSerializer, EventRegistrationSerializer,
                           StockAdjustmentInputSerializer, StockAdjustmentSerializer)
 from .serializers import DeviceTokenSerializer
 from django.db.models import Sum, DecimalField
+from django.contrib.admin.models import LogEntry, CHANGE
 from django.db.models.functions import Coalesce, TruncDate, TruncHour
 from decimal import Decimal
 from rest_framework.permissions import IsAuthenticated
@@ -552,6 +553,42 @@ class MemberViewSet(GymScopedViewSet):
         member.qr_last_step = None
         member.save(update_fields=["qr_secret", "qr_last_step", "updated_at"])
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=True, methods=["post"], url_path="reset-password",
+            permission_classes=[IsGymStaff])
+    def reset_password(self, request, pk=None):
+        """
+        Front-desk equivalent of "forgot password" — there's no email
+        flow, so staff verify the member in person and hand them a new
+        temp password to read back. Open to plain staff as well as the
+        owner (unlike archive/qr_secret_reset): this is the everyday
+        front-desk case, not an owner-only administrative action.
+
+        The temp password is returned in the response body ONLY — never
+        logged, never persisted anywhere but the hashed value on the
+        user. must_change_password forces the existing set-password
+        flow on the member's next login, same as a new staff account.
+        """
+        member = self.get_object()
+        if member.user_id is None:
+            raise ValidationError(
+                {"detail": "This member hasn't set up app access yet."}
+            )
+
+        temp_password = generate_temp_password()
+        user = member.user
+        user.set_password(temp_password)
+        user.must_change_password = True
+        user.save(update_fields=["password", "must_change_password"])
+
+        LogEntry.objects.log_actions(
+            user_id=request.user.pk,
+            queryset=Member.objects.filter(pk=member.pk),
+            action_flag=CHANGE,
+            change_message="Reset app password (front-desk reset)",
+        )
+
+        return Response({"temp_password": temp_password})
 
 ANALYTICS_RANGE_DAYS = {"1D": 1, "1W": 7, "1M": 30, "3M": 90}
 

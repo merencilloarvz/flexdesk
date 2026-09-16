@@ -316,4 +316,11 @@ class MembersRepository {
   Future<Map<String, dynamic>> issueClaimCode(String memberId) {
     return _api.issueClaimCode(memberId);
   }
+
+  /// Resets [memberId]'s app password to a fresh server-generated temp
+  /// password. Deliberately never touches Drift — see
+  /// MembersApi.resetPassword's doc comment.
+  Future<String> resetPassword(String memberId) {
+    return _api.resetPassword(memberId);
+  }
 }
