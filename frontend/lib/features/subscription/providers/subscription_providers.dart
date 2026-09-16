@@ -34,11 +34,13 @@ final paymentInfoProvider = FutureProvider.autoDispose<PaymentInfo>(
 class GymBillingState {
   final String? billingState;
   final int? daysRemaining;
+  final DateTime? currentPeriodEnd;
   final bool isBlocked;
 
   const GymBillingState({
     required this.billingState,
     required this.daysRemaining,
+    required this.currentPeriodEnd,
     required this.isBlocked,
   });
 }
@@ -51,6 +53,7 @@ final gymBillingStateProvider = Provider.autoDispose<GymBillingState?>((ref) {
   return GymBillingState(
     billingState: gym.billingState,
     daysRemaining: gym.daysRemaining,
+    currentPeriodEnd: gym.currentPeriodEnd,
     isBlocked: gym.subscriptionBlocked,
   );
 });

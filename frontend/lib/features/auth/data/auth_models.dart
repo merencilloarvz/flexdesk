@@ -33,6 +33,7 @@ class Gym {
   final String? subscriptionStatus;
   final bool subscriptionBlocked;
   final DateTime? trialEndsAt;
+  final DateTime? currentPeriodEnd;
   final String? billingState;
   final int? daysRemaining;
 
@@ -46,6 +47,7 @@ class Gym {
     required this.subscriptionStatus,
     required this.subscriptionBlocked,
     required this.trialEndsAt,
+    required this.currentPeriodEnd,
     required this.billingState,
     required this.daysRemaining,
   });
@@ -68,6 +70,9 @@ class Gym {
     trialEndsAt: json['trial_ends_at'] != null
         ? DateTime.tryParse(json['trial_ends_at'] as String)
         : null,
+    currentPeriodEnd: json['current_period_end'] != null
+        ? DateTime.tryParse(json['current_period_end'] as String)
+        : null,
     // Null for a cached pre-manual-payment session — same fallback
     // reasoning as classesEnabled/subscriptionBlocked above.
     billingState: json['billing_state'] as String?,
@@ -84,6 +89,7 @@ class Gym {
     'subscription_status': subscriptionStatus,
     'subscription_blocked': subscriptionBlocked,
     'trial_ends_at': trialEndsAt?.toIso8601String(),
+    'current_period_end': currentPeriodEnd?.toIso8601String(),
     'billing_state': billingState,
     'days_remaining': daysRemaining,
   };
@@ -98,6 +104,7 @@ class Gym {
     subscriptionStatus: subscriptionStatus,
     subscriptionBlocked: subscriptionBlocked,
     trialEndsAt: trialEndsAt,
+    currentPeriodEnd: currentPeriodEnd,
     billingState: billingState,
     daysRemaining: daysRemaining,
   );

@@ -50,6 +50,7 @@ class MeSerializer(serializers.Serializer):
             "subscription_status": sub.status if sub else None,
             "subscription_blocked": sub.is_blocked if sub else False,
             "trial_ends_at": sub.trial_ends_at if sub else None,
+            "current_period_end": sub.current_period_end if sub else None,
             "billing_state": sub.billing_state if sub else None,
             "days_remaining": sub.days_remaining if sub else None,
         }
