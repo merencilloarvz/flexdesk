@@ -14,8 +14,8 @@ class SubscriptionRequired(APIException):
 
 class SubscriptionActive(BasePermission):
     """
-    Blocks a WRITE on an owner/staff endpoint once the trial has expired
-    with no active PayMongo subscription behind it. Reads are never
+    Blocks a WRITE on an owner/staff endpoint once the trial or paid
+    period has expired with no manual payment recorded. Reads are never
     blocked here — the agreed design is read-only-with-export, never a
     full lockout: a lapsed gym must still be able to read its own
     members, run a report, or export its data. The client already

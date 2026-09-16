@@ -17,14 +17,13 @@ class SubscriptionApi {
     }
   }
 
-  /// Returns the PayMongo checkout URL to open. Throws ApiException with
-  /// the backend's placeholder message while PayMongo isn't configured
-  /// yet — see SubscriptionCheckoutView on the backend.
-  Future<String> createCheckoutSession() async {
+  /// Price and contact details for the manual-payment flow — the owner
+  /// pays outside the app and messages the operator, so this is
+  /// informational only, never a checkout call.
+  Future<PaymentInfo> fetchPaymentInfo() async {
     try {
-      final response = await _dio.post('/subscription/checkout/');
-      final data = response.data as Map<String, dynamic>;
-      return data['checkout_url'] as String;
+      final response = await _dio.get('/subscription/payment-info/');
+      return PaymentInfo.fromJson(response.data as Map<String, dynamic>);
     } on DioException catch (e) {
       throw ApiException.from(e);
     }

@@ -39,16 +39,19 @@ CSRF_TRUSTED_ORIGINS = config("CSRF_TRUSTED_ORIGINS", default="", cast=Csv())
 # web admin gets built later.
 CORS_ALLOWED_ORIGINS = config("CORS_ALLOWED_ORIGINS", default="", cast=Csv())
 
-# PayMongo (Stage 10 — subscription billing). Both blank by default so a
-# host without them configured fails closed: checkout refuses to start
-# rather than silently hitting PayMongo with an empty key, and the
-# webhook refuses every event rather than skipping signature checks.
-PAYMONGO_SECRET_KEY = config("PAYMONGO_SECRET_KEY", default="")
-PAYMONGO_WEBHOOK_SECRET = config("PAYMONGO_WEBHOOK_SECRET", default="")
-# Price of the FlexDesk subscription itself, in centavos (PHP). Placeholder
-# until a real tier is confirmed — see Stage 10 plan.
-PAYMONGO_SUBSCRIPTION_PRICE_CENTAVOS = config(
-    "PAYMONGO_SUBSCRIPTION_PRICE_CENTAVOS", default=0, cast=int)
+# Manual-payment subscription billing. Owners pay outside the app (GCash,
+# bank transfer, etc.) and message the operator directly; these settings
+# only feed the read-only "how to pay" screen so contact info and price
+# can change without shipping a new APK.
+SUBSCRIPTION_PRICE_MONTHLY_CENTAVOS = config(
+    "SUBSCRIPTION_PRICE_MONTHLY_CENTAVOS", default=79900, cast=int)
+SUBSCRIPTION_PRICE_YEARLY_CENTAVOS = config(
+    "SUBSCRIPTION_PRICE_YEARLY_CENTAVOS", default=799000, cast=int)
+# Free text, e.g. "GCash: 0917-xxx-xxxx (Juan Dela Cruz)".
+SUBSCRIPTION_PAYMENT_INSTRUCTIONS = config(
+    "SUBSCRIPTION_PAYMENT_INSTRUCTIONS", default="")
+# Free text, e.g. "Message us on Messenger: m.me/yourpage".
+SUBSCRIPTION_CONTACT_INFO = config("SUBSCRIPTION_CONTACT_INFO", default="")
 
 # Push notifications (Phase 4). The full JSON contents of the Firebase
 # service account key, as one env var — a secret, never committed. Empty

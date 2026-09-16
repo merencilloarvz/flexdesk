@@ -50,6 +50,8 @@ class MeSerializer(serializers.Serializer):
             "subscription_status": sub.status if sub else None,
             "subscription_blocked": sub.is_blocked if sub else False,
             "trial_ends_at": sub.trial_ends_at if sub else None,
+            "billing_state": sub.billing_state if sub else None,
+            "days_remaining": sub.days_remaining if sub else None,
         }
     def get_default_location_id(self, obj):
         p = getattr(obj, "staff_profile", None)
@@ -64,19 +66,22 @@ class GymSettingsSerializer(serializers.ModelSerializer):
 class SubscriptionSerializer(serializers.Serializer):
     status = serializers.CharField(read_only=True)
     trial_ends_at = serializers.DateTimeField(read_only=True)
+    current_period_end = serializers.DateTimeField(read_only=True)
     is_blocked = serializers.SerializerMethodField()
     days_remaining = serializers.SerializerMethodField()
+    billing_state = serializers.SerializerMethodField()
 
     def get_is_blocked(self, obj):
         return obj.is_blocked
 
     def get_days_remaining(self, obj):
-        # Display only — trial countdown. None once the trial is no
-        # longer the operative state (active/past_due/canceled); the
-        # actual block decision always comes from is_blocked, never this.
-        if obj.status != obj.TRIALING:
-            return None
-        return max((obj.trial_ends_at - timezone.now()).days, 0)
+        # Display only — counts down to whichever date is operative
+        # (trial_ends_at or current_period_end). The actual block
+        # decision always comes from is_blocked, never this.
+        return obj.days_remaining
+
+    def get_billing_state(self, obj):
+        return obj.billing_state
 
 class FlexTokenObtainPairSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):

@@ -135,6 +135,10 @@ class Subscription(models.Model):
         (PAST_DUE, "Past due"), (CANCELED, "Canceled"),
     ]
 
+    # How many days out "expiring soon" starts showing, for both the
+    # trial countdown and a paid period's current_period_end countdown.
+    EXPIRING_SOON_DAYS = 3
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     gym = models.OneToOneField(Gym, on_delete=models.CASCADE, related_name="subscription")
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=TRIALING)
@@ -148,10 +152,48 @@ class Subscription(models.Model):
     @property
     def is_blocked(self):
         if self.status == self.ACTIVE:
-            return False
+            # A null current_period_end means no paid period has been
+            # stamped yet (e.g. the 0019 backfill) — treat as unblocked
+            # rather than guessing an expiry that was never set.
+            if self.current_period_end is None:
+                return False
+            return timezone.now() > self.current_period_end
         if self.status == self.TRIALING:
             return timezone.now() > self.trial_ends_at
         return True  # past_due, canceled
+
+    @property
+    def days_remaining(self):
+        """Countdown to whichever date is currently operative, floored at 0.
+        None when there's nothing to count down to (e.g. active with no
+        current_period_end, or canceled)."""
+        if self.status == self.TRIALING:
+            reference = self.trial_ends_at
+        elif self.status == self.ACTIVE and self.current_period_end:
+            reference = self.current_period_end
+        else:
+            return None
+        return max((reference - timezone.now()).days, 0)
+
+    @property
+    def billing_state(self):
+        """Display-only state for the UI — richer than `status` alone,
+        since `status` can't express "expiring soon". Never used for the
+        actual access decision; that's always is_blocked."""
+        days = self.days_remaining
+        expiring = days is not None and days <= self.EXPIRING_SOON_DAYS
+
+        if self.status == self.TRIALING:
+            if self.is_blocked:
+                return "trial_expired"
+            return "trial_expiring" if expiring else "trial_active"
+        if self.status == self.ACTIVE:
+            if self.is_blocked:
+                return "expired"
+            return "active_expiring" if expiring else "active"
+        if self.status == self.CANCELED:
+            return "canceled"
+        return "expired"  # past_due
 
 class StaffProfile(models.Model):
     OWNER = "owner"

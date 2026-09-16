@@ -62,6 +62,17 @@ class UserAdmin(admin.ModelAdmin):
 
 @admin.register(Subscription)
 class SubscriptionAdmin(admin.ModelAdmin):
-    list_display = ["gym", "status", "trial_ends_at", "current_period_end"]
+    list_display = [
+        "gym", "status", "billing_state", "days_remaining",
+        "trial_ends_at", "current_period_end",
+    ]
     list_filter = ["status"]
     search_fields = ["gym__name"]
+
+    @admin.display(description="Billing state")
+    def billing_state(self, obj):
+        return obj.billing_state
+
+    @admin.display(description="Days remaining")
+    def days_remaining(self, obj):
+        return obj.days_remaining

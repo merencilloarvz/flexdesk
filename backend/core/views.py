@@ -1,4 +1,3 @@
-import hashlib
 import hmac
 import logging
 import threading
@@ -117,102 +116,21 @@ class SubscriptionView(RetrieveAPIView):
         return subscription
 
 
-class SubscriptionCheckoutView(APIView):
+class SubscriptionPaymentInfoView(APIView):
     """
-    Owner-only. Creates a PayMongo checkout session and hands the
-    Flutter app back a redirect URL to open.
-
-    Deliberately refuses (501) rather than guessing at PayMongo's
-    request shape without a real sandbox to test against — a wrong
-    field name or auth header here would only surface once someone
-    actually tries to pay. Fill in the real POST to PayMongo's
-    checkout-sessions API once PAYMONGO_SECRET_KEY and
-    PAYMONGO_SUBSCRIPTION_PRICE_CENTAVOS are set for real.
+    Owner AND staff can read this, same reasoning as SubscriptionView —
+    it's what the "how to pay" screen renders, and it must keep
+    answering while the gym is blocked. Never SubscriptionActive-gated.
     """
-    permission_classes = [IsGymStaff, IsOwner]
+    permission_classes = [IsGymStaff]
 
-    def post(self, request):
-        if not dj_settings.PAYMONGO_SECRET_KEY or not dj_settings.PAYMONGO_SUBSCRIPTION_PRICE_CENTAVOS:
-            return Response(
-                {"detail": "PayMongo is not yet configured for this environment."},
-                status=status.HTTP_501_NOT_IMPLEMENTED,
-            )
-        # TODO: POST to PayMongo's checkout-sessions API with the
-        # gym's subscription.paymongo_customer_id (creating one first if
-        # blank), PAYMONGO_SUBSCRIPTION_PRICE_CENTAVOS, and success/cancel
-        # redirect URLs back into the app. Return {"checkout_url": ...}.
-        return Response(
-            {"detail": "PayMongo checkout is not yet wired up."},
-            status=status.HTTP_501_NOT_IMPLEMENTED,
-        )
-
-
-class SubscriptionWebhookView(APIView):
-    """
-    No auth — PayMongo calls this directly, so the signature header is
-    the ONLY thing standing between "a real payment happened" and
-    "anyone who finds this URL can mark themselves subscribed". Verify
-    first, parse second — never the other way around.
-
-    PayMongo signs with a `Paymongo-Signature` header shaped like
-    `t=<timestamp>,te=<test-mode signature>,li=<live-mode signature>`,
-    each signature being HMAC-SHA256(webhook_secret, f"{t}.{raw_body}")
-    hex-encoded. This has NOT been exercised against a real PayMongo
-    sandbox event yet — verify it against an actual webhook delivery
-    before this goes live, per the Stage 10 plan.
-    """
-    permission_classes = [AllowAny]
-    authentication_classes = []
-
-    def post(self, request):
-        secret = dj_settings.PAYMONGO_WEBHOOK_SECRET
-        if not secret:
-            return Response(status=status.HTTP_503_SERVICE_UNAVAILABLE)
-
-        if not self._verify_signature(request, secret):
-            return Response(status=status.HTTP_400_BAD_REQUEST)
-
-        event_type = request.data.get("data", {}).get("attributes", {}).get("type")
-        payment_data = request.data.get("data", {}).get("attributes", {}).get("data", {})
-        attributes = payment_data.get("attributes", {}) if isinstance(payment_data, dict) else {}
-        paymongo_customer_id = attributes.get("billing", {}).get("customer_id") \
-            if isinstance(attributes.get("billing"), dict) else None
-
-        subscription = None
-        if paymongo_customer_id:
-            subscription = Subscription.objects.filter(
-                paymongo_customer_id=paymongo_customer_id).first()
-
-        if subscription is None:
-            # Nothing here identifies a gym we know about yet — this is
-            # expected for events unrelated to a subscription (or before
-            # checkout has stamped a customer id onto it). Acknowledge
-            # so PayMongo doesn't keep retrying, but change nothing.
-            return Response(status=status.HTTP_200_OK)
-
-        if event_type == "payment.paid":
-            subscription.status = Subscription.ACTIVE
-            subscription.save(update_fields=["status", "updated_at"])
-        elif event_type == "payment.failed":
-            subscription.status = Subscription.PAST_DUE
-            subscription.save(update_fields=["status", "updated_at"])
-
-        return Response(status=status.HTTP_200_OK)
-
-    @staticmethod
-    def _verify_signature(request, secret):
-        header = request.headers.get("Paymongo-Signature", "")
-        parts = dict(p.split("=", 1) for p in header.split(",") if "=" in p)
-        timestamp, test_sig, live_sig = parts.get("t"), parts.get("te"), parts.get("li")
-        signature = live_sig or test_sig
-        if not (timestamp and signature):
-            return False
-
-        signed_payload = f"{timestamp}.{request.body.decode('utf-8')}"
-        expected = hmac.new(
-            secret.encode("utf-8"), signed_payload.encode("utf-8"), hashlib.sha256
-        ).hexdigest()
-        return hmac.compare_digest(expected, signature)
+    def get(self, request):
+        return Response({
+            "price_monthly_centavos": dj_settings.SUBSCRIPTION_PRICE_MONTHLY_CENTAVOS,
+            "price_yearly_centavos": dj_settings.SUBSCRIPTION_PRICE_YEARLY_CENTAVOS,
+            "payment_instructions": dj_settings.SUBSCRIPTION_PAYMENT_INSTRUCTIONS,
+            "contact_info": dj_settings.SUBSCRIPTION_CONTACT_INFO,
+        })
 
 class MembershipPlanViewSet(GymScopedViewSet):
     queryset = MembershipPlan.objects.all()

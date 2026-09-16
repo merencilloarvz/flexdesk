@@ -33,6 +33,8 @@ class Gym {
   final String? subscriptionStatus;
   final bool subscriptionBlocked;
   final DateTime? trialEndsAt;
+  final String? billingState;
+  final int? daysRemaining;
 
   const Gym({
     required this.id,
@@ -44,6 +46,8 @@ class Gym {
     required this.subscriptionStatus,
     required this.subscriptionBlocked,
     required this.trialEndsAt,
+    required this.billingState,
+    required this.daysRemaining,
   });
 
   factory Gym.fromJson(Map<String, dynamic> json) => Gym(
@@ -64,6 +68,10 @@ class Gym {
     trialEndsAt: json['trial_ends_at'] != null
         ? DateTime.tryParse(json['trial_ends_at'] as String)
         : null,
+    // Null for a cached pre-manual-payment session — same fallback
+    // reasoning as classesEnabled/subscriptionBlocked above.
+    billingState: json['billing_state'] as String?,
+    daysRemaining: json['days_remaining'] as int?,
   );
 
   Map<String, dynamic> toJson() => {
@@ -76,6 +84,8 @@ class Gym {
     'subscription_status': subscriptionStatus,
     'subscription_blocked': subscriptionBlocked,
     'trial_ends_at': trialEndsAt?.toIso8601String(),
+    'billing_state': billingState,
+    'days_remaining': daysRemaining,
   };
 
   Gym copyWith({bool? classesEnabled}) => Gym(
@@ -88,6 +98,8 @@ class Gym {
     subscriptionStatus: subscriptionStatus,
     subscriptionBlocked: subscriptionBlocked,
     trialEndsAt: trialEndsAt,
+    billingState: billingState,
+    daysRemaining: daysRemaining,
   );
 }
 

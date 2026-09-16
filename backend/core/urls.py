@@ -13,7 +13,7 @@ from .views import (ActivityLogView, AnnouncementViewSet, AnalyticsView, Booking
 from .views import SignupView
 from .views import ChangePasswordView, StaffViewSet
 from .views import MeRestDaysView  # add to the existing .views import block
-from .views import SubscriptionCheckoutView, SubscriptionView, SubscriptionWebhookView
+from .views import SubscriptionPaymentInfoView, SubscriptionView
 from .views import MeQrSecretView
 from .views import DeviceTokenView
 router = DefaultRouter()
@@ -59,10 +59,8 @@ urlpatterns = [
     path("devices/", DeviceTokenView.as_view(), name="devices"),
     path("auth/logout/", LogoutView.as_view(), name="auth-logout"),
     path("subscription/", SubscriptionView.as_view(), name="subscription"),
-    path("subscription/checkout/", SubscriptionCheckoutView.as_view(),
-        name="subscription-checkout"),
-    path("subscription/webhook/", SubscriptionWebhookView.as_view(),
-        name="subscription-webhook"),
+    path("subscription/payment-info/", SubscriptionPaymentInfoView.as_view(),
+        name="subscription-payment-info"),
     path("", include(router.urls)),
     
 ]
