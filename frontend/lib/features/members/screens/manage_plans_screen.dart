@@ -5,8 +5,13 @@ import 'package:go_router/go_router.dart';
 import '../../../core/db/app_database.dart';
 import '../providers/plans_provider.dart';
 import '../../../core/api/api_exception.dart';
+import '../../../core/theme/colors.dart';
 import '../../auth/providers/auth_providers.dart';
 
+// The list/tabs screen uses a light gray/lavender canvas (the closest
+// existing AppColors token) to set the cards apart; the edit/add sheet
+// below keeps the mintier _cPageBg it always has, so it isn't touched.
+const Color _cListBg = AppColors.categoryChipBg;
 const Color _cPageBg = Color(0xFFEDEFF0);
 const Color _cInk = Color(0xFF0E1A13);
 const Color _cSubtle = Color(0xFF6B7570);
@@ -15,11 +20,15 @@ const Color _cFieldBg = Color(0xFFF5F6F7);
 const Color _cCardBg = Colors.white;
 const Color _cAccentTeal = Color(0xFF0F6E56);
 const Color _cAccentTealBg = Color(0xFFE1F5EE);
+const Color _cAccentGreen = AppColors.accentGreen;
 const Color _cErrorText = Color(0xFF9E3125);
 const Color _cErrorBg = Color(0xFFFCEBE8);
 const Color _cDisabledBg = Color(0xFFE2E5E3);
 
 const List<String> _durationUnits = ['DAY', 'WEEK', 'MONTH', 'YEAR'];
+
+String _durationUnitLabel(String unit) =>
+    '${unit[0]}${unit.substring(1).toLowerCase()}s';
 
 enum _StatusFilter { all, active, inactive }
 
@@ -113,7 +122,7 @@ class _ManagePlansScreenState extends ConsumerState<ManagePlansScreen> {
         plansAsync.asData?.value.any((p) => p.priceCentavos > 0) ?? false;
 
     return Scaffold(
-      backgroundColor: _cPageBg,
+      backgroundColor: widget.firstRun ? _cPageBg : _cListBg,
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
@@ -141,34 +150,6 @@ class _ManagePlansScreenState extends ConsumerState<ManagePlansScreen> {
                     TextButton(
                       onPressed: _logout,
                       child: const Text('Log out'),
-                    )
-                  else
-                    plansAsync.when(
-                      data: (allPlans) {
-                        final visible = allPlans
-                            .where((p) => !p.isDayPass)
-                            .length;
-                        return Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 5,
-                          ),
-                          decoration: BoxDecoration(
-                            color: _cAccentTealBg,
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: Text(
-                            '$visible Total',
-                            style: const TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: _cAccentTeal,
-                            ),
-                          ),
-                        );
-                      },
-                      loading: () => const SizedBox.shrink(),
-                      error: (_, _) => const SizedBox.shrink(),
                     ),
                 ],
               ),
@@ -184,40 +165,28 @@ class _ManagePlansScreenState extends ConsumerState<ManagePlansScreen> {
               ],
               const SizedBox(height: 10),
 
-              Container(
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  color: _cFieldBg,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _FilterTab(
-                        label: 'All',
-                        selected: _filter == _StatusFilter.all,
-                        onTap: () =>
-                            setState(() => _filter = _StatusFilter.all),
-                      ),
-                    ),
-                    Expanded(
-                      child: _FilterTab(
-                        label: 'Active',
-                        selected: _filter == _StatusFilter.active,
-                        onTap: () =>
-                            setState(() => _filter = _StatusFilter.active),
-                      ),
-                    ),
-                    Expanded(
-                      child: _FilterTab(
-                        label: 'Inactive',
-                        selected: _filter == _StatusFilter.inactive,
-                        onTap: () =>
-                            setState(() => _filter = _StatusFilter.inactive),
-                      ),
-                    ),
-                  ],
-                ),
+              Row(
+                children: [
+                  _FilterTab(
+                    label: 'All',
+                    selected: _filter == _StatusFilter.all,
+                    onTap: () => setState(() => _filter = _StatusFilter.all),
+                  ),
+                  const SizedBox(width: 8),
+                  _FilterTab(
+                    label: 'Active',
+                    selected: _filter == _StatusFilter.active,
+                    onTap: () =>
+                        setState(() => _filter = _StatusFilter.active),
+                  ),
+                  const SizedBox(width: 8),
+                  _FilterTab(
+                    label: 'Inactive',
+                    selected: _filter == _StatusFilter.inactive,
+                    onTap: () =>
+                        setState(() => _filter = _StatusFilter.inactive),
+                  ),
+                ],
               ),
               const SizedBox(height: 12),
 
@@ -241,7 +210,7 @@ class _ManagePlansScreenState extends ConsumerState<ManagePlansScreen> {
                     }
                     return ListView.separated(
                       itemCount: plans.length,
-                      separatorBuilder: (_, _) => const SizedBox(height: 10),
+                      separatorBuilder: (_, _) => const SizedBox(height: 14),
                       itemBuilder: (context, index) =>
                           _PlanTile(plan: plans[index], gymId: widget.gymId),
                     );
@@ -288,10 +257,14 @@ class _ManagePlansScreenState extends ConsumerState<ManagePlansScreen> {
                       )
                     : FilledButton.icon(
                   onPressed: () => openPlanForm(context, gymId: widget.gymId),
-                  icon: const Icon(Icons.add, size: 18),
+                  icon: const Icon(Icons.add, size: 18, color: Colors.white),
                   label: const Text(
-                    'Add Plan',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                    'Add New Plan',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
                   ),
                   style: FilledButton.styleFrom(
                     backgroundColor: _cAccentTeal,
@@ -328,18 +301,10 @@ class _FilterTab extends StatelessWidget {
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 160),
-        padding: const EdgeInsets.symmetric(vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
         decoration: BoxDecoration(
-          color: selected ? _cCardBg : Colors.transparent,
-          borderRadius: BorderRadius.circular(9),
-          boxShadow: selected
-              ? [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.06),
-                    blurRadius: 4,
-                  ),
-                ]
-              : null,
+          color: selected ? _cAccentTeal : Colors.transparent,
+          borderRadius: BorderRadius.circular(999),
         ),
         child: Text(
           label,
@@ -347,9 +312,39 @@ class _FilterTab extends StatelessWidget {
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w600,
-            color: selected ? _cAccentTeal : _cMuted,
+            color: selected ? Colors.white : _cMuted,
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _CardIconButton extends StatelessWidget {
+  const _CardIconButton({
+    required this.icon,
+    required this.color,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final Color color;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onPressed,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        width: 30,
+        height: 30,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          border: Border.all(color: color),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Icon(icon, size: 16, color: color),
       ),
     );
   }
@@ -399,121 +394,110 @@ class _PlanTile extends ConsumerWidget {
         '${plan.durationValue} ${plan.durationUnit.toLowerCase()}'
         '${plan.durationValue == 1 ? '' : 's'}';
 
-    return Container(
-      decoration: BoxDecoration(
-        color: _cCardBg,
-        borderRadius: BorderRadius.circular(14),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Row(
-                  children: [
-                    Flexible(
-                      child: Text(
-                        plan.name,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          color: _cInk,
-                        ),
-                      ),
+    final isActive = plan.isActive;
+    final statusLabel = isActive ? 'Active Tier' : 'Inactive Tier';
+    final statusDotColor = isActive ? _cAccentGreen : _cMuted;
+    final nameColor = isActive ? _cInk : _cMuted;
+    final priceColor = isActive ? _cAccentTeal : _cMuted;
+
+    return Opacity(
+      opacity: isActive ? 1.0 : 0.6,
+      child: Container(
+        decoration: BoxDecoration(
+          color: _cCardBg,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.06),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Text(
+                    plan.name,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: nameColor,
                     ),
-                    if (plan.category.isNotEmpty) ...[
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 3,
-                        ),
-                        decoration: BoxDecoration(
-                          color: _cAccentTealBg,
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: Text(
-                          plan.category.toUpperCase(),
-                          style: const TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                            color: _cAccentTeal,
-                          ),
-                        ),
-                      ),
-                    ],
-                    if (!plan.isActive) ...[
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 3,
-                        ),
-                        decoration: BoxDecoration(
-                          color: _cErrorBg,
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: const Text(
-                          'INACTIVE',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                            color: _cErrorText,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
+                  ),
                 ),
-              ),
-              IconButton(
-                icon: const Icon(
-                  Icons.edit_outlined,
-                  size: 19,
+                const SizedBox(width: 8),
+                _CardIconButton(
+                  icon: Icons.edit_outlined,
                   color: _cSubtle,
+                  onPressed: () =>
+                      _openPlanForm(context, gymId: gymId, existing: plan),
                 ),
-                onPressed: () =>
-                    _openPlanForm(context, gymId: gymId, existing: plan),
-              ),
-              IconButton(
-                icon: const Icon(
-                  Icons.delete_outline,
-                  size: 19,
-                  color: _cErrorText,
+                if (isActive) ...[
+                  const SizedBox(width: 8),
+                  _CardIconButton(
+                    icon: Icons.archive_outlined,
+                    color: _cSubtle,
+                    onPressed: () => _confirmArchive(context, ref, plan),
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Text(
+                  '₱${pesos.toStringAsFixed(0)}',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                    color: priceColor,
+                  ),
                 ),
-                onPressed: () => _confirmDelete(context, ref, plan),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Text(
-                '₱${pesos.toStringAsFixed(0)}',
-                style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700,
-                  color: _cInk,
+                const SizedBox(width: 4),
+                Text(
+                  '/ $durationLabel',
+                  style: const TextStyle(fontSize: 13, color: _cMuted),
                 ),
-              ),
-              const SizedBox(width: 4),
-              Text(
-                '/ $durationLabel',
-                style: const TextStyle(fontSize: 12, color: _cMuted),
-              ),
-            ],
-          ),
-        ],
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: statusDotColor,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  statusLabel,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: _cSubtle,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Future<void> _confirmDelete(
+  Future<void> _confirmArchive(
     BuildContext context,
     WidgetRef ref,
     MembershipPlan plan,
@@ -521,11 +505,10 @@ class _PlanTile extends ConsumerWidget {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Delete "${plan.name}"?'),
+        title: Text('Archive "${plan.name}"?'),
         content: const Text(
-          'This removes the plan entirely. If members have used it '
-          'before, turning off Active (edit → Active) is usually safer '
-          'than deleting.',
+          'This hides the plan from new members but keeps it in old '
+          'records. You can reactivate it later from Edit → Active Plan.',
         ),
         actions: [
           TextButton(
@@ -534,7 +517,7 @@ class _PlanTile extends ConsumerWidget {
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Delete'),
+            child: const Text('Archive'),
           ),
         ],
       ),
@@ -542,12 +525,14 @@ class _PlanTile extends ConsumerWidget {
     if (confirmed != true) return;
 
     try {
-      await ref.read(plansRepositoryProvider).deletePlan(plan.id);
+      await ref
+          .read(plansRepositoryProvider)
+          .updatePlan(id: plan.id, gymId: gymId, isActive: false);
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text("Couldn't delete — check your connection."),
+            content: Text("Couldn't archive — check your connection."),
           ),
         );
       }
@@ -696,9 +681,9 @@ class _PlanFormSheetState extends ConsumerState<_PlanFormSheet> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Container(
-            padding: const EdgeInsets.fromLTRB(20, 16, 12, 16),
+            padding: const EdgeInsets.fromLTRB(20, 20, 12, 12),
             decoration: const BoxDecoration(
-              color: _cInk,
+              color: _cCardBg,
               borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
             ),
             child: Row(
@@ -707,13 +692,13 @@ class _PlanFormSheetState extends ConsumerState<_PlanFormSheet> {
                   width: 36,
                   height: 36,
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.12),
+                    color: _cAccentTealBg,
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: const Icon(
                     Icons.receipt_long_outlined,
                     size: 18,
-                    color: Colors.white,
+                    color: _cAccentTeal,
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -726,12 +711,12 @@ class _PlanFormSheetState extends ConsumerState<_PlanFormSheet> {
                         style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
-                          color: Colors.white,
+                          color: _cInk,
                         ),
                       ),
                       const Text(
-                        'Membership Tier',
-                        style: TextStyle(fontSize: 11, color: Colors.white70),
+                        'Membership Tier & Pricing',
+                        style: TextStyle(fontSize: 11, color: _cSubtle),
                       ),
                     ],
                   ),
@@ -740,7 +725,7 @@ class _PlanFormSheetState extends ConsumerState<_PlanFormSheet> {
                   onPressed: _isSubmitting
                       ? null
                       : () => Navigator.of(context).pop(),
-                  icon: const Icon(Icons.close, color: Colors.white, size: 20),
+                  icon: const Icon(Icons.close, color: _cSubtle, size: 20),
                 ),
               ],
             ),
@@ -828,11 +813,11 @@ class _PlanFormSheetState extends ConsumerState<_PlanFormSheet> {
                 const SizedBox(height: 16),
 
                 _field(
-                  'Price (PHP)',
+                  'Price',
                   _priceCtrl,
                   hint: '650',
                   keyboardType: TextInputType.number,
-                  prefixIcon: Icons.currency_exchange,
+                  prefixText: '₱',
                 ),
                 const SizedBox(height: 16),
 
@@ -881,6 +866,7 @@ class _PlanFormSheetState extends ConsumerState<_PlanFormSheet> {
                         decoration: BoxDecoration(
                           color: _cFieldBg,
                           borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: _cDisabledBg),
                         ),
                         alignment: Alignment.center,
                         child: DropdownButtonHideUnderline(
@@ -891,13 +877,16 @@ class _PlanFormSheetState extends ConsumerState<_PlanFormSheet> {
                               Icons.keyboard_arrow_down,
                               color: _cAccentTeal,
                             ),
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                              color: _cInk,
+                            ),
                             items: _durationUnits
                                 .map(
                                   (u) => DropdownMenuItem(
                                     value: u,
-                                    child: Text(
-                                      '${u[0]}${u.substring(1).toLowerCase()}(s)',
-                                    ),
+                                    child: Text(_durationUnitLabel(u)),
                                   ),
                                 )
                                 .toList(),
@@ -1036,6 +1025,7 @@ class _PlanFormSheetState extends ConsumerState<_PlanFormSheet> {
     String? hint,
     TextInputType? keyboardType,
     IconData? prefixIcon,
+    String? prefixText,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1062,6 +1052,16 @@ class _PlanFormSheetState extends ConsumerState<_PlanFormSheet> {
             children: [
               if (prefixIcon != null) ...[
                 Icon(prefixIcon, size: 17, color: _cAccentTeal),
+                const SizedBox(width: 8),
+              ] else if (prefixText != null) ...[
+                Text(
+                  prefixText,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: _cAccentTeal,
+                  ),
+                ),
                 const SizedBox(width: 8),
               ],
               Expanded(
@@ -1107,28 +1107,17 @@ class _CategoryChip extends StatelessWidget {
         duration: const Duration(milliseconds: 140),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
         decoration: BoxDecoration(
-          color: selected ? _cAccentTealBg : _cFieldBg,
+          color: selected ? _cAccentTeal : Colors.transparent,
           borderRadius: BorderRadius.circular(999),
-          border: Border.all(
-            color: selected ? _cAccentTeal : Colors.transparent,
-          ),
+          border: Border.all(color: selected ? _cAccentTeal : _cDisabledBg),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: selected ? _cAccentTeal : _cSubtle,
-              ),
-            ),
-            if (selected) ...[
-              const SizedBox(width: 4),
-              const Icon(Icons.check, size: 13, color: _cAccentTeal),
-            ],
-          ],
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: selected ? Colors.white : _cSubtle,
+          ),
         ),
       ),
     );
