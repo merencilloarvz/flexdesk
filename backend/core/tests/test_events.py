@@ -313,6 +313,31 @@ class CorrectnessTests(EventsTestBase):
         self.assertEqual(r.status_code, 200)
         self.assertIsInstance(r.data["registration_fee"], str)
 
+    def test_guidelines_saved_and_returned_on_create(self):
+        r = self.owner.post(f"{API}events/", {
+            "title": "Guidelines Cup",
+            "event_date": str(self.today + timedelta(days=14)),
+            "guidelines": "No open shoes. Weigh-ins start at 7am.",
+        }, format="json")
+        self.assertEqual(r.status_code, 201)
+        self.assertEqual(r.data["guidelines"], "No open shoes. Weigh-ins start at 7am.")
+        event = Event.objects.get(id=r.data["id"])
+        self.assertEqual(event.guidelines, "No open shoes. Weigh-ins start at 7am.")
+
+    def test_guidelines_saved_and_returned_on_update(self):
+        r = self.owner.patch(f"{API}events/{self.event.id}/", {
+            "guidelines": "Bring your own gear.",
+        }, format="json")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data["guidelines"], "Bring your own gear.")
+        self.event.refresh_from_db()
+        self.assertEqual(self.event.guidelines, "Bring your own gear.")
+
+    def test_guidelines_blank_by_default(self):
+        r = self.owner.get(f"{API}events/{self.event.id}/")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn(r.data["guidelines"], (None, ""))
+
 
 class PrivacyTests(EventsTestBase):
     def test_event_detail_hides_other_registrations(self):

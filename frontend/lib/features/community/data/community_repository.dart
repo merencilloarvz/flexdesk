@@ -72,6 +72,7 @@ class Event {
     required this.locationText,
     required this.feeCentavos,
     required this.prizeDescription,
+    required this.guidelines,
     required this.capacity,
     required this.registrationClosesOn,
     required this.canceledAt,
@@ -88,6 +89,7 @@ class Event {
   final String locationText;
   final int feeCentavos;
   final String prizeDescription;
+  final String? guidelines;
   final int? capacity;
   final DateTime? registrationClosesOn;
   final DateTime? canceledAt;
@@ -106,6 +108,7 @@ class Event {
     locationText: json['location_text'] as String? ?? '',
     feeCentavos: decimalPesosToCentavos(json['registration_fee'] as String),
     prizeDescription: json['prize_description'] as String? ?? '',
+    guidelines: json['guidelines'] as String?,
     capacity: json['capacity'] as int?,
     registrationClosesOn: json['registration_closes_on'] != null
         ? DateTime.parse(json['registration_closes_on'] as String)
@@ -254,6 +257,7 @@ class CommunityRepository {
     required String locationText,
     required int feeCentavos,
     required String prizeDescription,
+    String? guidelines,
     int? capacity,
     DateTime? registrationClosesOn,
   }) async {
@@ -265,6 +269,7 @@ class CommunityRepository {
       'location_text': locationText,
       'registration_fee': pesosToDecimalString(feeCentavos ~/ 100),
       'prize_description': prizeDescription,
+      'guidelines': ?guidelines,
       if (capacity != null) 'capacity': capacity,
       if (registrationClosesOn != null)
         'registration_closes_on': _fmtDate(registrationClosesOn),
