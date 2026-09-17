@@ -651,6 +651,7 @@ class Event(TenantScopedModel):
     registration_fee = models.DecimalField(max_digits=12, decimal_places=2,
                                            default=0)
     prize_description = models.TextField(blank=True)
+    guidelines = models.TextField(blank=True, null=True)
     capacity = models.PositiveIntegerField(null=True, blank=True)  # null = no limit
     registration_closes_on = models.DateField(null=True, blank=True)
     canceled_at = models.DateTimeField(null=True, blank=True)
