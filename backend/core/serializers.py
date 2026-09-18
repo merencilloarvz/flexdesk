@@ -796,10 +796,12 @@ class EventSerializer(serializers.ModelSerializer):
                   "location_text", "registration_fee", "prize_description",
                   "guidelines", "capacity", "registration_closes_on",
                   "canceled_at", "is_canceled", "registration_count",
-                  "spots_left", "my_registration", "created_at", "updated_at"]
+                  "spots_left", "my_registration", "results_verified",
+                  "results_verified_at", "created_at", "updated_at"]
         read_only_fields = ["id", "is_canceled", "registration_count",
-                           "spots_left", "my_registration", "created_at",
-                           "updated_at"]
+                           "spots_left", "my_registration",
+                           "results_verified", "results_verified_at",
+                           "created_at", "updated_at"]
 
     def get_is_canceled(self, obj):
         return obj.canceled_at is not None

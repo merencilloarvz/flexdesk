@@ -1959,6 +1959,40 @@ class EventResultsView(APIView):
         )
 
 
+class EventVerifyResultsView(APIView):
+    """
+    Staff-only. Separate endpoint from EventResultsView.post (rather than
+    a body flag there) to mirror the mark-paid/mark-unpaid split on
+    EventRegistrationViewSet — same shape of problem, same fix.
+    """
+    permission_classes = [IsGymStaff]
+
+    def post(self, request, event_id=None):
+        event = get_object_or_404(Event, pk=event_id, gym=request.user.gym)
+        if not event.results.exists():
+            raise ValidationError(
+                {"detail": "This event has no results yet — nothing to verify."})
+        event.results_verified = True
+        event.results_verified_at = timezone.now()
+        event.save(update_fields=["results_verified", "results_verified_at",
+                                  "updated_at"])
+        return Response(EventSerializer(event, context={"request": request}).data)
+
+
+class EventUnverifyResultsView(APIView):
+    """Staff-only. Reset path for EventVerifyResultsView — e.g. an owner
+    corrects a score after verifying and wants the verified state cleared."""
+    permission_classes = [IsGymStaff]
+
+    def post(self, request, event_id=None):
+        event = get_object_or_404(Event, pk=event_id, gym=request.user.gym)
+        event.results_verified = False
+        event.results_verified_at = None
+        event.save(update_fields=["results_verified", "results_verified_at",
+                                  "updated_at"])
+        return Response(EventSerializer(event, context={"request": request}).data)
+
+
 class EventRegistrationViewSet(GymScopedViewSet):
     queryset = EventRegistration.objects.all()
     serializer_class = EventRegistrationSerializer

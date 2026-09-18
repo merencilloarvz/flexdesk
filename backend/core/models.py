@@ -655,6 +655,8 @@ class Event(TenantScopedModel):
     capacity = models.PositiveIntegerField(null=True, blank=True)  # null = no limit
     registration_closes_on = models.DateField(null=True, blank=True)
     canceled_at = models.DateTimeField(null=True, blank=True)
+    results_verified = models.BooleanField(default=False)
+    results_verified_at = models.DateTimeField(null=True, blank=True)
 
     class Meta(TenantScopedModel.Meta):
         ordering = ["-event_date", "id"]
