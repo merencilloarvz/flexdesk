@@ -79,6 +79,8 @@ class Event {
     required this.registrationCount,
     required this.spotsLeft,
     required this.myRegistration,
+    required this.resultsVerified,
+    required this.resultsVerifiedAt,
   });
 
   final String id;
@@ -96,6 +98,8 @@ class Event {
   final int registrationCount;
   final int? spotsLeft;
   final MyEventRegistration? myRegistration;
+  final bool resultsVerified;
+  final DateTime? resultsVerifiedAt;
 
   bool get isCanceled => canceledAt != null;
 
@@ -122,6 +126,10 @@ class Event {
         ? MyEventRegistration.fromJson(
             json['my_registration'] as Map<String, dynamic>,
           )
+        : null,
+    resultsVerified: json['results_verified'] as bool? ?? false,
+    resultsVerifiedAt: json['results_verified_at'] != null
+        ? DateTime.parse(json['results_verified_at'] as String)
         : null,
   );
 }
@@ -315,6 +323,12 @@ class CommunityRepository {
     );
     return raw.map(EventResultRow.fromJson).toList();
   }
+
+  Future<Event> verifyResults(String eventId) async =>
+      Event.fromJson(await _api.verifyResults(eventId));
+
+  Future<Event> unverifyResults(String eventId) async =>
+      Event.fromJson(await _api.unverifyResults(eventId));
 
   // ---- Events (member) ----
 

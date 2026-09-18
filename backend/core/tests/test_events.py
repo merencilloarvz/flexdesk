@@ -131,6 +131,16 @@ class AccessControlTests(EventsTestBase):
         r = self.member1_client.get(f"{API}events/{self.event.id}/results/")
         self.assertEqual(r.status_code, 200)
 
+    def test_verify_results_member_403(self):
+        r = self.member1_client.post(
+            f"{API}events/{self.event.id}/verify-results/")
+        self.assertEqual(r.status_code, 403)
+
+    def test_unverify_results_member_403(self):
+        r = self.member1_client.post(
+            f"{API}events/{self.event.id}/unverify-results/")
+        self.assertEqual(r.status_code, 403)
+
     def test_register_staff_403(self):
         r = self.register(self.staff, self.event.id)
         self.assertEqual(r.status_code, 403)
@@ -337,6 +347,41 @@ class CorrectnessTests(EventsTestBase):
         r = self.owner.get(f"{API}events/{self.event.id}/")
         self.assertEqual(r.status_code, 200)
         self.assertIn(r.data["guidelines"], (None, ""))
+
+    def test_verify_results_sets_verified_and_timestamp(self):
+        self.owner.post(f"{API}events/{self.event.id}/results/", [
+            {"rank": 1, "display_name": "Ana"},
+        ], format="json")
+
+        r = self.owner.post(f"{API}events/{self.event.id}/verify-results/")
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(r.data["results_verified"])
+        self.assertIsNotNone(r.data["results_verified_at"])
+
+        self.event.refresh_from_db()
+        self.assertTrue(self.event.results_verified)
+        self.assertIsNotNone(self.event.results_verified_at)
+
+    def test_verify_results_rejected_with_no_results(self):
+        r = self.owner.post(f"{API}events/{self.event.id}/verify-results/")
+        self.assertEqual(r.status_code, 400)
+        self.event.refresh_from_db()
+        self.assertFalse(self.event.results_verified)
+
+    def test_unverify_results_resets_verified_and_timestamp(self):
+        self.owner.post(f"{API}events/{self.event.id}/results/", [
+            {"rank": 1, "display_name": "Ana"},
+        ], format="json")
+        self.owner.post(f"{API}events/{self.event.id}/verify-results/")
+
+        r = self.owner.post(f"{API}events/{self.event.id}/unverify-results/")
+        self.assertEqual(r.status_code, 200)
+        self.assertFalse(r.data["results_verified"])
+        self.assertIsNone(r.data["results_verified_at"])
+
+        self.event.refresh_from_db()
+        self.assertFalse(self.event.results_verified)
+        self.assertIsNone(self.event.results_verified_at)
 
 
 class PrivacyTests(EventsTestBase):

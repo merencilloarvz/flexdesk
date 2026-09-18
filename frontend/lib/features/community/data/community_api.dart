@@ -146,6 +146,24 @@ class CommunityApi {
     }
   }
 
+  Future<Map<String, dynamic>> verifyResults(String eventId) async {
+    try {
+      final r = await _dio.post('/events/$eventId/verify-results/');
+      return r.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw ApiException.from(e);
+    }
+  }
+
+  Future<Map<String, dynamic>> unverifyResults(String eventId) async {
+    try {
+      final r = await _dio.post('/events/$eventId/unverify-results/');
+      return r.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw ApiException.from(e);
+    }
+  }
+
   Future<List<Map<String, dynamic>>> fetchRegistrants(String eventId) =>
       _fetchAllPages('/event-registrations/', query: {'event': eventId});
 
