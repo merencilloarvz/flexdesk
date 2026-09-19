@@ -508,10 +508,12 @@ class EngagementTestsMixin:
 
     def test_like_fields_are_read_only(self):
         r = self.owner.patch(f"{API}{self.kind}/{self.item.id}/",
-                             {"like_count": 99, "liked_by_me": True}, format="json")
+                             {"like_count": 99, "liked_by_me": True,
+                              "comment_count": 99}, format="json")
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.data["like_count"], 0)
         self.assertFalse(r.data["liked_by_me"])
+        self.assertEqual(r.data["comment_count"], 0)
 
     def test_staff_and_owner_can_like(self):
         self.assertEqual(self.like(self.staff).status_code, 200)
@@ -654,6 +656,39 @@ class EngagementTestsMixin:
         self.assertEqual(Like.objects.count(), 0)
         self.assertEqual(Comment.objects.count(), 0)
 
+    def test_comment_count_tracks_creates_and_deletes(self):
+        other_item = self.make_item(self.gym)
+        self.assertEqual(self.listed(self.member1_client)["comment_count"], 0)
+
+        first = self.comment(self.member1_client, "one").data["id"]
+        self.comment(self.member2_client, "two")
+        self.comment(self.staff, "three")
+        self.comment(self.member1_client, "elsewhere", item=other_item)
+        self.like(self.member1_client)   # likes must not move the count
+
+        # Same number for every viewer, from the list and from the detail.
+        self.assertEqual(self.listed(self.member1_client)["comment_count"], 3)
+        self.assertEqual(self.listed(self.owner)["comment_count"], 3)
+        r = self.member2_client.get(f"{API}{self.kind}/{self.item.id}/")
+        self.assertEqual(r.data["comment_count"], 3)
+
+        self.assertEqual(
+            self.member1_client.delete(self.url(f"comments/{first}/")).status_code, 204)
+        self.assertEqual(self.listed(self.member1_client)["comment_count"], 2)
+
+        # A comment that failed validation or was refused doesn't count.
+        self.comment(self.member1_client, "   ")
+        self.assertEqual(self.listed(self.member1_client)["comment_count"], 2)
+
+        # The other item kept its own count.
+        r = self.member1_client.get(f"{API}{self.kind}/{other_item.id}/")
+        self.assertEqual(r.data["comment_count"], 1)
+
+    def test_comment_count_is_zero_after_last_comment_deleted(self):
+        cid = self.comment(self.member1_client).data["id"]
+        self.member1_client.delete(self.url(f"comments/{cid}/"))
+        self.assertEqual(self.listed(self.member1_client)["comment_count"], 0)
+
     # ---- cross-tenant ----
 
     def test_cross_gym_like_404(self):
@@ -763,24 +798,31 @@ class EventLikeCommentTests(EngagementTestsMixin, EventsTestBase):
             gym=gym, title="Fall Classic",
             event_date=self.today + timedelta(days=7))
 
-    def test_likes_do_not_inflate_registration_count(self):
-        # registration_count and like_count come from the same queryset; a
-        # join-based like count would multiply the registration rows.
-        # Three likes x one registration must still be one registration.
+    def test_likes_and_comments_do_not_inflate_registration_count(self):
+        # registration_count, like_count and comment_count come from the
+        # same queryset; a join-based count would multiply the rows the
+        # others see. 3 likes x 2 comments x 1 registration must still
+        # read as 1 registration, 3 likes, 2 comments.
         self.register(self.member1_client, self.item.id)
         self.like(self.member1_client)
         self.like(self.member2_client)
         self.like(self.staff)
+        self.comment(self.member1_client, "a")
+        self.comment(self.member2_client, "b")
         row = self.listed(self.member1_client)
         self.assertEqual(row["registration_count"], 1)
         self.assertEqual(row["like_count"], 3)
+        self.assertEqual(row["comment_count"], 2)
 
     def test_like_state_present_on_verify_results_response(self):
         # Views that serialize an un-annotated Event fall back to querying.
         self.like(self.member1_client)
+        self.comment(self.member1_client)
+        self.comment(self.member2_client)
         EventResult.objects.create(gym=self.gym, event=self.item, rank=1,
                                    display_name="Ana")
         r = self.owner.post(f"{API}events/{self.item.id}/verify-results/")
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.data["like_count"], 1)
         self.assertFalse(r.data["liked_by_me"])
+        self.assertEqual(r.data["comment_count"], 2)

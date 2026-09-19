@@ -776,13 +776,20 @@ class MeCheckInSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class LikeStateMixin:
+class EngagementStateMixin:
     """
-    like_count / liked_by_me for anything that can be liked. List views
-    annotate both onto the queryset (see with_like_state in views.py) so a
-    page of 50 is one query, not 100; a lone object — the toggle response,
-    or a serializer used outside those viewsets — falls back to querying.
+    like_count / liked_by_me / comment_count for anything that can be liked
+    or commented on. List views annotate them onto the queryset (see
+    with_engagement_state in views.py) so a page of 50 is one query, not
+    150; a lone object — the toggle response, or a serializer used outside
+    those viewsets — falls back to querying.
     """
+
+    def get_comment_count(self, obj):
+        count = getattr(obj, "comment_count", None)
+        if count is None:
+            count = obj.comments.count()
+        return count
 
     def get_like_count(self, obj):
         count = getattr(obj, "like_count", None)
@@ -798,7 +805,7 @@ class LikeStateMixin:
         return liked
 
 
-class LikeSerializer(LikeStateMixin, serializers.Serializer):
+class LikeSerializer(EngagementStateMixin, serializers.Serializer):
     """
     Response of the like toggle: the item's new like state. Deliberately
     not a per-Like row — nothing exposes who liked what, only the count
@@ -852,22 +859,24 @@ class CommentSerializer(serializers.ModelSerializer):
         return obj.user_id == user.id or getattr(user, "staff_profile", None) is not None
 
 
-class AnnouncementSerializer(LikeStateMixin, serializers.ModelSerializer):
+class AnnouncementSerializer(EngagementStateMixin, serializers.ModelSerializer):
     like_count = serializers.SerializerMethodField()
     liked_by_me = serializers.SerializerMethodField()
+    comment_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Announcement
         fields = ["id", "title", "body", "is_pinned", "like_count",
-                  "liked_by_me", "created_at", "updated_at"]
-        read_only_fields = ["id", "like_count", "liked_by_me", "created_at",
-                            "updated_at"]
+                  "liked_by_me", "comment_count", "created_at", "updated_at"]
+        read_only_fields = ["id", "like_count", "liked_by_me", "comment_count",
+                            "created_at", "updated_at"]
         # created_by deliberately absent — not just hidden, never sent.
 
 
-class EventSerializer(LikeStateMixin, serializers.ModelSerializer):
+class EventSerializer(EngagementStateMixin, serializers.ModelSerializer):
     like_count = serializers.SerializerMethodField()
     liked_by_me = serializers.SerializerMethodField()
+    comment_count = serializers.SerializerMethodField()
     is_canceled = serializers.SerializerMethodField()
     registration_count = serializers.SerializerMethodField()
     spots_left = serializers.SerializerMethodField()
@@ -881,10 +890,10 @@ class EventSerializer(LikeStateMixin, serializers.ModelSerializer):
                   "canceled_at", "is_canceled", "registration_count",
                   "spots_left", "my_registration", "results_verified",
                   "results_verified_at", "like_count", "liked_by_me",
-                  "created_at", "updated_at"]
+                  "comment_count", "created_at", "updated_at"]
         read_only_fields = ["id", "is_canceled", "registration_count",
                            "spots_left", "my_registration", "like_count",
-                           "liked_by_me",
+                           "liked_by_me", "comment_count",
                            "results_verified", "results_verified_at",
                            "created_at", "updated_at"]
 

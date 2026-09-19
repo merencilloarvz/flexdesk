@@ -1541,20 +1541,26 @@ def _notify_out_of_stock(product):
         logger.exception("Failed to send out-of-stock notification for %s", product.id)
 
 
-def with_like_state(qs, fk, user):
+def with_engagement_state(qs, fk, user):
     """
-    Annotates like_count and liked_by_me (read by LikeStateMixin) so a
-    list is one query. Subqueries rather than a Count("likes") join: the
-    Event queryset already joins registrations for registration_count, and
-    a second join would multiply the rows each Count sees.
+    Annotates like_count, liked_by_me and comment_count (read by
+    EngagementStateMixin) so a list is one query. Correlated subqueries
+    rather than Count("likes") / Count("comments") joins: the Event
+    queryset already joins registrations for registration_count, and each
+    extra join would multiply the rows the other Counts see.
     """
-    likes = Like.objects.filter(**{fk: OuterRef("pk")})
+    def count_of(model):
+        return Coalesce(
+            Subquery(
+                model.objects.filter(**{fk: OuterRef("pk")})
+                .order_by().values(fk).annotate(n=Count("pk")).values("n")[:1],
+                output_field=IntegerField()),
+            0)
+
     return qs.annotate(
-        like_count=Coalesce(
-            Subquery(likes.order_by().values(fk).annotate(n=Count("pk")).values("n")[:1],
-                     output_field=IntegerField()),
-            0),
-        liked_by_me=Exists(likes.filter(user=user)),
+        like_count=count_of(Like),
+        comment_count=count_of(Comment),
+        liked_by_me=Exists(Like.objects.filter(**{fk: OuterRef("pk")}, user=user)),
     )
 
 
@@ -1564,7 +1570,7 @@ class AnnouncementViewSet(GymScopedViewSet):
     permission_classes = [IsGymUser, IsGymStaffOrReadOnly]
 
     def get_queryset(self):
-        return with_like_state(super().get_queryset(), "announcement",
+        return with_engagement_state(super().get_queryset(), "announcement",
                                self.request.user)
 
     def perform_create(self, serializer):
@@ -1890,7 +1896,7 @@ class EventViewSet(GymScopedViewSet):
                 "registrations", filter=Q(registrations__canceled_at__isnull=True)
             )
         ).order_by("-event_date", "id")
-        return with_like_state(qs, "event", self.request.user)
+        return with_engagement_state(qs, "event", self.request.user)
 
     def destroy(self, request, *args, **kwargs):
         raise MethodNotAllowed("DELETE", detail="Set canceled_at instead.")

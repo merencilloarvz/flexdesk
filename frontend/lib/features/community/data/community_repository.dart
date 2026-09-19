@@ -27,6 +27,7 @@ class Announcement {
     required this.isPinned,
     required this.likeCount,
     required this.likedByMe,
+    required this.commentCount,
     required this.createdAt,
   });
 
@@ -36,6 +37,7 @@ class Announcement {
   final bool isPinned;
   final int likeCount;
   final bool likedByMe;
+  final int commentCount;
   final DateTime createdAt;
 
   factory Announcement.fromJson(Map<String, dynamic> json) => Announcement(
@@ -45,6 +47,7 @@ class Announcement {
     isPinned: json['is_pinned'] as bool,
     likeCount: json['like_count'] as int? ?? 0,
     likedByMe: json['liked_by_me'] as bool? ?? false,
+    commentCount: json['comment_count'] as int? ?? 0,
     createdAt: DateTime.parse(json['created_at'] as String),
   );
 }
@@ -145,6 +148,7 @@ class Event {
     required this.resultsVerifiedAt,
     required this.likeCount,
     required this.likedByMe,
+    required this.commentCount,
   });
 
   final String id;
@@ -166,6 +170,7 @@ class Event {
   final DateTime? resultsVerifiedAt;
   final int likeCount;
   final bool likedByMe;
+  final int commentCount;
 
   bool get isCanceled => canceledAt != null;
 
@@ -199,6 +204,7 @@ class Event {
         : null,
     likeCount: json['like_count'] as int? ?? 0,
     likedByMe: json['liked_by_me'] as bool? ?? false,
+    commentCount: json['comment_count'] as int? ?? 0,
   );
 }
 
