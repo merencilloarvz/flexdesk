@@ -17,6 +17,8 @@ from .views import MeRestDaysView  # add to the existing .views import block
 from .views import SubscriptionPaymentInfoView, SubscriptionView
 from .views import MeQrSecretView
 from .views import DeviceTokenView
+from .views import CommentDeleteView, CommentListCreateView, LikeToggleView
+from .models import Announcement, Event
 router = DefaultRouter()
 router.register("members", MemberViewSet, basename="member")
 router.register("check-ins", CheckInViewSet, basename="check-in")
@@ -30,6 +32,22 @@ router.register("event-registrations", EventRegistrationViewSet,
 router.register("products", ProductViewSet, basename="product")
 router.register("sales", SaleViewSet, basename="sale")
 
+
+# Likes and comments serve two targets with the same views; each URL binds
+# a view to one (model, FK field). Listed ahead of the router include, like
+# the events/<id>/results/ routes.
+engagement_urls = []
+for _prefix, _model, _field in [("announcements", Announcement, "announcement"),
+                                ("events", Event, "event")]:
+    _bind = {"item_model": _model, "item_field": _field}
+    engagement_urls += [
+        path(f"{_prefix}/<uuid:item_id>/like/",
+             LikeToggleView.as_view(**_bind), name=f"{_field}-like"),
+        path(f"{_prefix}/<uuid:item_id>/comments/",
+             CommentListCreateView.as_view(**_bind), name=f"{_field}-comments"),
+        path(f"{_prefix}/<uuid:item_id>/comments/<uuid:comment_id>/",
+             CommentDeleteView.as_view(**_bind), name=f"{_field}-comment-detail"),
+    ]
 
 urlpatterns = [
     path("auth/login/", FlexTokenObtainPairView.as_view(), name="login"),
@@ -66,6 +84,7 @@ urlpatterns = [
     path("subscription/", SubscriptionView.as_view(), name="subscription"),
     path("subscription/payment-info/", SubscriptionPaymentInfoView.as_view(),
         name="subscription-payment-info"),
+    *engagement_urls,
     path("", include(router.urls)),
     
 ]

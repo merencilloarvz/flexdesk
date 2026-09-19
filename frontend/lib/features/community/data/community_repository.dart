@@ -25,6 +25,8 @@ class Announcement {
     required this.title,
     required this.body,
     required this.isPinned,
+    required this.likeCount,
+    required this.likedByMe,
     required this.createdAt,
   });
 
@@ -32,6 +34,8 @@ class Announcement {
   final String title;
   final String body;
   final bool isPinned;
+  final int likeCount;
+  final bool likedByMe;
   final DateTime createdAt;
 
   factory Announcement.fromJson(Map<String, dynamic> json) => Announcement(
@@ -39,6 +43,64 @@ class Announcement {
     title: json['title'] as String,
     body: json['body'] as String,
     isPinned: json['is_pinned'] as bool,
+    likeCount: json['like_count'] as int? ?? 0,
+    likedByMe: json['liked_by_me'] as bool? ?? false,
+    createdAt: DateTime.parse(json['created_at'] as String),
+  );
+}
+
+/// What a like or comment can be attached to. [path] is the server's URL
+/// segment for that kind of item.
+enum CommunityItemType {
+  announcement('announcements'),
+  event('events');
+
+  const CommunityItemType(this.path);
+  final String path;
+}
+
+/// Result of toggling a like: the item's new state, as the server sees it.
+class LikeState {
+  const LikeState({required this.likeCount, required this.likedByMe});
+
+  final int likeCount;
+  final bool likedByMe;
+
+  factory LikeState.fromJson(Map<String, dynamic> json) => LikeState(
+    likeCount: json['like_count'] as int,
+    likedByMe: json['liked_by_me'] as bool,
+  );
+}
+
+class Comment {
+  Comment({
+    required this.id,
+    required this.body,
+    required this.authorName,
+    required this.authorRole,
+    required this.isMine,
+    required this.canDelete,
+    required this.createdAt,
+  });
+
+  final String id;
+  final String body;
+  final String authorName;
+  final String authorRole; // 'owner' | 'staff' | 'member'
+  final bool isMine;
+
+  /// Own comment, or the viewer is staff (moderation). Server-computed so
+  /// the UI never has to re-derive it.
+  final bool canDelete;
+  final DateTime createdAt;
+
+  factory Comment.fromJson(Map<String, dynamic> json) => Comment(
+    id: json['id'] as String,
+    body: json['body'] as String,
+    authorName: json['author_name'] as String,
+    authorRole: json['author_role'] as String,
+    isMine: json['is_mine'] as bool,
+    canDelete: json['can_delete'] as bool,
     createdAt: DateTime.parse(json['created_at'] as String),
   );
 }
@@ -81,6 +143,8 @@ class Event {
     required this.myRegistration,
     required this.resultsVerified,
     required this.resultsVerifiedAt,
+    required this.likeCount,
+    required this.likedByMe,
   });
 
   final String id;
@@ -100,6 +164,8 @@ class Event {
   final MyEventRegistration? myRegistration;
   final bool resultsVerified;
   final DateTime? resultsVerifiedAt;
+  final int likeCount;
+  final bool likedByMe;
 
   bool get isCanceled => canceledAt != null;
 
@@ -131,6 +197,8 @@ class Event {
     resultsVerifiedAt: json['results_verified_at'] != null
         ? DateTime.parse(json['results_verified_at'] as String)
         : null,
+    likeCount: json['like_count'] as int? ?? 0,
+    likedByMe: json['liked_by_me'] as bool? ?? false,
   );
 }
 
@@ -329,6 +397,35 @@ class CommunityRepository {
 
   Future<Event> unverifyResults(String eventId) async =>
       Event.fromJson(await _api.unverifyResults(eventId));
+
+  // ---- Likes & comments (announcements and events) ----
+
+  /// Toggles the caller's like and returns the item's new state — the
+  /// caller should render from this, not flip its own copy.
+  Future<LikeState> toggleLike(CommunityItemType itemType, String itemId) async =>
+      LikeState.fromJson(await _api.toggleLike(itemType.path, itemId));
+
+  Future<List<Comment>> fetchComments(
+    CommunityItemType itemType,
+    String itemId,
+  ) async {
+    final raw = await _api.fetchComments(itemType.path, itemId);
+    return raw.map(Comment.fromJson).toList();
+  }
+
+  Future<Comment> postComment(
+    CommunityItemType itemType,
+    String itemId,
+    String body,
+  ) async => Comment.fromJson(
+    await _api.postComment(itemType.path, itemId, {'body': body}),
+  );
+
+  Future<void> deleteComment(
+    CommunityItemType itemType,
+    String itemId,
+    String commentId,
+  ) => _api.deleteComment(itemType.path, itemId, commentId);
 
   // ---- Events (member) ----
 
