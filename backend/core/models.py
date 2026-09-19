@@ -759,6 +759,87 @@ class EventResult(TenantScopedModel):
         return super().save(*args, **kwargs)
 
 
+class EngagementModel(TenantScopedModel):
+    """
+    Shared base for Like and Comment: something a gym user attaches to
+    either an Announcement or an Event.
+
+    Modeled as two nullable FKs plus a CheckConstraint that exactly one is
+    set — not ContentType/GenericForeignKey. Nothing else in this codebase
+    uses generic relations (every cross-row link is a real FK, guarded by
+    constraints and clean()), and real FKs keep referential integrity,
+    CASCADE on delete, and plain select_related/Exists queries. Adding a
+    third target later is one more nullable FK and a wider constraint.
+
+    `user` is a User, not a Member, so staff and members can both engage.
+    """
+    announcement = models.ForeignKey(
+        Announcement, null=True, blank=True, on_delete=models.CASCADE,
+        related_name="%(class)ss")
+    event = models.ForeignKey(
+        Event, null=True, blank=True, on_delete=models.CASCADE,
+        related_name="%(class)ss")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                             related_name="+")
+
+    class Meta(TenantScopedModel.Meta):
+        abstract = True
+        constraints = [
+            models.CheckConstraint(
+                condition=(Q(announcement__isnull=False, event__isnull=True)
+                           | Q(announcement__isnull=True, event__isnull=False)),
+                name="%(class)s_exactly_one_target",
+            ),
+        ]
+
+    @property
+    def target(self):
+        return self.announcement if self.announcement_id else self.event
+
+    def clean(self):
+        if self.announcement_id and self.event_id:
+            raise ValidationError("Attach to an announcement or an event, not both.")
+        if not (self.announcement_id or self.event_id):
+            raise ValidationError("Attach to an announcement or an event.")
+        if self.target.gym_id != self.gym_id:
+            raise ValidationError(
+                {"gym": "Announcement or event must belong to the same gym."})
+        user_gym = self.user.gym if self.user_id else None
+        if self.user_id and (user_gym is None or user_gym.id != self.gym_id):
+            raise ValidationError({"user": "User must belong to the same gym."})
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+
+class Like(EngagementModel):
+    class Meta(EngagementModel.Meta):
+        ordering = ["created_at", "id"]
+        # Plain (unconditional) uniques: Postgres treats NULLs as distinct,
+        # so the unset target column never collides — the CheckConstraint
+        # in the base is what guarantees exactly one column is set.
+        constraints = EngagementModel.Meta.constraints + [
+            models.UniqueConstraint(fields=["user", "announcement"],
+                                    name="uniq_like_per_user_announcement"),
+            models.UniqueConstraint(fields=["user", "event"],
+                                    name="uniq_like_per_user_event"),
+        ]
+
+    def __str__(self):
+        return f"{self.user.email} likes {self.target}"
+
+
+class Comment(EngagementModel):
+    body = models.TextField()
+
+    class Meta(EngagementModel.Meta):
+        ordering = ["created_at", "id"]
+
+    def __str__(self):
+        return f"{self.user.email} on {self.target}: {self.body[:40]}"
+
+
 class Product(TenantScopedModel):
     name = models.CharField(max_length=120)
     category = models.CharField(max_length=50, blank=True)

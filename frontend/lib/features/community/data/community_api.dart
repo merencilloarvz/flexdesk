@@ -72,6 +72,52 @@ class CommunityApi {
     }
   }
 
+  // ---- Likes & comments ----
+  // [itemPath] is 'announcements' or 'events' — the endpoints are identical
+  // for both.
+
+  Future<Map<String, dynamic>> toggleLike(
+    String itemPath,
+    String itemId,
+  ) async {
+    try {
+      final r = await _dio.post('/$itemPath/$itemId/like/');
+      return r.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw ApiException.from(e);
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> fetchComments(
+    String itemPath,
+    String itemId,
+  ) => _fetchAllPages('/$itemPath/$itemId/comments/');
+
+  Future<Map<String, dynamic>> postComment(
+    String itemPath,
+    String itemId,
+    Map<String, dynamic> body,
+  ) async {
+    try {
+      final r = await _dio.post('/$itemPath/$itemId/comments/', data: body);
+      return r.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw ApiException.from(e);
+    }
+  }
+
+  Future<void> deleteComment(
+    String itemPath,
+    String itemId,
+    String commentId,
+  ) async {
+    try {
+      await _dio.delete('/$itemPath/$itemId/comments/$commentId/');
+    } on DioException catch (e) {
+      throw ApiException.from(e);
+    }
+  }
+
   // ---- Events ----
 
   Future<List<Map<String, dynamic>>> fetchEvents() =>

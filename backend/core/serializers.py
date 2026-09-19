@@ -3,7 +3,7 @@ from datetime import timedelta
 from django.utils import timezone
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-from .models import Announcement, Event, EventRegistration, EventResult
+from .models import Announcement, Comment, Event, EventRegistration, EventResult, Like
 from .models import CheckIn, Location, Member, Membership, MembershipPlan, RenewalReminder
 from django.contrib.auth.password_validation import validate_password
 from django.utils.text import slugify
@@ -776,15 +776,98 @@ class MeCheckInSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class AnnouncementSerializer(serializers.ModelSerializer):
+class LikeStateMixin:
+    """
+    like_count / liked_by_me for anything that can be liked. List views
+    annotate both onto the queryset (see with_like_state in views.py) so a
+    page of 50 is one query, not 100; a lone object — the toggle response,
+    or a serializer used outside those viewsets — falls back to querying.
+    """
+
+    def get_like_count(self, obj):
+        count = getattr(obj, "like_count", None)
+        if count is None:
+            count = obj.likes.count()
+        return count
+
+    def get_liked_by_me(self, obj):
+        liked = getattr(obj, "liked_by_me", None)
+        if liked is None:
+            request = self.context.get("request")
+            liked = bool(request) and obj.likes.filter(user=request.user).exists()
+        return liked
+
+
+class LikeSerializer(LikeStateMixin, serializers.Serializer):
+    """
+    Response of the like toggle: the item's new like state. Deliberately
+    not a per-Like row — nothing exposes who liked what, only the count
+    and the caller's own state.
+    """
+    like_count = serializers.SerializerMethodField()
+    liked_by_me = serializers.SerializerMethodField()
+
+
+class CommentSerializer(serializers.ModelSerializer):
+    """
+    Author is shown by display name and role only — never the user id or
+    email, which would leak one member's identity to every other member.
+    """
+    author_name = serializers.SerializerMethodField()
+    author_role = serializers.SerializerMethodField()
+    is_mine = serializers.SerializerMethodField()
+    can_delete = serializers.SerializerMethodField()
+    body = serializers.CharField(max_length=1000)
+
+    class Meta:
+        model = Comment
+        fields = ["id", "body", "author_name", "author_role", "is_mine",
+                  "can_delete", "created_at"]
+        read_only_fields = ["id", "author_name", "author_role", "is_mine",
+                            "can_delete", "created_at"]
+
+    def get_author_name(self, obj):
+        member = getattr(obj.user, "member_profile", None)
+        if member:
+            return member.full_name
+        return obj.user.full_name or "Staff"
+
+    def get_author_role(self, obj):
+        return obj.user.role or "member"
+
+    def _request_user(self):
+        request = self.context.get("request")
+        return request.user if request else None
+
+    def get_is_mine(self, obj):
+        user = self._request_user()
+        return bool(user) and obj.user_id == user.id
+
+    def get_can_delete(self, obj):
+        # Own comment, or any staff for moderation — mirrors the check in
+        # CommentDeleteView.
+        user = self._request_user()
+        if not user:
+            return False
+        return obj.user_id == user.id or getattr(user, "staff_profile", None) is not None
+
+
+class AnnouncementSerializer(LikeStateMixin, serializers.ModelSerializer):
+    like_count = serializers.SerializerMethodField()
+    liked_by_me = serializers.SerializerMethodField()
+
     class Meta:
         model = Announcement
-        fields = ["id", "title", "body", "is_pinned", "created_at", "updated_at"]
-        read_only_fields = ["id", "created_at", "updated_at"]
+        fields = ["id", "title", "body", "is_pinned", "like_count",
+                  "liked_by_me", "created_at", "updated_at"]
+        read_only_fields = ["id", "like_count", "liked_by_me", "created_at",
+                            "updated_at"]
         # created_by deliberately absent — not just hidden, never sent.
 
 
-class EventSerializer(serializers.ModelSerializer):
+class EventSerializer(LikeStateMixin, serializers.ModelSerializer):
+    like_count = serializers.SerializerMethodField()
+    liked_by_me = serializers.SerializerMethodField()
     is_canceled = serializers.SerializerMethodField()
     registration_count = serializers.SerializerMethodField()
     spots_left = serializers.SerializerMethodField()
@@ -797,9 +880,11 @@ class EventSerializer(serializers.ModelSerializer):
                   "guidelines", "capacity", "registration_closes_on",
                   "canceled_at", "is_canceled", "registration_count",
                   "spots_left", "my_registration", "results_verified",
-                  "results_verified_at", "created_at", "updated_at"]
+                  "results_verified_at", "like_count", "liked_by_me",
+                  "created_at", "updated_at"]
         read_only_fields = ["id", "is_canceled", "registration_count",
-                           "spots_left", "my_registration",
+                           "spots_left", "my_registration", "like_count",
+                           "liked_by_me",
                            "results_verified", "results_verified_at",
                            "created_at", "updated_at"]
 

@@ -6,7 +6,7 @@ from django.conf import settings as dj_settings
 from django.db import IntegrityError
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
-from rest_framework.generics import ListAPIView, RetrieveAPIView
+from rest_framework.generics import DestroyAPIView, ListAPIView, ListCreateAPIView, RetrieveAPIView
 from rest_framework.response import Response
 from rest_framework.exceptions import MethodNotAllowed, ValidationError
 from rest_framework_simplejwt.views import TokenObtainPairView
@@ -38,7 +38,7 @@ from .serializers import (ChangePasswordSerializer, StaffCreateSerializer,
                           StaffMemberSerializer)
 from .models import StaffProfile
 from django.db import transaction
-from django.db.models import Count, F, OuterRef, Q, Subquery
+from django.db.models import Count, Exists, F, IntegerField, OuterRef, Q, Subquery
 from django.http import Http404
 from django.shortcuts import get_object_or_404
 from .models import Booking, TimeSlot
@@ -46,14 +46,14 @@ from .serializers import BookingCreateSerializer, BookingSerializer, TimeSlotSer
 
 
 from rest_framework.exceptions import PermissionDenied
-from .models import Announcement, Event, EventRegistration, EventResult
+from .models import Announcement, Comment, Event, EventRegistration, EventResult, Like
 from .models import Product, Sale, SaleItem, StockAdjustment
 from .models import DeviceToken, NotificationSend
 from .notifications import send_to_users
-from .permissions import IsGymUser, IsGymStaffOrReadOnly
-from .serializers import (AnnouncementSerializer, EventRegistrationSerializer,
+from .permissions import CanEngage, IsGymUser, IsGymStaffOrReadOnly
+from .serializers import (AnnouncementSerializer, CommentSerializer, EventRegistrationSerializer,
                           EventResultInputSerializer, EventResultSerializer,
-                          EventSerializer, MemberEventRegistrationSerializer,
+                          EventSerializer, LikeSerializer, MemberEventRegistrationSerializer,
                           ProductSerializer, SaleCreateSerializer, SaleSerializer,
                           StockAdjustmentInputSerializer, StockAdjustmentSerializer)
 from .serializers import DeviceTokenSerializer
@@ -1541,10 +1541,31 @@ def _notify_out_of_stock(product):
         logger.exception("Failed to send out-of-stock notification for %s", product.id)
 
 
+def with_like_state(qs, fk, user):
+    """
+    Annotates like_count and liked_by_me (read by LikeStateMixin) so a
+    list is one query. Subqueries rather than a Count("likes") join: the
+    Event queryset already joins registrations for registration_count, and
+    a second join would multiply the rows each Count sees.
+    """
+    likes = Like.objects.filter(**{fk: OuterRef("pk")})
+    return qs.annotate(
+        like_count=Coalesce(
+            Subquery(likes.order_by().values(fk).annotate(n=Count("pk")).values("n")[:1],
+                     output_field=IntegerField()),
+            0),
+        liked_by_me=Exists(likes.filter(user=user)),
+    )
+
+
 class AnnouncementViewSet(GymScopedViewSet):
     queryset = Announcement.objects.all()
     serializer_class = AnnouncementSerializer
     permission_classes = [IsGymUser, IsGymStaffOrReadOnly]
+
+    def get_queryset(self):
+        return with_like_state(super().get_queryset(), "announcement",
+                               self.request.user)
 
     def perform_create(self, serializer):
         announcement = serializer.save(gym=self.gym, created_by=self.request.user)
@@ -1864,11 +1885,12 @@ class EventViewSet(GymScopedViewSet):
     permission_classes = [IsGymUser, IsGymStaffOrReadOnly]
 
     def get_queryset(self):
-        return super().get_queryset().annotate(
+        qs = super().get_queryset().annotate(
             registration_count=Count(
                 "registrations", filter=Q(registrations__canceled_at__isnull=True)
             )
         ).order_by("-event_date", "id")
+        return with_like_state(qs, "event", self.request.user)
 
     def destroy(self, request, *args, **kwargs):
         raise MethodNotAllowed("DELETE", detail="Set canceled_at instead.")
@@ -2087,3 +2109,82 @@ class DeviceTokenView(APIView):
             raise ValidationError({"token": "This field is required."})
         DeviceToken.objects.filter(token=token, user=request.user).delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class EngagementViewMixin:
+    """
+    Shared by the like/comment views, which serve both announcements and
+    events: urls.py binds each view to one target with
+    as_view(item_model=..., item_field=...). The item is looked up scoped
+    to the caller's gym, so another gym's id is a 404 before anything
+    else happens — never a 403 that would confirm it exists.
+    """
+    permission_classes = [CanEngage]
+    item_model = None   # Announcement | Event
+    item_field = None   # "announcement" | "event" — the FK on Like/Comment
+
+    def get_permissions(self):
+        # Same appended SubscriptionActive as GymScopedViewSet: staff writes
+        # stop when the gym's subscription lapses, members always pass.
+        return [p() for p in self.permission_classes] + [SubscriptionActive()]
+
+    def get_item(self):
+        return get_object_or_404(
+            self.item_model, pk=self.kwargs["item_id"], gym=self.request.user.gym)
+
+
+class LikeToggleView(EngagementViewMixin, APIView):
+    """
+    POST toggles: no like yet -> create one, already liked -> remove it.
+    Returns the new like_count / liked_by_me either way.
+    """
+
+    def post(self, request, item_id=None):
+        item = self.get_item()
+        with transaction.atomic():
+            removed, _ = Like.objects.filter(
+                user=request.user, **{self.item_field: item}).delete()
+            if not removed:
+                # ignore_conflicts: two simultaneous taps both see "no like
+                # yet"; the unique constraint lets one win and the other
+                # is a no-op instead of a 500. Same approach as the
+                # NotificationSend inserts.
+                Like.objects.bulk_create(
+                    [Like(gym=request.user.gym, user=request.user,
+                          **{self.item_field: item})],
+                    ignore_conflicts=True,
+                )
+        return Response(LikeSerializer(item, context={"request": request}).data)
+
+
+class CommentListCreateView(EngagementViewMixin, ListCreateAPIView):
+    serializer_class = CommentSerializer
+    # Oldest first reads top-to-bottom as a thread; ?ordering=-created_at
+    # flips it for a "latest first" client.
+    ordering_fields = ["created_at"]
+    ordering = ["created_at", "id"]
+
+    def get_queryset(self):
+        item = self.get_item()
+        return Comment.objects.filter(
+            gym=self.request.user.gym, **{self.item_field: item},
+        ).select_related("user__member_profile", "user__staff_profile")
+
+    def perform_create(self, serializer):
+        serializer.save(gym=self.request.user.gym, user=self.request.user,
+                        **{self.item_field: self.get_item()})
+
+
+class CommentDeleteView(EngagementViewMixin, DestroyAPIView):
+    def get_object(self):
+        item = self.get_item()
+        comment = get_object_or_404(
+            Comment, pk=self.kwargs["comment_id"],
+            gym=self.request.user.gym, **{self.item_field: item})
+        # 403 (not 404) here: the comment is already visible to every gym
+        # user in the list, so there's no existence to protect. Any staff
+        # profile may remove any comment in their gym, for moderation.
+        is_staff = getattr(self.request.user, "staff_profile", None) is not None
+        if comment.user_id != self.request.user.id and not is_staff:
+            raise PermissionDenied("You can only delete your own comments.")
+        return comment

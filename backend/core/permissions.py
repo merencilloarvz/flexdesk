@@ -131,3 +131,21 @@ class ClassesEnabled(BasePermission):
     def has_permission(self, request, view):
         gym = getattr(request.user, "gym", None)
         return bool(gym and gym.classes_enabled)
+
+class CanEngage(IsGymUser):
+    """
+    Like / comment endpoints. Any gym user may read; writing additionally
+    excludes an archived member — same rule as booking and event
+    registration (a member removed from the gym shouldn't be posting
+    under its name), but enforced here as a permission so it's a 403
+    before any lookup happens.
+    """
+    message = "Your membership record is no longer active at this gym."
+
+    def has_permission(self, request, view):
+        if not super().has_permission(request, view):
+            return False
+        if request.method in SAFE_METHODS:
+            return True
+        member = getattr(request.user, "member_profile", None)
+        return member is None or member.archived_at is None
