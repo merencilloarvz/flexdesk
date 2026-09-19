@@ -50,6 +50,23 @@ class Announcement {
     commentCount: json['comment_count'] as int? ?? 0,
     createdAt: DateTime.parse(json['created_at'] as String),
   );
+
+  /// Same announcement with updated like/comment numbers — lets a list
+  /// reflect a like or comment made on a card without a refetch.
+  Announcement withEngagement({
+    int? likeCount,
+    bool? likedByMe,
+    int? commentCount,
+  }) => Announcement(
+    id: id,
+    title: title,
+    body: body,
+    isPinned: isPinned,
+    likeCount: likeCount ?? this.likeCount,
+    likedByMe: likedByMe ?? this.likedByMe,
+    commentCount: commentCount ?? this.commentCount,
+    createdAt: createdAt,
+  );
 }
 
 /// What a like or comment can be attached to. [path] is the server's URL
@@ -106,6 +123,20 @@ class Comment {
     canDelete: json['can_delete'] as bool,
     createdAt: DateTime.parse(json['created_at'] as String),
   );
+}
+
+/// One page of comments. [totalCount] is the server's count across all
+/// pages, so a header can say "Comments (12)" with only 5 loaded.
+class CommentPage {
+  const CommentPage({
+    required this.items,
+    required this.hasMore,
+    required this.totalCount,
+  });
+
+  final List<Comment> items;
+  final bool hasMore;
+  final int totalCount;
 }
 
 class MyEventRegistration {
@@ -206,6 +237,32 @@ class Event {
     likedByMe: json['liked_by_me'] as bool? ?? false,
     commentCount: json['comment_count'] as int? ?? 0,
   );
+
+  /// Same event with updated like/comment numbers — see
+  /// [Announcement.withEngagement].
+  Event withEngagement({int? likeCount, bool? likedByMe, int? commentCount}) =>
+      Event(
+        id: id,
+        title: title,
+        description: description,
+        eventDate: eventDate,
+        startTime: startTime,
+        locationText: locationText,
+        feeCentavos: feeCentavos,
+        prizeDescription: prizeDescription,
+        guidelines: guidelines,
+        capacity: capacity,
+        registrationClosesOn: registrationClosesOn,
+        canceledAt: canceledAt,
+        registrationCount: registrationCount,
+        spotsLeft: spotsLeft,
+        myRegistration: myRegistration,
+        resultsVerified: resultsVerified,
+        resultsVerifiedAt: resultsVerifiedAt,
+        likeCount: likeCount ?? this.likeCount,
+        likedByMe: likedByMe ?? this.likedByMe,
+        commentCount: commentCount ?? this.commentCount,
+      );
 }
 
 class Registrant {
@@ -291,6 +348,9 @@ class CommunityRepository {
     final raw = await _api.fetchAnnouncements();
     return raw.map(Announcement.fromJson).toList();
   }
+
+  Future<Announcement> fetchAnnouncement(String id) async =>
+      Announcement.fromJson(await _api.fetchAnnouncement(id));
 
   Future<Announcement> createAnnouncement({
     required String title,
@@ -417,6 +477,25 @@ class CommunityRepository {
   ) async {
     final raw = await _api.fetchComments(itemType.path, itemId);
     return raw.map(Comment.fromJson).toList();
+  }
+
+  /// One page of comments (1-based), newest first. Prefer this over
+  /// [fetchComments] for anything a person scrolls — that one walks every
+  /// page.
+  Future<CommentPage> fetchCommentsPage(
+    CommunityItemType itemType,
+    String itemId,
+    int page,
+  ) async {
+    final body = await _api.fetchCommentsPage(itemType.path, itemId, page);
+    return CommentPage(
+      items: (body['results'] as List)
+          .cast<Map<String, dynamic>>()
+          .map(Comment.fromJson)
+          .toList(),
+      hasMore: body['next'] != null,
+      totalCount: body['count'] as int,
+    );
   }
 
   Future<Comment> postComment(

@@ -54,9 +54,6 @@ class MemberDetailScreen extends ConsumerStatefulWidget {
 }
 
 class _MemberDetailScreenState extends ConsumerState<MemberDetailScreen> {
-  bool _isArchiving = false;
-  String? _archiveError;
-
   bool? _hasAccount;
   bool _isCheckingAccount = true;
   bool _isIssuingCode = false;
@@ -260,20 +257,16 @@ class _MemberDetailScreenState extends ConsumerState<MemberDetailScreen> {
     );
     if (confirmed != true) return;
 
-    setState(() {
-      _isArchiving = true;
-      _archiveError = null;
-    });
-
     try {
       await ref.read(membersRepositoryProvider).archiveMember(widget.memberId);
       if (mounted) context.pop();
     } catch (e) {
       if (mounted) {
-        setState(() {
-          _isArchiving = false;
-          _archiveError = "Couldn't archive — check your connection.";
-        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Couldn't archive — check your connection."),
+          ),
+        );
       }
     }
   }
@@ -308,6 +301,7 @@ class _MemberDetailScreenState extends ConsumerState<MemberDetailScreen> {
     final gymName = authState is AuthAuthenticated
         ? authState.user.gym?.name ?? ''
         : '';
+    final loadedMember = memberAsync.asData?.value;
 
     return Scaffold(
       backgroundColor: _cPageBg,
@@ -322,7 +316,43 @@ class _MemberDetailScreenState extends ConsumerState<MemberDetailScreen> {
         actions: [
           IconButton(
             onPressed: _refreshAll,
-            icon: const Icon(Icons.refresh, size: 20),
+            icon: const Icon(Icons.history, size: 20),
+          ),
+          // Same underlying actions already available lower on this screen
+          // (reset app password on the claim pass card, archive in the
+          // bottom bar) — just surfaced here too, behind the overflow menu.
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert, size: 20, color: _cInk),
+            onSelected: (value) {
+              switch (value) {
+                case 'reset':
+                  _confirmAndResetPassword(
+                    loadedMember == null
+                        ? ''
+                        : '${loadedMember.firstName} ${loadedMember.lastName}'
+                              .trim(),
+                  );
+                case 'archive':
+                  _confirmAndArchive();
+              }
+            },
+            itemBuilder: (context) => [
+              if (loadedMember != null && _hasAccount == true)
+                const PopupMenuItem(
+                  value: 'reset',
+                  child: Text('Reset app password'),
+                ),
+              if (loadedMember != null &&
+                  isOwner &&
+                  loadedMember.archivedAt == null)
+                const PopupMenuItem(
+                  value: 'archive',
+                  child: Text(
+                    'Archive member',
+                    style: TextStyle(color: _cErrorText),
+                  ),
+                ),
+            ],
           ),
           const SizedBox(width: 4),
         ],
@@ -340,10 +370,6 @@ class _MemberDetailScreenState extends ConsumerState<MemberDetailScreen> {
           return _MemberDetailBody(
             member: member,
             gymName: gymName,
-            isOwner: isOwner,
-            isArchiving: _isArchiving,
-            archiveError: _archiveError,
-            onArchive: _confirmAndArchive,
             onRenew: () => _openRenewSheet(gymId),
             hasAccount: _hasAccount,
             isCheckingAccount: _isCheckingAccount,
@@ -369,10 +395,6 @@ class _MemberDetailBody extends ConsumerWidget {
   const _MemberDetailBody({
     required this.member,
     required this.gymName,
-    required this.isOwner,
-    required this.isArchiving,
-    required this.archiveError,
-    required this.onArchive,
     required this.onRenew,
     required this.hasAccount,
     required this.isCheckingAccount,
@@ -386,10 +408,6 @@ class _MemberDetailBody extends ConsumerWidget {
 
   final Member member;
   final String gymName;
-  final bool isOwner;
-  final bool isArchiving;
-  final String? archiveError;
-  final VoidCallback onArchive;
   final VoidCallback onRenew;
   final bool? hasAccount;
   final bool isCheckingAccount;
@@ -422,155 +440,228 @@ class _MemberDetailBody extends ConsumerWidget {
       MembershipStatus.expired => (_cExpiredBg, _cExpiredIcon),
       MembershipStatus.noMembership => (_cNoMembershipBg, _cNoMembershipIcon),
     };
-    final (pillBg, pillText) = switch (status) {
-      MembershipStatus.active => (_cActiveIcon, _cActiveBg),
-      MembershipStatus.expiring => (_cExpiringIcon, _cExpiringBg),
-      MembershipStatus.expired => (_cExpiredIcon, _cExpiredBg),
-      MembershipStatus.noMembership => (
-        const Color(0xFFEDEEEE),
-        _cNoMembershipBg,
-      ),
-    };
-
     return Column(
       children: [
         Expanded(
           child: ListView(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
             children: [
-              Center(
-                child: Column(
-                  children: [
-                    Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        Container(
-                          width: 76,
-                          height: 76,
-                          decoration: BoxDecoration(
-                            color: avatarBg,
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            Icons.person,
-                            size: 32,
-                            color: avatarIcon,
-                          ),
-                        ),
-                        if (hasAccount == true)
-                          Positioned(
-                            right: 2,
-                            bottom: 2,
-                            child: Container(
-                              width: 16,
-                              height: 16,
-                              decoration: BoxDecoration(
-                                color: _cActiveBg,
-                                shape: BoxShape.circle,
-                                border: Border.all(color: _cCardBg, width: 2),
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          fullName,
-                          style: const TextStyle(
-                            fontSize: 19,
-                            fontWeight: FontWeight.w600,
-                            color: _cInk,
-                          ),
-                        ),
-                        if (member.currentPlanCategory != null &&
-                            member.currentPlanCategory!.isNotEmpty) ...[
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 3,
-                            ),
-                            decoration: BoxDecoration(
-                              color: _cAccentTealBg,
-                              borderRadius: BorderRadius.circular(999),
-                            ),
-                            child: Text(
-                              member.currentPlanCategory!,
-                              style: const TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                color: _cAccentTeal,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: pillBg,
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Text(
-                        _statusLabel(status, remaining),
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: pillText,
-                        ),
-                      ),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: _cCardBg,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.06),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
                     ),
                   ],
                 ),
-              ),
-              const SizedBox(height: 20),
-
-              Row(
-                children: [
-                  Expanded(
-                    child: _StatCard(
-                      icon: Icons.bolt,
-                      label: 'Visits',
-                      sublabel: 'This month',
-                      value: statsAsync.when(
-                        data: (s) => '${s.visitsThisMonth}',
-                        loading: () => '—',
-                        error: (_, _) => '—',
-                      ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            Container(
+                              width: 56,
+                              height: 56,
+                              decoration: BoxDecoration(
+                                color: avatarBg,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                Icons.person,
+                                size: 26,
+                                color: avatarIcon,
+                              ),
+                            ),
+                            if (hasAccount == true)
+                              Positioned(
+                                right: 0,
+                                bottom: 0,
+                                child: Container(
+                                  width: 14,
+                                  height: 14,
+                                  decoration: BoxDecoration(
+                                    color: _cActiveBg,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: _cCardBg,
+                                      width: 2,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      fullName,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w700,
+                                        color: _cInk,
+                                      ),
+                                    ),
+                                  ),
+                                  if (member.currentPlanCategory != null &&
+                                      member
+                                          .currentPlanCategory!
+                                          .isNotEmpty) ...[
+                                    const SizedBox(width: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 3,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: _cAccentTealBg,
+                                        borderRadius: BorderRadius.circular(
+                                          999,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        member.currentPlanCategory!,
+                                        style: const TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                          color: _cAccentTeal,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                _subtitleLabel(status, remaining),
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: _cMuted,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: _StatCard(
-                      icon: Icons.access_time,
-                      label: 'Last in',
-                      sublabel: statsAsync.when(
-                        data: (s) => s.lastCheckInAt == null
-                            ? 'No visits yet'
-                            : DateFormat(
-                                'h:mm a',
-                              ).format(s.lastCheckInAt!.toLocal()),
-                        loading: () => '',
-                        error: (_, _) => '',
-                      ),
-                      value: statsAsync.when(
-                        data: (s) => s.lastCheckInAt == null
-                            ? '—'
-                            : _relativeDay(s.lastCheckInAt!.toLocal()),
-                        loading: () => '—',
-                        error: (_, _) => '—',
-                      ),
+                    const SizedBox(height: 16),
+                    const Divider(height: 1, color: _cFieldBg),
+                    const SizedBox(height: 14),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'VISITS THIS MONTH',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 0.4,
+                                  color: _cMuted,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                statsAsync.when(
+                                  data: (s) => '${s.visitsThisMonth}',
+                                  loading: () => '—',
+                                  error: (_, _) => '—',
+                                ),
+                                style: const TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w700,
+                                  color: _cInk,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              const Text(
+                                'LAST CHECKED IN',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 0.4,
+                                  color: _cMuted,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              statsAsync.when(
+                                data: (s) => s.lastCheckInAt == null
+                                    ? Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 3,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: _cExpiringIcon,
+                                          borderRadius: BorderRadius.circular(
+                                            999,
+                                          ),
+                                        ),
+                                        child: const Text(
+                                          'New',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w700,
+                                            color: _cExpiringBg,
+                                          ),
+                                        ),
+                                      )
+                                    : Text(
+                                        '${_relativeDay(s.lastCheckInAt!.toLocal())} · '
+                                        '${DateFormat('h:mm a').format(s.lastCheckInAt!.toLocal())}',
+                                        style: const TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w700,
+                                          color: _cInk,
+                                        ),
+                                      ),
+                                loading: () => const Text(
+                                  '—',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700,
+                                    color: _cInk,
+                                  ),
+                                ),
+                                error: (_, _) => const Text(
+                                  '—',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700,
+                                    color: _cInk,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
 
               const SizedBox(height: 16),
@@ -587,7 +678,6 @@ class _MemberDetailBody extends ConsumerWidget {
                   children: [
                     _InfoRow(
                       icon: Icons.call_outlined,
-                      label: 'Phone',
                       value: member.phone,
                       onCopy: member.phone.isEmpty
                           ? null
@@ -600,7 +690,6 @@ class _MemberDetailBody extends ConsumerWidget {
                     const Divider(height: 1, color: _cFieldBg),
                     _InfoRow(
                       icon: Icons.mail_outline,
-                      label: 'Email',
                       value: member.email,
                       onCopy: member.email.isEmpty
                           ? null
@@ -644,24 +733,23 @@ class _MemberDetailBody extends ConsumerWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Text(
-                    'Membership history',
+                    'Membership History',
                     style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
                       color: _cInk,
                     ),
                   ),
-                  // "Invoices" is the same history section below — a
-                  // relabeled entry point, not a separate data source.
-                  // No invoice/receipt model exists in the backend, so
-                  // this intentionally scrolls to / highlights the same
-                  // list rather than opening anything new.
-                  Text(
-                    'Invoices',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: _cAccentTeal,
+                  GestureDetector(
+                    onTap: () =>
+                        context.push('/members/${member.id}/history'),
+                    child: const Text(
+                      'View All',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: _cAccentTeal,
+                      ),
                     ),
                   ),
                 ],
@@ -690,88 +778,34 @@ class _MemberDetailBody extends ConsumerWidget {
           ),
           child: SafeArea(
             top: false,
-            child: Column(
-              children: [
-                SizedBox(
-                  width: double.infinity,
-                  height: 54,
-                  child: Material(
-                    color: _cAccentTeal,
-                    borderRadius: BorderRadius.circular(999),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(999),
-                      onTap: onRenew,
-                      child: const Center(
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.autorenew,
-                              size: 18,
-                              color: Colors.white,
-                            ),
-                            SizedBox(width: 8),
-                            Text(
-                              'Renew membership',
-                              style: TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ],
+            child: SizedBox(
+              width: double.infinity,
+              height: 54,
+              child: Material(
+                color: _cAccentTeal,
+                borderRadius: BorderRadius.circular(999),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(999),
+                  onTap: onRenew,
+                  child: const Center(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.autorenew, size: 18, color: Colors.white),
+                        SizedBox(width: 8),
+                        Text(
+                          'Renew membership',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
                         ),
-                      ),
+                      ],
                     ),
                   ),
                 ),
-                if (isOwner && member.archivedAt == null) ...[
-                  const SizedBox(height: 6),
-                  if (archiveError != null) ...[
-                    Text(
-                      archiveError!,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: _cErrorText, fontSize: 12),
-                    ),
-                    const SizedBox(height: 4),
-                  ],
-                  isArchiving
-                      ? const SizedBox(
-                          height: 16,
-                          width: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : InkWell(
-                          onTap: onArchive,
-                          borderRadius: BorderRadius.circular(8),
-                          child: const Padding(
-                            padding: EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 8,
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.archive_outlined,
-                                  size: 16,
-                                  color: _cErrorText,
-                                ),
-                                SizedBox(width: 6),
-                                Text(
-                                  'Archive member',
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w500,
-                                    color: _cErrorText,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                ],
-              ],
+              ),
             ),
           ),
         ),
@@ -779,15 +813,17 @@ class _MemberDetailBody extends ConsumerWidget {
     );
   }
 
-  String _statusLabel(MembershipStatus status, int? remaining) {
+  String _subtitleLabel(MembershipStatus status, int? remaining) {
     if (remaining == 0) return 'Expires today';
     switch (status) {
       case MembershipStatus.active:
-        return 'Active · $remaining days left';
+        return '$remaining days left · Active';
       case MembershipStatus.expiring:
-        return 'Expiring · $remaining days left';
+        return '$remaining days left · Expiring';
       case MembershipStatus.expired:
-        return 'Expired';
+        return remaining == null
+            ? 'Expired'
+            : '${remaining.abs()} days ago · Expired';
       case MembershipStatus.noMembership:
         return 'No membership';
     }
@@ -807,57 +843,6 @@ class _MemberDetailBody extends ConsumerWidget {
         when.day == yesterday.day;
     if (isYesterday) return 'Yesterday';
     return DateFormat('MMM d').format(when);
-  }
-}
-
-class _StatCard extends StatelessWidget {
-  const _StatCard({
-    required this.icon,
-    required this.label,
-    required this.sublabel,
-    required this.value,
-  });
-
-  final IconData icon;
-  final String label;
-  final String sublabel;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: _cCardBg,
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(label, style: const TextStyle(fontSize: 12, color: _cMuted)),
-              Icon(icon, size: 15, color: _cAccentTeal),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: const TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w700,
-              color: _cInk,
-            ),
-          ),
-          if (sublabel.isNotEmpty)
-            Text(
-              sublabel,
-              style: const TextStyle(fontSize: 11, color: _cMuted),
-            ),
-        ],
-      ),
-    );
   }
 }
 
@@ -1005,7 +990,11 @@ class _ClaimPassCardState extends State<_ClaimPassCard> {
                 color: _cAccentTealBg,
                 borderRadius: BorderRadius.circular(9),
               ),
-              child: const Icon(Icons.qr_code_2, size: 16, color: _cAccentTeal),
+              child: const Icon(
+                Icons.confirmation_number_outlined,
+                size: 16,
+                color: _cAccentTeal,
+              ),
             ),
             const SizedBox(width: 10),
             const Expanded(
@@ -1035,7 +1024,7 @@ class _ClaimPassCardState extends State<_ClaimPassCard> {
                   borderRadius: BorderRadius.circular(999),
                 ),
                 child: const Text(
-                  'ONE-TIME',
+                  'ONE-TIME PASS',
                   style: TextStyle(
                     fontSize: 9,
                     fontWeight: FontWeight.w700,
@@ -1225,13 +1214,17 @@ class _ClaimPassCardState extends State<_ClaimPassCard> {
                 color: _cInk,
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 10),
             InkWell(
               onTap: () => _copyToClipboard(context, code, 'Code'),
               borderRadius: BorderRadius.circular(6),
-              child: const Padding(
-                padding: EdgeInsets.all(2),
-                child: Icon(Icons.copy_outlined, size: 15, color: _cAccentTeal),
+              child: const Text(
+                'Copy',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: _cAccentTeal,
+                ),
               ),
             ),
           ],
@@ -1379,15 +1372,9 @@ class _ExpiryCountdownState extends State<_ExpiryCountdown> {
 }
 
 class _InfoRow extends StatelessWidget {
-  const _InfoRow({
-    required this.icon,
-    required this.label,
-    required this.value,
-    this.onCopy,
-  });
+  const _InfoRow({required this.icon, required this.value, this.onCopy});
 
   final IconData icon;
-  final String label;
   final String value;
   final VoidCallback? onCopy;
 
@@ -1401,22 +1388,24 @@ class _InfoRow extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              label,
-              style: const TextStyle(fontSize: 13, color: _cMuted),
+              value.isEmpty ? '—' : value,
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
+              style: const TextStyle(fontSize: 13, color: _cInk),
             ),
           ),
-          Text(
-            value.isEmpty ? '—' : value,
-            style: const TextStyle(fontSize: 13, color: _cInk),
-          ),
           if (onCopy != null) ...[
-            const SizedBox(width: 6),
+            const SizedBox(width: 8),
             InkWell(
               onTap: onCopy,
               borderRadius: BorderRadius.circular(6),
-              child: const Padding(
-                padding: EdgeInsets.all(2),
-                child: Icon(Icons.copy_outlined, size: 14, color: _cAccentTeal),
+              child: const Text(
+                'Copy',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: _cAccentTeal,
+                ),
               ),
             ),
           ],
@@ -1488,24 +1477,56 @@ class _HistoryTile extends StatelessWidget {
         ? '${DateFormat('MMM d, yyyy').format(startDate)} – '
               '${DateFormat('MMM d, yyyy').format(endDate)}'
         : '';
+    final pricePaid = double.tryParse(
+      json['price_paid']?.toString() ?? '',
+    );
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 10),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            planName,
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              color: _cInk,
+          Container(
+            width: 30,
+            height: 30,
+            decoration: BoxDecoration(
+              color: _cAccentTealBg,
+              borderRadius: BorderRadius.circular(9),
+            ),
+            child: const Icon(
+              Icons.card_membership_outlined,
+              size: 15,
+              color: _cAccentTeal,
             ),
           ),
-          if (dateRange.isNotEmpty)
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  planName,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: _cInk,
+                  ),
+                ),
+                if (dateRange.isNotEmpty)
+                  Text(
+                    dateRange,
+                    style: const TextStyle(fontSize: 12, color: _cMuted),
+                  ),
+              ],
+            ),
+          ),
+          if (pricePaid != null)
             Text(
-              dateRange,
-              style: const TextStyle(fontSize: 12, color: _cMuted),
+              '₱${pricePaid.toStringAsFixed(0)}',
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: _cAccentTeal,
+              ),
             ),
         ],
       ),

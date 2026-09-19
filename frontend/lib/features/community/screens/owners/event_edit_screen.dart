@@ -17,6 +17,7 @@ class EventEditScreen extends ConsumerStatefulWidget {
 class _EventEditScreenState extends ConsumerState<EventEditScreen> {
   late final TextEditingController _titleController;
   late final TextEditingController _descriptionController;
+  late final TextEditingController _guidelinesController;
   late final TextEditingController _locationController;
   late final TextEditingController _feeController;
   late final TextEditingController _prizeController;
@@ -35,6 +36,7 @@ class _EventEditScreenState extends ConsumerState<EventEditScreen> {
     final e = widget.event;
     _titleController = TextEditingController(text: e?.title ?? '');
     _descriptionController = TextEditingController(text: e?.description ?? '');
+    _guidelinesController = TextEditingController(text: e?.guidelines ?? '');
     _locationController = TextEditingController(text: e?.locationText ?? '');
     _feeController = TextEditingController(
       text: e != null ? (e.feeCentavos ~/ 100).toString() : '',
@@ -55,6 +57,7 @@ class _EventEditScreenState extends ConsumerState<EventEditScreen> {
   void dispose() {
     _titleController.dispose();
     _descriptionController.dispose();
+    _guidelinesController.dispose();
     _locationController.dispose();
     _feeController.dispose();
     _prizeController.dispose();
@@ -125,6 +128,7 @@ class _EventEditScreenState extends ConsumerState<EventEditScreen> {
         await repo.updateEvent(widget.event!.id, {
           'title': title,
           'description': _descriptionController.text.trim(),
+          'guidelines': _guidelinesController.text.trim(),
           'event_date': _fmtDate(_eventDate!),
           'start_time': startTimeValue,
           'location_text': _locationController.text.trim(),
@@ -137,6 +141,7 @@ class _EventEditScreenState extends ConsumerState<EventEditScreen> {
         await repo.createEvent(
           title: title,
           description: _descriptionController.text.trim(),
+          guidelines: _guidelinesController.text.trim(),
           eventDate: _eventDate!,
           startTime: _startTime != null ? _fmtTime(_startTime!) : null,
           locationText: _locationController.text.trim(),
@@ -201,7 +206,7 @@ class _EventEditScreenState extends ConsumerState<EventEditScreen> {
         backgroundColor: AppColors.pageBg,
         elevation: 0,
         title: Text(
-          _isEditing ? 'Edit Event' : 'New Event',
+          _isEditing ? 'Edit Event' : 'Create Event',
           style: const TextStyle(color: AppColors.ink, fontWeight: FontWeight.w600),
         ),
         iconTheme: const IconThemeData(color: AppColors.ink),
@@ -230,6 +235,11 @@ class _EventEditScreenState extends ConsumerState<EventEditScreen> {
                   const SizedBox(height: 6),
                   _field(_descriptionController, maxLines: 3,
                       hint: 'Describe the event rules, categories, format, and who can join...'),
+                  const SizedBox(height: 14),
+                  _fieldLabel('Guidelines'),
+                  const SizedBox(height: 6),
+                  _field(_guidelinesController, maxLines: 3,
+                      hint: 'Optional — e.g. dress code, weigh-in rules, what to bring...'),
                 ],
               ),
             ),
@@ -308,13 +318,13 @@ class _EventEditScreenState extends ConsumerState<EventEditScreen> {
               height: 52,
               child: FilledButton.icon(
                 onPressed: _saving ? null : _save,
-                icon: _saving ? const SizedBox.shrink() : const Icon(Icons.add, size: 18),
+                icon: _saving ? const SizedBox.shrink() : const Icon(Icons.check, size: 18),
                 label: _saving
                     ? const SizedBox(
                         width: 20, height: 20,
                         child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                       )
-                    : Text(_isEditing ? 'Save Changes' : 'Create Event'),
+                    : Text(_isEditing ? 'Save Event Changes' : 'Create Event'),
                 style: FilledButton.styleFrom(
                   backgroundColor: AppColors.accentTeal,
                   foregroundColor: Colors.white,
@@ -408,7 +418,7 @@ class _SectionHeader extends StatelessWidget {
           color: AppColors.accentTeal, borderRadius: BorderRadius.circular(2))),
         const SizedBox(width: 8),
         Text(label, style: const TextStyle(
-          fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 0.4, color: AppColors.subtle)),
+          fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 0.4, color: AppColors.accentTeal)),
       ],
     );
   }

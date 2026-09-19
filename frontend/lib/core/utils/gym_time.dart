@@ -32,6 +32,23 @@ class GymTime {
     return DateTime(gymNow.year, gymNow.month, gymNow.day);
   }
 
+  /// The current wall-clock instant in the gym's local timezone, as a
+  /// naive [DateTime] (same "local-flavored" construction as [today], just
+  /// with the time-of-day fields kept instead of zeroed). For comparisons
+  /// that need to know whether a specific time today has passed — [today]
+  /// alone can't answer that, since it collapses to midnight.
+  static DateTime now() {
+    final gymNow = DateTime.now().toUtc().add(_gymOffset);
+    return DateTime(
+      gymNow.year,
+      gymNow.month,
+      gymNow.day,
+      gymNow.hour,
+      gymNow.minute,
+      gymNow.second,
+    );
+  }
+
   /// The real UTC instant that marks the START of [gymLocalDay] (a
   /// date-only value, e.g. from `today()`) in the gym's local timezone.
   ///

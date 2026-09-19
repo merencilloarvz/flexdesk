@@ -2,16 +2,36 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
-import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../../core/theme/colors.dart';
 import '../../../core/utils/gym_time.dart';
+import '../../../core/utils/last_visit_label.dart';
 import '../../../core/utils/member_status.dart';
 import '../../auth/providers/auth_providers.dart';
 import '../../community/data/community_repository.dart';
 import '../../community/providers/community_providers.dart';
 import '../../community/screens/member/member_event_detail_screen.dart';
+import '../../community/widgets/event_card.dart';
+import '../../shell/app_shell.dart';
 import '../providers/member_stats_provider.dart';
+import '../widgets/member_pass_style.dart';
+import '../widgets/membership_status_badge.dart';
+
+/// The next few events worth showing on the home screen: not cancelled,
+/// not already past (today still counts), soonest first, at most [limit].
+List<Event> upcomingEvents(List<Event> all, DateTime today, {int limit = 2}) {
+  final day = DateTime(today.year, today.month, today.day);
+  final upcoming = all
+      .where((e) => !e.isCanceled && !e.eventDate.isBefore(day))
+      .toList()
+    ..sort((a, b) {
+      final byDate = a.eventDate.compareTo(b.eventDate);
+      if (byDate != 0) return byDate;
+      // Same day: earlier start first; no start time sorts last.
+      return (a.startTime ?? '99').compareTo(b.startTime ?? '99');
+    });
+  return upcoming.take(limit).toList();
+}
 
 class MemberHomeScreen extends ConsumerStatefulWidget {
   const MemberHomeScreen({super.key});
@@ -22,7 +42,8 @@ class MemberHomeScreen extends ConsumerStatefulWidget {
 
 class _MemberHomeScreenState extends ConsumerState<MemberHomeScreen>
     with WidgetsBindingObserver {
-  List<Event>? _upcomingEvents;
+  List<Event>? _upcoming;
+  bool _eventsFailed = false;
   DateTime? _lastResumeRefresh;
 
   // Same reasoning and cooldown as HomeScreen's resume refresh — this is
@@ -71,14 +92,42 @@ class _MemberHomeScreenState extends ConsumerState<MemberHomeScreen>
   Future<void> _fetchEvents() async {
     try {
       final events = await ref.read(communityRepositoryProvider).fetchEvents();
-      if (mounted) {
-        setState(() {
-          _upcomingEvents = events.where((e) => !e.isCanceled).toList();
-        });
-      }
+      if (!mounted) return;
+      setState(() {
+        _upcoming = upcomingEvents(events, GymTime.today());
+        _eventsFailed = false;
+      });
     } catch (_) {
-      // Gracefully fall back to the showcase event
+      if (!mounted) return;
+      setState(() => _eventsFailed = true);
     }
+  }
+
+  void _patchEventLikes(String id, LikeState like) {
+    final list = _upcoming;
+    if (!mounted || list == null) return;
+    setState(() {
+      _upcoming = [
+        for (final e in list)
+          e.id == id
+              ? e.withEngagement(
+                  likeCount: like.likeCount,
+                  likedByMe: like.likedByMe,
+                )
+              : e,
+      ];
+    });
+  }
+
+  Future<void> _openEvent(Event event) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => MemberEventDetailScreen(eventId: event.id),
+      ),
+    );
+    // Registration, likes and comments may have changed over there.
+    _fetchEvents();
   }
 
   @override
@@ -92,12 +141,14 @@ class _MemberHomeScreenState extends ConsumerState<MemberHomeScreen>
       );
     }
     final user = authState.user;
+    final classesEnabled = user.gym?.classesEnabled ?? false;
     final statsAsync = ref.watch(memberStatsProvider);
     final today = GymTime.today();
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F8F7),
+      backgroundColor: AppColors.pageBg,
       body: SafeArea(
+        bottom: false,
         child: statsAsync.when(
           loading: () => const Center(
             child: CircularProgressIndicator(color: AppColors.accentTeal),
@@ -132,20 +183,15 @@ class _MemberHomeScreenState extends ConsumerState<MemberHomeScreen>
             ),
           ),
           data: (stats) {
+            final status = statusFor(stats.currentEndDate, today);
             final daysLeft = daysRemaining(stats.currentEndDate, today);
-            final memberFirstName = stats.firstName.isNotEmpty
+            final userFirst = user.fullName.split(' ').first;
+            final firstName = stats.firstName.isNotEmpty
                 ? stats.firstName
-                : (user.fullName.split(' ').first.isNotEmpty
-                      ? user.fullName.split(' ').first
-                      : 'Member');
-            final memberFullName = stats.fullName.isNotEmpty
+                : (userFirst.isNotEmpty ? userFirst : 'Member');
+            final fullName = stats.fullName.isNotEmpty
                 ? stats.fullName
                 : (user.fullName.isNotEmpty ? user.fullName : 'Member');
-            final memberCodeStr = stats.memberCode.isNotEmpty
-                ? stats.memberCode
-                : '223912';
-            final qrPayload =
-                'FLEXDESK:GATE:${user.gym?.id ?? ''}:$memberCodeStr:${user.id}';
 
             return RefreshIndicator(
               color: AppColors.accentTeal,
@@ -155,90 +201,68 @@ class _MemberHomeScreenState extends ConsumerState<MemberHomeScreen>
                 await _fetchEvents();
               },
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  12,
+                  16,
+                  AppShell.reservedNavHeight + 24,
+                ),
                 children: [
-                  // 1. Top Header Row
-                  _HeaderSection(
-                    firstName: memberFirstName,
+                  _Header(
+                    firstName: firstName,
                     gymName: user.gym?.name ?? '',
+                    onProfileTap: () => context.go('/member-settings'),
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 16),
 
-                  // 2. Gym Capacity / Occupancy Row
-                  const _GymCapacityRow(),
-                  const SizedBox(height: 10),
+                  // Phase 5 Part C — membership renewal banner, above the
+                  // card per S3. Derived from the same stats; only ever
+                  // shows for an expiring or expired membership.
+                  _MembershipBanner(status: status, daysLeft: daysLeft),
 
-                  // 3. NFC Active Status Pill
-                  const _NfcStatusPill(),
-                  const SizedBox(height: 14),
-
-                  // Phase 5 Part C — membership renewal banner, above
-                  // the card per S3. Derived entirely from stats
-                  // (itself sourced from the cached /me/summary/ via
-                  // memberStatsProvider) — no new call, no new
-                  // provider.
-                  _MembershipBanner(
-                    status: statusFor(stats.currentEndDate, today),
-                    daysLeft: daysLeft,
-                  ),
-
-                  // 4. VIP Digital Membership Card (Hero Card)
-                  _VipMembershipCard(
+                  _MemberPassCard(
                     gymName: user.gym?.name ?? '',
-                    tierName: stats.planCategory ?? 'ATHLETIC VIP TIER',
-                    memberCode: memberCodeStr,
-                    fullName: memberFullName,
-                    validThru: stats.currentEndDate != null
-                        ? DateFormat('MM/yy').format(stats.currentEndDate!)
-                        : '10/26',
+                    planName: stats.planCategory,
+                    fullName: fullName,
+                    memberCode: stats.memberCode,
+                    validThru: stats.currentEndDate,
                   ),
                   const SizedBox(height: 14),
 
-                  // 5. Optical Gate Access (Turnstile QR Code)
-                  _TurnstileQrCard(
-                    qrPayload: qrPayload,
-                    daysLeft: daysLeft ?? 28,
-                    onTap: () => context.push('/me/card'),
-                  ),
-                  const SizedBox(height: 12),
+                  _QuickEntryCard(onTap: () => context.push('/me/card')),
+                  const SizedBox(height: 14),
 
-                  // 6. Streak Momentum Banner
-                  _StreakBanner(streakDays: stats.streakDays),
-                  const SizedBox(height: 12),
-
-                  // 7. Quick Stats (2 Cards Row)
-                  _QuickStatsRow(
+                  _StatsRow(
+                    status: status,
                     daysLeft: daysLeft,
-                    currentEndDate: stats.currentEndDate,
-                    checkInsThisMonth: stats.checkInsThisMonth,
-                    lastCheckInAt: stats.lastCheckInAt,
+                    endDate: stats.currentEndDate,
+                    visitsThisMonth: stats.checkInsThisMonth,
+                    lastVisit: lastVisitLabel(stats.lastCheckInAt, today),
+                    onPassTap: () => context.push('/me/membership'),
                   ),
                   const SizedBox(height: 14),
 
-                  // 8. Action Buttons Row (Book Class / Slot & Renew Pass)
-                  _ActionButtonsRow(
-                    onBookClass: () => context.push('/member-schedule'),
-                    onRenewPass: () => context.push('/me/membership'),
+                  _ActionButtons(
+                    // Classes are off by default and the Schedule tab
+                    // doesn't exist then, so the button goes away entirely
+                    // (History takes the whole row) rather than leading to
+                    // a feature this gym doesn't use.
+                    showBookClass: classesEnabled,
+                    onBookClass: () => context.go('/member-schedule'),
+                    onHistory: () => context.push('/me/attendance'),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 24),
 
-                  // 9. Membership History Tile
-                  _HistoryTile(onTap: () => context.push('/me/membership')),
-                  const SizedBox(height: 20),
-
-                  // 10. Upcoming Events Section
                   _UpcomingEventsSection(
-                    events: _upcomingEvents,
-                    onViewSchedule: () => context.push('/member-schedule'),
-                    onEventTap: (event) {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) =>
-                              MemberEventDetailScreen(eventId: event.id),
-                        ),
-                      );
-                    },
+                    events: _upcoming,
+                    failed: _eventsFailed,
+                    onRetry: _fetchEvents,
+                    onViewAll: () => context.go('/member-community'),
+                    onOpenEvent: _openEvent,
+                    onToggleLike: (e) => ref
+                        .read(communityRepositoryProvider)
+                        .toggleLike(CommunityItemType.event, e.id),
+                    onLikeChanged: _patchEventLikes,
                   ),
                 ],
               ),
@@ -250,248 +274,106 @@ class _MemberHomeScreenState extends ConsumerState<MemberHomeScreen>
   }
 }
 
+BoxDecoration _cardDecoration() => BoxDecoration(
+  color: AppColors.cardBg,
+  borderRadius: BorderRadius.circular(16),
+  boxShadow: [
+    BoxShadow(
+      color: Colors.black.withValues(alpha: 0.05),
+      blurRadius: 8,
+      offset: const Offset(0, 3),
+    ),
+  ],
+);
+
 // ---------------------------------------------------------------------------
-// 1. Header Section
+// Header
 // ---------------------------------------------------------------------------
 
-class _HeaderSection extends StatelessWidget {
-  const _HeaderSection({required this.firstName, required this.gymName});
+class _Header extends StatelessWidget {
+  const _Header({
+    required this.firstName,
+    required this.gymName,
+    required this.onProfileTap,
+  });
 
   final String firstName;
   final String gymName;
+  final VoidCallback onProfileTap;
 
   @override
   Widget build(BuildContext context) {
     final initial = firstName.isNotEmpty ? firstName[0].toUpperCase() : 'M';
-
     return Row(
       children: [
-        Stack(
-          clipBehavior: Clip.none,
-          children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: const BoxDecoration(
-                color: Color(0xFFD3EFE5),
-                shape: BoxShape.circle,
-              ),
-              child: Center(
-                child: Text(
-                  initial,
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF0F6E56),
-                  ),
-                ),
-              ),
-            ),
-            Positioned(
-              right: 1,
-              bottom: 1,
-              child: Container(
-                width: 13,
-                height: 13,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF0F6E56),
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 2),
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(width: 12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 'Welcome, $firstName',
-                style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w800,
-                  color: Color(0xFF0E1A13),
-                  letterSpacing: -0.3,
-                ),
-              ),
-              const SizedBox(height: 1),
-              Text(
-                '$gymName • Zarga Gym 2',
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                  color: Color(0xFF7A8681),
-                ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.ink,
+                  height: 1.15,
+                ),
               ),
+              if (gymName.isNotEmpty) ...[
+                const SizedBox(height: 3),
+                Text(
+                  gymName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    color: AppColors.subtle,
+                  ),
+                ),
+              ],
             ],
           ),
         ),
-        Container(
-          width: 42,
-          height: 42,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            shape: BoxShape.circle,
-            border: Border.all(color: const Color(0xFFE5E7EB)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.03),
-                blurRadius: 6,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: const Icon(
-            Icons.notifications_outlined,
-            size: 20,
-            color: Color(0xFF4B5563),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// 2. Gym Capacity / Occupancy Row
-// ---------------------------------------------------------------------------
-
-class _GymCapacityRow extends StatelessWidget {
-  const _GymCapacityRow();
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Row(
-          children: [
-            Container(
-              width: 7,
-              height: 7,
-              decoration: const BoxDecoration(
-                color: Color(0xFF10B981),
-                shape: BoxShape.circle,
-              ),
-            ),
-            const SizedBox(width: 6),
-            const Text(
-              'Gym Capacity',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF4B5563),
-              ),
-            ),
-          ],
-        ),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-          decoration: BoxDecoration(
-            color: const Color(0xFFE6F7EF),
+        const SizedBox(width: 12),
+        Semantics(
+          container: true,
+          button: true,
+          excludeSemantics: true,
+          label: 'Profile and settings',
+          child: InkWell(
+            onTap: onProfileTap,
             borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: const Color(0xFFBCECD5)),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 6,
-                height: 6,
-                decoration: const BoxDecoration(
-                  color: Color(0xFF059669),
-                  shape: BoxShape.circle,
+            child: Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: AppColors.accentTealBg,
+                shape: BoxShape.circle,
+                border: Border.all(color: AppColors.cardBg, width: 2),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.06),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Center(
+                child: Text(
+                  initial,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.accentTeal,
+                  ),
                 ),
               ),
-              const SizedBox(width: 5),
-              const Text(
-                '62% Occupancy',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF059669),
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ],
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// 3. NFC Active Status Pill
-// ---------------------------------------------------------------------------
-
-class _NfcStatusPill extends StatelessWidget {
-  const _NfcStatusPill();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            width: 7,
-            height: 7,
-            decoration: const BoxDecoration(
-              color: Color(0xFF10B981),
-              shape: BoxShape.circle,
-            ),
-          ),
-          const SizedBox(width: 6),
-          const Text(
-            'NFC ACTIVE • GATE READY',
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w800,
-              color: Color(0xFF059669),
-              letterSpacing: 0.5,
-            ),
-          ),
-          const SizedBox(width: 6),
-          const Text(
-            '|',
-            style: TextStyle(
-              fontSize: 11,
-              color: Color(0xFFCBD5E1),
-              fontWeight: FontWeight.w300,
-            ),
-          ),
-          const SizedBox(width: 6),
-          const Flexible(
-            child: Text(
-              'Tap turnstile or scan pass',
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w500,
-                color: Color(0xFF6B7280),
-              ),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -544,7 +426,7 @@ class _MembershipBannerState extends State<_MembershipBanner> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
         decoration: BoxDecoration(
-          color: const Color(0xFFF3F4F6),
+          color: AppColors.fieldBg,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Row(
@@ -555,7 +437,7 @@ class _MembershipBannerState extends State<_MembershipBanner> {
                 style: const TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w500,
-                  color: Color(0xFF4B5563),
+                  color: AppColors.subtle,
                 ),
               ),
             ),
@@ -565,7 +447,7 @@ class _MembershipBannerState extends State<_MembershipBanner> {
               borderRadius: BorderRadius.circular(999),
               child: const Padding(
                 padding: EdgeInsets.all(2),
-                child: Icon(Icons.close, size: 16, color: Color(0xFF6B7280)),
+                child: Icon(Icons.close, size: 16, color: AppColors.muted),
               ),
             ),
           ],
@@ -576,40 +458,42 @@ class _MembershipBannerState extends State<_MembershipBanner> {
 }
 
 // ---------------------------------------------------------------------------
-// 4. VIP Digital Membership Card (Hero Card)
+// Member pass (hero card)
 // ---------------------------------------------------------------------------
 
-class _VipMembershipCard extends StatelessWidget {
-  const _VipMembershipCard({
+class _MemberPassCard extends StatelessWidget {
+  const _MemberPassCard({
     required this.gymName,
-    required this.tierName,
-    required this.memberCode,
+    required this.planName,
     required this.fullName,
+    required this.memberCode,
     required this.validThru,
   });
 
   final String gymName;
-  final String tierName;
-  final String memberCode;
+  final String? planName;
   final String fullName;
-  final String validThru;
+  final String memberCode;
+  final DateTime? validThru;
 
   @override
   Widget build(BuildContext context) {
+    final label = TextStyle(
+      fontSize: 9.5,
+      fontWeight: FontWeight.w700,
+      letterSpacing: 0.8,
+      color: AppColors.accentTealBg.withValues(alpha: 0.7),
+    );
+
     return Container(
       width: double.infinity,
-      height: 208,
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(24),
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF063325), Color(0xFF0A4E3B), Color(0xFF0C5D47)],
-        ),
+        gradient: memberPassGradient,
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF063325).withValues(alpha: 0.35),
+            color: AppColors.ink.withValues(alpha: 0.3),
             blurRadius: 18,
             offset: const Offset(0, 8),
           ),
@@ -617,508 +501,130 @@ class _VipMembershipCard extends StatelessWidget {
       ),
       child: Stack(
         children: [
-          // Concentric circular watermark rings on the right
-          Positioned.fill(child: CustomPaint(painter: _CardRingsPainter())),
-
-          // Card content padding
+          Positioned.fill(child: CustomPaint(painter: MemberPassRingsPainter())),
           Padding(
             padding: const EdgeInsets.all(20),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                // Top row: Logo + Gym Name / Tier + VIP PASS Pill
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      width: 32,
-                      height: 32,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(9),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.15),
-                        ),
-                      ),
-                      child: const Center(
-                        child: Icon(
-                          Icons.fitness_center_rounded,
-                          size: 16,
-                          color: Color(0xFFA7F3D0),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 9),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
                             gymName.toUpperCase(),
-                            style: const TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w900,
-                              color: Colors.white,
-                              letterSpacing: 0.8,
-                            ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 1),
-                          Text(
-                            tierName.toUpperCase(),
                             style: const TextStyle(
-                              fontSize: 9,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFF6EE7B7),
-                              letterSpacing: 0.6,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 0.9,
+                              color: Colors.white,
                             ),
                           ),
+                          if (planName != null && planName!.isNotEmpty) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              planName!.toUpperCase(),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.6,
+                                color: AppColors.accentGreen,
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ),
+                    const SizedBox(width: 10),
                     Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 10,
                         vertical: 4,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.28),
+                        color: Colors.white.withValues(alpha: 0.14),
                         borderRadius: BorderRadius.circular(999),
                         border: Border.all(
-                          color: const Color(0xFFFBBF24).withValues(alpha: 0.4),
-                          width: 1,
+                          color: Colors.white.withValues(alpha: 0.25),
                         ),
                       ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            width: 5,
-                            height: 5,
-                            decoration: const BoxDecoration(
-                              color: Color(0xFFFBBF24),
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                          const SizedBox(width: 5),
-                          const Text(
-                            'VIP PASS',
-                            style: TextStyle(
-                              fontSize: 9,
-                              fontWeight: FontWeight.w800,
-                              color: Color(0xFFFDE68A),
-                              letterSpacing: 0.8,
-                            ),
-                          ),
-                        ],
+                      child: const Text(
+                        'MEMBER PASS',
+                        style: TextStyle(
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.9,
+                          color: Colors.white,
+                        ),
                       ),
                     ),
                   ],
                 ),
-
-                // Middle: Gold Metallic Chip & Contactless Symbol
-                Row(
-                  children: [
-                    Container(
-                      width: 40,
-                      height: 30,
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [
-                            Color(0xFFF2D17E),
-                            Color(0xFFD4AF37),
-                            Color(0xFFB38612),
-                          ],
-                        ),
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(
-                          color: const Color(0xFFFDE68A),
-                          width: 0.7,
-                        ),
-                      ),
-                      child: CustomPaint(painter: _ChipLinesPainter()),
-                    ),
-                    const SizedBox(width: 10),
-                    Icon(
-                      Icons.contactless_outlined,
-                      size: 22,
-                      color: Colors.white.withValues(alpha: 0.7),
-                    ),
-                  ],
+                const SizedBox(height: 34),
+                Text(
+                  fullName.toUpperCase(),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.1,
+                    height: 1.15,
+                    color: Colors.white,
+                  ),
                 ),
-
-                // Bottom Row: Member Code & Full Name, Valid Thru Date
+                const SizedBox(height: 18),
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'IW-$memberCode',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w700,
-                              color: const Color(
-                                0xFF6EE7B7,
-                              ).withValues(alpha: 0.85),
-                              letterSpacing: 1.2,
+                      child: memberCode.isEmpty
+                          ? const SizedBox.shrink()
+                          : Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('MEMBER ID', style: label),
+                                const SizedBox(height: 2),
+                                Text(
+                                  memberCode,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: 1.2,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ],
                             ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            fullName.toUpperCase(),
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w900,
-                              color: Colors.white,
-                              letterSpacing: 1.1,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                      ),
                     ),
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        Text(
-                          'VALID THRU',
-                          style: TextStyle(
-                            fontSize: 8,
-                            fontWeight: FontWeight.w700,
-                            color: const Color(
-                              0xFF6EE7B7,
-                            ).withValues(alpha: 0.8),
-                            letterSpacing: 0.6,
-                          ),
-                        ),
+                        Text('VALID THRU', style: label),
                         const SizedBox(height: 2),
                         Text(
-                          validThru,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w900,
-                            color: Colors.white,
-                            letterSpacing: 1.0,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _CardRingsPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.3
-      ..color = const Color(0xFF34D399).withValues(alpha: 0.12);
-
-    final center = Offset(size.width * 0.92, size.height * 0.52);
-    final radii = [50.0, 85.0, 120.0, 155.0, 190.0, 225.0];
-    for (final r in radii) {
-      canvas.drawCircle(center, r, paint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-class _ChipLinesPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 0.8
-      ..color = const Color(0xFF78350F).withValues(alpha: 0.4);
-
-    final innerRect = RRect.fromRectAndRadius(
-      Rect.fromLTWH(
-        size.width * 0.22,
-        size.height * 0.2,
-        size.width * 0.56,
-        size.height * 0.6,
-      ),
-      const Radius.circular(2),
-    );
-    canvas.drawRRect(innerRect, paint);
-    canvas.drawLine(
-      Offset(size.width * 0.5, 0),
-      Offset(size.width * 0.5, size.height * 0.2),
-      paint,
-    );
-    canvas.drawLine(
-      Offset(size.width * 0.5, size.height * 0.8),
-      Offset(size.width * 0.5, size.height),
-      paint,
-    );
-    canvas.drawLine(
-      Offset(0, size.height * 0.5),
-      Offset(size.width * 0.22, size.height * 0.5),
-      paint,
-    );
-    canvas.drawLine(
-      Offset(size.width * 0.78, size.height * 0.5),
-      Offset(size.width, size.height * 0.5),
-      paint,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-// ---------------------------------------------------------------------------
-// 5. Optical Gate Access (Turnstile QR Code Card)
-// ---------------------------------------------------------------------------
-
-class _TurnstileQrCard extends StatelessWidget {
-  const _TurnstileQrCard({
-    required this.qrPayload,
-    required this.daysLeft,
-    required this.onTap,
-  });
-
-  final String qrPayload;
-  final int daysLeft;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(20),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: const Color(0xFFE5E7EB)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.03),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Row(
-            children: [
-              // QR Code Graphic container with live indicator
-              Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Container(
-                    width: 72,
-                    height: 72,
-                    padding: const EdgeInsets.all(6),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFEDFBF5),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: const Color(0xFFBCECD5)),
-                    ),
-                    child: QrImageView(
-                      data: qrPayload,
-                      version: QrVersions.auto,
-                      eyeStyle: const QrEyeStyle(
-                        eyeShape: QrEyeShape.square,
-                        color: Color(0xFF0F6E56),
-                      ),
-                      dataModuleStyle: const QrDataModuleStyle(
-                        dataModuleShape: QrDataModuleShape.square,
-                        color: Color(0xFF0F6E56),
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    top: -3,
-                    right: -3,
-                    child: Container(
-                      width: 9,
-                      height: 9,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF10B981),
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 1.5),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(width: 14),
-
-              // Title and auto-refresh detail
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: const [
-                        Icon(
-                          Icons.qr_code_scanner_rounded,
-                          size: 13,
-                          color: Color(0xFF0D9488),
-                        ),
-                        SizedBox(width: 4),
-                        Text(
-                          'TURNSTILE TURNKEY',
+                          validThru != null
+                              ? DateFormat('MM/yy').format(validThru!)
+                              : 'NO ACTIVE PLAN',
                           style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w800,
-                            color: Color(0xFF0D9488),
-                            letterSpacing: 0.6,
+                            fontSize: validThru != null ? 15 : 11,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 1.0,
+                            color: Colors.white,
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 3),
-                    const Text(
-                      'Optical Gate Access',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF111827),
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      'Auto-refresh 30s • ${daysLeft >= 0 ? '$daysLeft days active' : 'Expired'}',
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w500,
-                        color: Color(0xFF6B7280),
-                      ),
-                    ),
                   ],
-                ),
-              ),
-
-              // Right chevron circle button
-              Container(
-                width: 36,
-                height: 36,
-                decoration: const BoxDecoration(
-                  color: Color(0xFFF3F4F6),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.chevron_right,
-                  size: 20,
-                  color: Color(0xFF4B5563),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// 6. Streak Momentum Banner
-// ---------------------------------------------------------------------------
-
-class _StreakBanner extends StatelessWidget {
-  const _StreakBanner({required this.streakDays});
-
-  final int streakDays;
-
-  @override
-  Widget build(BuildContext context) {
-    final days = streakDays > 0 ? streakDays : 1;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: const Color(0xFFFFF7ED),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFFFEDD5)),
-            ),
-            child: const Center(
-              child: Text('🔥', style: TextStyle(fontSize: 20)),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Text(
-                      '$days DAY STREAK',
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF111827),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 3,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFCCFBF1),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: const Text(
-                        'ACTIVE MOMENTUM',
-                        style: TextStyle(
-                          fontSize: 9,
-                          fontWeight: FontWeight.w800,
-                          color: Color(0xFF0F766E),
-                          letterSpacing: 0.4,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 3),
-                const Text(
-                  'Check in today to keep your streak going!',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500,
-                    color: Color(0xFF6B7280),
-                  ),
                 ),
               ],
             ),
@@ -1130,461 +636,16 @@ class _StreakBanner extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// 7. Quick Stats (2-Column Row)
+// Quick entry
 // ---------------------------------------------------------------------------
 
-class _QuickStatsRow extends StatelessWidget {
-  const _QuickStatsRow({
-    required this.daysLeft,
-    required this.currentEndDate,
-    required this.checkInsThisMonth,
-    required this.lastCheckInAt,
-  });
+/// Opens the member's digital check-in card (`/me/card`): the rotating QR
+/// code that front-desk staff scan to check them in. The member doesn't
+/// scan anything themselves — the scanner lives on the staff side — so
+/// this says what actually happens.
+class _QuickEntryCard extends StatelessWidget {
+  const _QuickEntryCard({required this.onTap});
 
-  final int? daysLeft;
-  final DateTime? currentEndDate;
-  final int checkInsThisMonth;
-  final DateTime? lastCheckInAt;
-
-  @override
-  Widget build(BuildContext context) {
-    final renewDateText = currentEndDate != null
-        ? DateFormat('MMM d').format(currentEndDate!)
-        : 'Nov 10';
-
-    final lastVisitText = _fmtLastVisit(lastCheckInAt);
-
-    return Row(
-      children: [
-        // Left: Monthly Pass
-        Expanded(
-          child: Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: const Color(0xFFE5E7EB)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.02),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'MONTHLY PASS',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF6B7280),
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                    Container(
-                      width: 6,
-                      height: 6,
-                      decoration: const BoxDecoration(
-                        color: Color(0xFF10B981),
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.baseline,
-                  textBaseline: TextBaseline.alphabetic,
-                  children: [
-                    Text(
-                      daysLeft != null ? '$daysLeft' : '28',
-                      style: const TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w900,
-                        color: Color(0xFF111827),
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    const Text(
-                      'days left',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w500,
-                        color: Color(0xFF6B7280),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Renews $renewDateText',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500,
-                    color: Color(0xFF9CA3AF),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(width: 12),
-
-        // Right: Visits
-        Expanded(
-          child: Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: const Color(0xFFE5E7EB)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.02),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: const [
-                    Text(
-                      'VISITS',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF6B7280),
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                    Icon(
-                      Icons.check_circle_outline_rounded,
-                      size: 14,
-                      color: Color(0xFF10B981),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.baseline,
-                  textBaseline: TextBaseline.alphabetic,
-                  children: [
-                    Text(
-                      '$checkInsThisMonth',
-                      style: const TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w900,
-                        color: Color(0xFF111827),
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      checkInsThisMonth == 1 ? 'session' : 'sessions',
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w500,
-                        color: Color(0xFF6B7280),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Last: $lastVisitText',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500,
-                    color: Color(0xFF9CA3AF),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  String _fmtLastVisit(DateTime? d) {
-    if (d == null) return 'None yet';
-    final now = DateTime.now();
-    final local = d.toLocal();
-    final diff = now.difference(local);
-    if (diff.inDays == 0 && now.day == local.day) return 'Today';
-    if (diff.inDays <= 1 || (diff.inHours < 48 && now.day - local.day == 1)) {
-      return 'Yesterday';
-    }
-    if (diff.inDays < 7) return '${diff.inDays} days ago';
-    return DateFormat('MMM d').format(local);
-  }
-}
-
-// ---------------------------------------------------------------------------
-// 8. Action Buttons Row
-// ---------------------------------------------------------------------------
-
-class _ActionButtonsRow extends StatelessWidget {
-  const _ActionButtonsRow({
-    required this.onBookClass,
-    required this.onRenewPass,
-  });
-
-  final VoidCallback onBookClass;
-  final VoidCallback onRenewPass;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        // Book Class / Slot (Primary filled teal button)
-        Expanded(
-          child: SizedBox(
-            height: 48,
-            child: FilledButton.icon(
-              onPressed: onBookClass,
-              icon: const Icon(
-                Icons.calendar_month_outlined,
-                size: 16,
-                color: Colors.white,
-              ),
-              label: const Text(
-                'Book Class / Slot',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white,
-                ),
-              ),
-              style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFF0F6E56),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(width: 12),
-
-        // Renew Pass (White button with subtle border)
-        Expanded(
-          child: SizedBox(
-            height: 48,
-            child: OutlinedButton.icon(
-              onPressed: onRenewPass,
-              icon: const Icon(
-                Icons.autorenew_rounded,
-                size: 18,
-                color: Color(0xFF0F6E56),
-              ),
-              label: const Text(
-                'Renew Pass',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF111827),
-                ),
-              ),
-              style: OutlinedButton.styleFrom(
-                backgroundColor: Colors.white,
-                side: const BorderSide(color: Color(0xFFE5E7EB)),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// 9. Membership History Tile
-// ---------------------------------------------------------------------------
-
-class _HistoryTile extends StatelessWidget {
-  const _HistoryTile({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(18),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(18),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: const Color(0xFFE5E7EB)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.02),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEDFBF5),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(
-                  Icons.description_outlined,
-                  size: 18,
-                  color: Color(0xFF0F6E56),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
-                    Text(
-                      'Membership history',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF111827),
-                      ),
-                    ),
-                    SizedBox(height: 2),
-                    Text(
-                      'View recent invoices & pass validity',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w500,
-                        color: Color(0xFF6B7280),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const Icon(
-                Icons.chevron_right,
-                size: 20,
-                color: Color(0xFF9CA3AF),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// 10. Upcoming Events Section
-// ---------------------------------------------------------------------------
-
-class _UpcomingEventsSection extends StatelessWidget {
-  const _UpcomingEventsSection({
-    required this.events,
-    required this.onViewSchedule,
-    required this.onEventTap,
-  });
-
-  final List<Event>? events;
-  final VoidCallback onViewSchedule;
-  final ValueChanged<Event> onEventTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final firstEvent = events != null && events!.isNotEmpty
-        ? events!.first
-        : null;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text(
-              'Upcoming Events',
-              style: TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w800,
-                color: Color(0xFF111827),
-                letterSpacing: -0.2,
-              ),
-            ),
-            GestureDetector(
-              onTap: onViewSchedule,
-              child: const Text(
-                'VIEW SCHEDULE',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
-                  color: Color(0xFF0F6E56),
-                  letterSpacing: 0.6,
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-
-        if (firstEvent != null)
-          _EventCard(
-            title: firstEvent.title,
-            badge: 'CHAMPIONSHIP',
-            priceText: firstEvent.feeCentavos > 0
-                ? '₱${firstEvent.feeCentavos ~/ 100}'
-                : 'FREE',
-            dateLocation:
-                '${DateFormat('EEEE, h:mm a').format(firstEvent.eventDate)} • ${firstEvent.locationText.isNotEmpty ? firstEvent.locationText : 'Main Gym'}',
-            onTap: () => onEventTap(firstEvent),
-          )
-        else
-          // Showcase event matching design mockup
-          _EventCard(
-            title: 'Deadlift Max Championship',
-            badge: 'CHAMPIONSHIP',
-            priceText: '₱250',
-            dateLocation: 'Saturday, 4:00 PM • Main Platform',
-            onTap: onViewSchedule,
-          ),
-      ],
-    );
-  }
-}
-
-class _EventCard extends StatelessWidget {
-  const _EventCard({
-    required this.title,
-    required this.badge,
-    required this.priceText,
-    required this.dateLocation,
-    required this.onTap,
-  });
-
-  final String title;
-  final String badge;
-  final String priceText;
-  final String dateLocation;
   final VoidCallback onTap;
 
   @override
@@ -1593,117 +654,464 @@ class _EventCard extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            gradient: const LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Color(0xFF0A1F1B), Color(0xFF113831), Color(0xFF16483F)],
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.16),
-                blurRadius: 14,
-                offset: const Offset(0, 6),
-              ),
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        borderRadius: BorderRadius.circular(16),
+        child: Ink(
+          padding: const EdgeInsets.all(16),
+          decoration: _cardDecoration(),
+          child: Row(
             children: [
-              // Badge & Price tag
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF064E3B).withValues(alpha: 0.7),
-                      borderRadius: BorderRadius.circular(999),
-                      border: Border.all(
-                        color: const Color(0xFF059669).withValues(alpha: 0.4),
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Text('🏆', style: TextStyle(fontSize: 10)),
-                        const SizedBox(width: 4),
-                        Text(
-                          badge,
-                          style: const TextStyle(
-                            fontSize: 9,
-                            fontWeight: FontWeight.w800,
-                            color: Color(0xFF34D399),
-                            letterSpacing: 0.6,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text(
-                      priceText,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w900,
-                        color: Color(0xFF111827),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-
-              // Title
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white,
-                  letterSpacing: -0.2,
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: AppColors.accentTealBg,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Icon(
+                  Icons.qr_code_2_rounded,
+                  size: 28,
+                  color: AppColors.accentTeal,
                 ),
               ),
-              const SizedBox(height: 6),
-
-              // Date / Location
-              Row(
-                children: [
-                  const Icon(
-                    Icons.access_time_rounded,
-                    size: 13,
-                    color: Color(0xFF6EE7B7),
-                  ),
-                  const SizedBox(width: 5),
-                  Text(
-                    dateLocation,
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500,
-                      color: Color(0xFFA7F3D0),
+              const SizedBox(width: 14),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Show QR to Check In',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.ink,
+                      ),
                     ),
-                  ),
-                ],
+                    SizedBox(height: 3),
+                    Text(
+                      'Your code refreshes automatically — staff scan it at '
+                      'the front desk.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.subtle,
+                        height: 1.3,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                width: 34,
+                height: 34,
+                decoration: const BoxDecoration(
+                  color: AppColors.fieldBg,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.chevron_right,
+                  size: 20,
+                  color: AppColors.subtle,
+                ),
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Stats row
+// ---------------------------------------------------------------------------
+
+class _StatsRow extends StatelessWidget {
+  const _StatsRow({
+    required this.status,
+    required this.daysLeft,
+    required this.endDate,
+    required this.visitsThisMonth,
+    required this.lastVisit,
+    required this.onPassTap,
+  });
+
+  final MembershipStatus status;
+  final int? daysLeft;
+  final DateTime? endDate;
+  final int visitsThisMonth;
+  final String lastVisit;
+  final VoidCallback onPassTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final dateFmt = DateFormat('MMM d, yyyy');
+
+    // Big number + unit, and the line under it, per state. Days come from
+    // daysRemaining() (0 = the last valid day, still active).
+    final String value;
+    final String unit;
+    final String detail;
+    switch (status) {
+      case MembershipStatus.noMembership:
+        value = '—';
+        unit = '';
+        detail = 'No active plan';
+      case MembershipStatus.expired:
+        value = 'Expired';
+        unit = '';
+        detail = 'Ended ${dateFmt.format(endDate!)}';
+      case MembershipStatus.active:
+      case MembershipStatus.expiring:
+        final d = daysLeft ?? 0;
+        value = d == 0 ? 'Last day' : '$d';
+        unit = d == 0 ? '' : (d == 1 ? 'day left' : 'days left');
+        detail = 'Valid until ${dateFmt.format(endDate!)}';
+    }
+
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            child: _StatCard(
+              label: 'PASS VALIDITY',
+              trailing: MembershipStatusBadge(status: status),
+              value: value,
+              unit: unit,
+              detail: detail,
+              onTap: onPassTap,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: _StatCard(
+              label: 'VISITS',
+              trailing: const Icon(
+                Icons.check_circle_outline_rounded,
+                size: 15,
+                color: AppColors.accentTeal,
+              ),
+              value: '$visitsThisMonth',
+              unit: 'this month',
+              detail: 'Last visit: $lastVisit',
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatCard extends StatelessWidget {
+  const _StatCard({
+    required this.label,
+    required this.trailing,
+    required this.value,
+    required this.unit,
+    required this.detail,
+    this.onTap,
+  });
+
+  final String label;
+  final Widget trailing;
+  final String value;
+  final String unit;
+  final String detail;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Ink(
+          padding: const EdgeInsets.all(14),
+          decoration: _cardDecoration(),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      label,
+                      style: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.5,
+                        color: AppColors.muted,
+                      ),
+                    ),
+                  ),
+                  trailing,
+                ],
+              ),
+              const SizedBox(height: 10),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  Flexible(
+                    child: Text(
+                      value,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w900,
+                        color: AppColors.ink,
+                      ),
+                    ),
+                  ),
+                  if (unit.isNotEmpty) ...[
+                    const SizedBox(width: 4),
+                    Text(
+                      unit,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                        color: AppColors.subtle,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                detail,
+                style: const TextStyle(fontSize: 11, color: AppColors.muted),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Action buttons
+// ---------------------------------------------------------------------------
+
+class _ActionButtons extends StatelessWidget {
+  const _ActionButtons({
+    required this.showBookClass,
+    required this.onBookClass,
+    required this.onHistory,
+  });
+
+  final bool showBookClass;
+  final VoidCallback onBookClass;
+  final VoidCallback onHistory;
+
+  @override
+  Widget build(BuildContext context) {
+    final shape = RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(14),
+    );
+    return Row(
+      children: [
+        if (showBookClass) ...[
+          Expanded(
+            child: SizedBox(
+              height: 48,
+              child: FilledButton.icon(
+                onPressed: onBookClass,
+                icon: const Icon(Icons.calendar_month_outlined, size: 18),
+                label: const Text(
+                  'Book Class',
+                  style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
+                ),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.accentTeal,
+                  foregroundColor: Colors.white,
+                  shape: shape,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+        ],
+        Expanded(
+          child: SizedBox(
+            height: 48,
+            // With Book Class it's the quieter partner; alone it's the
+            // row's one action, so it gets the filled treatment.
+            child: showBookClass
+                ? OutlinedButton.icon(
+                    onPressed: onHistory,
+                    icon: const Icon(Icons.history_rounded, size: 18),
+                    label: const Text(
+                      'History',
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.ink,
+                      backgroundColor: AppColors.cardBg,
+                      side: const BorderSide(color: AppColors.border),
+                      shape: shape,
+                    ),
+                  )
+                : FilledButton.icon(
+                    onPressed: onHistory,
+                    icon: const Icon(Icons.history_rounded, size: 18),
+                    label: const Text(
+                      'History',
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.accentTeal,
+                      foregroundColor: Colors.white,
+                      shape: shape,
+                    ),
+                  ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Upcoming events
+// ---------------------------------------------------------------------------
+
+class _UpcomingEventsSection extends StatelessWidget {
+  const _UpcomingEventsSection({
+    required this.events,
+    required this.failed,
+    required this.onRetry,
+    required this.onViewAll,
+    required this.onOpenEvent,
+    required this.onToggleLike,
+    required this.onLikeChanged,
+  });
+
+  final List<Event>? events;
+  final bool failed;
+  final VoidCallback onRetry;
+  final VoidCallback onViewAll;
+  final ValueChanged<Event> onOpenEvent;
+  final Future<LikeState> Function(Event) onToggleLike;
+  final void Function(String id, LikeState like) onLikeChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final list = events;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Expanded(
+              child: Text(
+                'Upcoming Events',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.ink,
+                ),
+              ),
+            ),
+            InkWell(
+              onTap: onViewAll,
+              borderRadius: BorderRadius.circular(8),
+              child: const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'View All',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.accentTeal,
+                      ),
+                    ),
+                    Icon(
+                      Icons.chevron_right,
+                      size: 18,
+                      color: AppColors.accentTeal,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        if (list != null && list.isNotEmpty)
+          for (final e in list) ...[
+            EventCard(
+              key: ValueKey('home-event-${e.id}'),
+              event: e,
+              onOpen: () => onOpenEvent(e),
+              onToggleLike: () => onToggleLike(e),
+              onLikeChanged: (s) => onLikeChanged(e.id, s),
+            ),
+            const SizedBox(height: 12),
+          ]
+        else if (list != null)
+          const _EventsNote(
+            icon: Icons.event_available_outlined,
+            text: 'No upcoming events right now.',
+          )
+        else if (failed)
+          _EventsNote(
+            icon: Icons.cloud_off_outlined,
+            text: "Couldn't load events.",
+            action: TextButton(
+              onPressed: onRetry,
+              child: const Text(
+                'Retry',
+                style: TextStyle(color: AppColors.accentTeal),
+              ),
+            ),
+          )
+        else
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 20),
+            child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+          ),
+      ],
+    );
+  }
+}
+
+class _EventsNote extends StatelessWidget {
+  const _EventsNote({required this.icon, required this.text, this.action});
+
+  final IconData icon;
+  final String text;
+  final Widget? action;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+      decoration: _cardDecoration(),
+      child: Row(
+        children: [
+          Icon(icon, size: 22, color: AppColors.muted),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(fontSize: 13, color: AppColors.subtle),
+            ),
+          ),
+          ?action,
+        ],
       ),
     );
   }

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:screen_brightness/screen_brightness.dart';
@@ -15,6 +16,7 @@ import '../../auth/providers/auth_providers.dart';
 import '../data/me_repository.dart';
 import '../providers/me_providers.dart';
 import '../providers/qr_card_providers.dart';
+import '../widgets/member_pass_style.dart';
 
 /// Phase 3b Part B — the member's digital check-in card (spec B1-B6).
 /// Reachable from Home as the card's own most-prominent action.
@@ -197,22 +199,41 @@ class _DigitalCardScreenState extends ConsumerState<DigitalCardScreen>
     final memberId = _memberId();
     final summary = _summary?.summary;
 
+    // Visual only: the dark member-pass gradient runs behind the whole
+    // screen, app bar included, so the QR tile floats on it.
     return Scaffold(
-      backgroundColor: AppColors.pageBg,
+      backgroundColor: AppColors.ink,
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
-        backgroundColor: AppColors.pageBg,
+        backgroundColor: Colors.transparent,
         elevation: 0,
+        scrolledUnderElevation: 0,
+        foregroundColor: Colors.white,
+        systemOverlayStyle: SystemUiOverlayStyle.light,
         title: const Text(
           'Digital card',
-          style: TextStyle(color: AppColors.ink, fontWeight: FontWeight.w500),
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
         ),
       ),
-      body: SafeArea(
-        child: memberId == null
-            ? const Center(child: CircularProgressIndicator())
-            : summary != null && summary.isArchived
-            ? _ArchivedBanner(gymName: summary.gymName)
-            : _buildBody(summary),
+      body: DecoratedBox(
+        decoration: BoxDecoration(gradient: memberPassGradient),
+        child: Stack(
+          children: [
+            const Positioned.fill(
+              child: CustomPaint(painter: MemberPassRingsPainter()),
+            ),
+            SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.only(top: kToolbarHeight),
+                child: memberId == null
+                    ? const _CardSpinner()
+                    : summary != null && summary.isArchived
+                    ? _ArchivedBanner(gymName: summary.gymName)
+                    : _buildBody(summary),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -220,7 +241,7 @@ class _DigitalCardScreenState extends ConsumerState<DigitalCardScreen>
   Widget _buildBody(MeSummary? summary) {
     switch (_status) {
       case _CardStatus.loading:
-        return const Center(child: CircularProgressIndicator());
+        return const _CardSpinner();
       case _CardStatus.needsConnection:
         return _MessageState(
           icon: Icons.wifi_off_rounded,
@@ -267,18 +288,19 @@ class _MessageState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 48, color: AppColors.muted),
+            Icon(icon, size: 48, color: Colors.white54),
             const SizedBox(height: 12),
             Text(
               message,
               textAlign: TextAlign.center,
-              style: const TextStyle(color: AppColors.subtle),
+              style: const TextStyle(color: Colors.white70),
             ),
             const SizedBox(height: 16),
             FilledButton(
               onPressed: onRetry,
               style: FilledButton.styleFrom(
-                backgroundColor: AppColors.accentTeal,
+                backgroundColor: Colors.white,
+                foregroundColor: AppColors.ink,
               ),
               child: const Text('Retry'),
             ),
@@ -305,7 +327,7 @@ class _ArchivedBanner extends StatelessWidget {
             const Icon(
               Icons.no_accounts_outlined,
               size: 48,
-              color: AppColors.muted,
+              color: Colors.white54,
             ),
             const SizedBox(height: 12),
             Text(
@@ -313,7 +335,7 @@ class _ArchivedBanner extends StatelessWidget {
                   ? 'Your membership at $gymName is no longer active.'
                   : 'Your membership is no longer active.',
               textAlign: TextAlign.center,
-              style: const TextStyle(color: AppColors.subtle),
+              style: const TextStyle(color: Colors.white70),
             ),
           ],
         ),
@@ -349,83 +371,121 @@ class _CardContent extends StatelessWidget {
     final status = statusFor(endDate, today);
     final days = daysRemaining(endDate, today);
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        children: [
-          Text(
-            gymName,
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: AppColors.subtle,
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              gymName.toUpperCase(),
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.4,
+                color: Colors.white.withValues(alpha: 0.75),
+              ),
             ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            fullName,
-            style: const TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-              color: AppColors.ink,
+            const SizedBox(height: 8),
+            Text(
+              fullName,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 0.4,
+                color: Colors.white,
+              ),
             ),
-          ),
-          Text(
-            memberCode,
-            style: const TextStyle(fontSize: 13, color: AppColors.muted),
-          ),
-          const SizedBox(height: 8),
-          _StatusChip(status: status, daysLeft: days),
-          const SizedBox(height: 28),
-          SizedBox(
-            width: 260,
-            height: 260,
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                SizedBox(
-                  width: 260,
-                  height: 260,
-                  child: CircularProgressIndicator(
-                    value: period == 0 ? 0 : secondsLeft / period,
-                    strokeWidth: 4,
-                    backgroundColor: AppColors.border,
-                    valueColor: const AlwaysStoppedAnimation(
-                      AppColors.accentTeal,
+            const SizedBox(height: 2),
+            Text(
+              memberCode,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 1.2,
+                color: AppColors.accentTealBg.withValues(alpha: 0.75),
+              ),
+            ),
+            const SizedBox(height: 12),
+            _StatusChip(status: status, daysLeft: days),
+            const SizedBox(height: 28),
+            SizedBox(
+              width: 272,
+              height: 272,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  SizedBox(
+                    width: 272,
+                    height: 272,
+                    child: CircularProgressIndicator(
+                      value: period == 0 ? 0 : secondsLeft / period,
+                      strokeWidth: 4,
+                      backgroundColor: Colors.white.withValues(alpha: 0.16),
+                      valueColor: const AlwaysStoppedAnimation(
+                        AppColors.accentGreen,
+                      ),
                     ),
                   ),
-                ),
-                Container(
-                  width: 240,
-                  height: 240,
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
+                  // The QR stays dark-on-white so it scans reliably; the
+                  // white tile floats on the gradient.
+                  Container(
+                    width: 240,
+                    height: 240,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(24),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.35),
+                          blurRadius: 28,
+                          offset: const Offset(0, 12),
+                        ),
+                      ],
+                    ),
+                    child: QrImageView(
+                      data: qrPayload,
+                      version: QrVersions.auto,
+                    ),
                   ),
-                  child: QrImageView(data: qrPayload, version: QrVersions.auto),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          const SizedBox(height: 20),
-          Text(
-            code,
-            style: const TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 4,
-              color: AppColors.ink,
+            const SizedBox(height: 24),
+            Text(
+              code,
+              style: const TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 4,
+                color: Colors.white,
+              ),
             ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Refreshes in ${secondsLeft}s',
-            style: const TextStyle(fontSize: 13, color: AppColors.muted),
-          ),
-        ],
+            const SizedBox(height: 6),
+            Text(
+              'Refreshes in ${secondsLeft}s',
+              style: TextStyle(
+                fontSize: 13,
+                color: Colors.white.withValues(alpha: 0.7),
+              ),
+            ),
+          ],
+        ),
       ),
     );
+  }
+}
+
+/// Spinner tinted for the dark card background.
+class _CardSpinner extends StatelessWidget {
+  const _CardSpinner();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(child: CircularProgressIndicator(color: Colors.white));
   }
 }
 
@@ -450,11 +510,22 @@ class _StatusChip extends StatelessWidget {
       MembershipStatus.noMembership => (AppColors.noMembershipBg, 'No plan'),
     };
 
+    // The fill is still the status color from statusFor(); the light edge
+    // and soft shadow keep it (especially the teal "active") from
+    // dissolving into the gradient behind it.
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.55)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.25),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Text(
         label,

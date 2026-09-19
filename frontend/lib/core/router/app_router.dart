@@ -9,6 +9,7 @@ import '../../features/members/screens/members_list_screen.dart';
 import '../../features/members/screens/member_detail_screen.dart';
 import '../../features/members/screens/member_create_screen.dart';
 import '../../features/members/screens/manage_plans_screen.dart';
+import '../../features/members/screens/membership_history_screen.dart';
 import '../../features/members/screens/renewal_worklist_screen.dart';
 import '../../features/auth/providers/auth_providers.dart';
 import '../../features/auth/screens/role_picker_screen.dart';
@@ -400,6 +401,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/members/:id',
         builder: (context, state) =>
             MemberDetailScreen(memberId: state.pathParameters['id']!),
+      ),
+      GoRoute(
+        path: '/members/:id/history',
+        builder: (context, state) =>
+            MembershipHistoryScreen(memberId: state.pathParameters['id']!),
       ),
 
       GoRoute(

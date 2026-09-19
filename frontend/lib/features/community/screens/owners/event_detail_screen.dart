@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 
 import '../../../../core/api/api_exception.dart';
 import '../../../../core/theme/colors.dart';
@@ -7,8 +8,9 @@ import '../../../../core/utils/money.dart';
 import '../../../auth/providers/auth_providers.dart';
 import '../../data/community_repository.dart';
 import '../../providers/community_providers.dart';
+import '../../widgets/comments_section.dart';
 import 'event_edit_screen.dart';
-import 'event_results_screen.dart';
+import 'event_results_display_screen.dart';
 
 class EventDetailScreen extends ConsumerStatefulWidget {
   const EventDetailScreen({super.key, required this.eventId});
@@ -98,6 +100,17 @@ class _EventDetailScreenState extends ConsumerState<EventDetailScreen> {
     await _load();
   }
 
+  String _subtitle(Event event) {
+    final parts = [DateFormat('EEE, MMM d').format(event.eventDate)];
+    if (event.startTime != null) {
+      final t = event.startTime!.split(':');
+      final time = DateTime(0, 1, 1, int.parse(t[0]), int.parse(t[1]));
+      parts.add(DateFormat('h:mm a').format(time));
+    }
+    if (event.locationText.isNotEmpty) parts.add(event.locationText);
+    return parts.join(' · ');
+  }
+
   String _currencySymbol() {
     final authState = ref.read(authControllerProvider);
     return authState is AuthAuthenticated
@@ -177,6 +190,23 @@ class _EventDetailScreenState extends ConsumerState<EventDetailScreen> {
                       ),
                       const SizedBox(height: 12),
                     ],
+                    Text(
+                      event.title,
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.ink,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _subtitle(event),
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: AppColors.subtle,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
                     Row(
                       children: [
                         Expanded(
@@ -198,32 +228,26 @@ class _EventDetailScreenState extends ConsumerState<EventDetailScreen> {
                         ),
                       ],
                     ),
-                    if (event.eventDate.isBefore(DateTime.now())) ...[
-                      const SizedBox(height: 8),
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: TextButton(
-                          onPressed: () => Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) =>
-                                  EventResultsScreen(eventId: event.id),
-                            ),
+                    const SizedBox(height: 20),
+                    Row(
+                      children: [
+                        const Text(
+                          'Registrants',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.ink,
                           ),
-                          style: TextButton.styleFrom(
-                            foregroundColor: AppColors.accentTeal,
-                          ),
-                          child: const Text('Enter Results'),
                         ),
-                      ),
-                    ],
-                    const SizedBox(height: 8),
-                    const Text(
-                      'Registrants',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.muted,
-                      ),
+                        const SizedBox(width: 6),
+                        Text(
+                          '(${registrants.length})',
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: AppColors.muted,
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 8),
                     if (registrants.isEmpty)
@@ -243,6 +267,44 @@ class _EventDetailScreenState extends ConsumerState<EventDetailScreen> {
                             ? _markUnpaid(r)
                             : _confirmMarkPaid(r),
                       ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton(
+                        onPressed: () async {
+                          await Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => EventResultsDisplayScreen(
+                                eventId: event.id,
+                              ),
+                            ),
+                          );
+                          _load();
+                        },
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppColors.accentTeal,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: const Text(
+                          'Scoreboard & Results',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    // Staff see a delete icon on every comment here
+                    // (moderation) — the server decides via can_delete.
+                    CommentsSection(
+                      itemType: CommunityItemType.event,
+                      itemId: event.id,
+                    ),
                   ],
                 ),
               ),
@@ -291,6 +353,17 @@ class _TotalCard extends StatelessWidget {
   }
 }
 
+String _initialsFor(String name) {
+  final parts = name
+      .trim()
+      .split(RegExp(r'\s+'))
+      .where((p) => p.isNotEmpty)
+      .toList();
+  if (parts.isEmpty) return '?';
+  if (parts.length == 1) return parts[0].substring(0, 1).toUpperCase();
+  return (parts[0].substring(0, 1) + parts.last.substring(0, 1)).toUpperCase();
+}
+
 class _RegistrantTile extends StatelessWidget {
   const _RegistrantTile({
     required this.registrant,
@@ -314,16 +387,24 @@ class _RegistrantTile extends StatelessWidget {
       ),
       child: ListTile(
         onTap: busy ? null : onTap,
+        leading: CircleAvatar(
+          radius: 18,
+          backgroundColor: AppColors.accentTealBg,
+          child: Text(
+            _initialsFor(registrant.memberName),
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: AppColors.accentTeal,
+            ),
+          ),
+        ),
         title: Text(
           registrant.memberName,
           style: const TextStyle(
-            fontWeight: FontWeight.w500,
+            fontWeight: FontWeight.w700,
             color: AppColors.ink,
           ),
-        ),
-        subtitle: Text(
-          registrant.memberCode,
-          style: const TextStyle(color: AppColors.muted, fontSize: 12),
         ),
         trailing: busy
             ? const SizedBox(
@@ -331,36 +412,25 @@ class _RegistrantTile extends StatelessWidget {
                 height: 18,
                 child: CircularProgressIndicator(strokeWidth: 2),
               )
-            : Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    '$symbol${centavosToDecimalString(registrant.amountDueCentavos)}',
-                    style: const TextStyle(
-                      color: AppColors.ink,
-                      fontWeight: FontWeight.w600,
-                    ),
+            : Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
+                ),
+                decoration: BoxDecoration(
+                  color: paid ? AppColors.accentTealBg : AppColors.fieldBg,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  paid
+                      ? 'Paid $symbol${centavosToDecimalString(registrant.amountDueCentavos)}'
+                      : 'Unpaid',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: paid ? AppColors.accentTeal : AppColors.subtle,
                   ),
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      color: paid ? AppColors.accentTeal : AppColors.expiringBg,
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text(
-                      paid ? 'Paid' : 'Unpaid',
-                      style: const TextStyle(
-                        fontSize: 10,
-                        color: Colors.white,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
+                ),
               ),
       ),
     );

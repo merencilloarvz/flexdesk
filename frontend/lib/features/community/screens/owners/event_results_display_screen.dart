@@ -7,27 +7,23 @@ import '../../../../core/theme/colors.dart';
 import '../../../auth/providers/auth_providers.dart';
 import '../../data/community_repository.dart';
 import '../../providers/community_providers.dart';
+import 'event_results_screen.dart';
 
-class EventLeaderboardScreen extends ConsumerStatefulWidget {
-  const EventLeaderboardScreen({
-    super.key,
-    required this.eventId,
-    required this.eventTitle,
-  });
+class EventResultsDisplayScreen extends ConsumerStatefulWidget {
+  const EventResultsDisplayScreen({super.key, required this.eventId});
   final String eventId;
-  final String eventTitle;
 
   @override
-  ConsumerState<EventLeaderboardScreen> createState() =>
-      _EventLeaderboardScreenState();
+  ConsumerState<EventResultsDisplayScreen> createState() =>
+      _EventResultsDisplayScreenState();
 }
 
-class _EventLeaderboardScreenState
-    extends ConsumerState<EventLeaderboardScreen> {
+class _EventResultsDisplayScreenState
+    extends ConsumerState<EventResultsDisplayScreen> {
   Event? _event;
   List<EventResultRow>? _results;
   String? _error;
-  bool _bookmarked = false;
+  bool _busy = false;
 
   @override
   void initState() {
@@ -53,6 +49,70 @@ class _EventLeaderboardScreenState
     }
   }
 
+  Future<void> _verify() async {
+    setState(() => _busy = true);
+    try {
+      await ref.read(communityRepositoryProvider).verifyResults(widget.eventId);
+    } on ApiException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.message)));
+      }
+    }
+    setState(() => _busy = false);
+    await _load();
+  }
+
+  Future<void> _unverify() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Unverify results?'),
+        content: const Text(
+          'This clears the verified status so you can correct a score. '
+          'Members will see these results as unverified until you verify '
+          'again.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Keep verified'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Unverify'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    setState(() => _busy = true);
+    try {
+      await ref
+          .read(communityRepositoryProvider)
+          .unverifyResults(widget.eventId);
+    } on ApiException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.message)));
+      }
+    }
+    setState(() => _busy = false);
+    await _load();
+  }
+
+  Future<void> _editResults() async {
+    final event = _event;
+    if (event == null) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => EventResultsScreen(eventId: event.id)),
+    );
+    await _load();
+  }
+
   void _shareResults() {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Results link copied to clipboard.')),
@@ -67,21 +127,6 @@ class _EventLeaderboardScreenState
     final gymName = authState is AuthAuthenticated
         ? authState.user.gym?.name
         : null;
-    // No member id reaches the frontend today (my_registration only ever
-    // carries the registration's own id, not the member's) — matching by
-    // display name against the logged-in user's full_name is the best
-    // available signal without a new backend call. display_name is
-    // snapshotted from member.full_name server-side at result-entry time,
-    // so this holds as long as the member hasn't been renamed since.
-    final myName = authState is AuthAuthenticated
-        ? authState.user.fullName.trim().toLowerCase()
-        : '';
-    final myResult = myName.isEmpty
-        ? null
-        : results.cast<EventResultRow?>().firstWhere(
-            (r) => r!.displayName.trim().toLowerCase() == myName,
-            orElse: () => null,
-          );
 
     return Scaffold(
       backgroundColor: AppColors.pageBg,
@@ -94,7 +139,7 @@ class _EventLeaderboardScreenState
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              event?.title ?? widget.eventTitle,
+              event?.title ?? 'Event',
               style: const TextStyle(
                 color: AppColors.ink,
                 fontWeight: FontWeight.w600,
@@ -114,17 +159,12 @@ class _EventLeaderboardScreenState
         iconTheme: const IconThemeData(color: AppColors.ink),
         actions: [
           IconButton(
-            icon: const Icon(Icons.share_outlined),
-            onPressed: event == null ? null : _shareResults,
+            icon: const Icon(Icons.edit_outlined),
+            onPressed: event == null ? null : _editResults,
           ),
           IconButton(
-            icon: Icon(
-              _bookmarked ? Icons.bookmark : Icons.bookmark_border,
-              color: _bookmarked ? AppColors.accentTeal : AppColors.ink,
-            ),
-            onPressed: event == null
-                ? null
-                : () => setState(() => _bookmarked = !_bookmarked),
+            icon: const Icon(Icons.share_outlined),
+            onPressed: event == null ? null : _shareResults,
           ),
         ],
       ),
@@ -139,7 +179,13 @@ class _EventLeaderboardScreenState
                 child: ListView(
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 40),
                   children: [
-                    _VerificationBanner(event: event),
+                    _VerificationBanner(
+                      event: event,
+                      hasResults: results.isNotEmpty,
+                      busy: _busy,
+                      onVerify: _verify,
+                      onUnverify: _unverify,
+                    ),
                     const SizedBox(height: 16),
                     _EventInfoCard(event: event, gymName: gymName),
                     if (results.length >= 3) ...[
@@ -172,7 +218,7 @@ class _EventLeaderboardScreenState
                       const Padding(
                         padding: EdgeInsets.symmetric(vertical: 16),
                         child: Text(
-                          'Results not posted yet.',
+                          'No results posted yet.',
                           style: TextStyle(color: AppColors.muted),
                         ),
                       )
@@ -182,20 +228,28 @@ class _EventLeaderboardScreenState
                 ),
               ),
       ),
-      bottomNavigationBar: myResult == null
-          ? null
-          : _MyRankBar(result: myResult),
     );
   }
 }
 
 class _VerificationBanner extends StatelessWidget {
-  const _VerificationBanner({required this.event});
+  const _VerificationBanner({
+    required this.event,
+    required this.hasResults,
+    required this.busy,
+    required this.onVerify,
+    required this.onUnverify,
+  });
   final Event event;
+  final bool hasResults;
+  final bool busy;
+  final VoidCallback onVerify;
+  final VoidCallback onUnverify;
 
   @override
   Widget build(BuildContext context) {
     if (event.resultsVerified) {
+      final verifiedAt = event.resultsVerifiedAt;
       return Container(
         width: double.infinity,
         padding: const EdgeInsets.all(14),
@@ -203,18 +257,52 @@ class _VerificationBanner extends StatelessWidget {
           color: AppColors.successBg,
           borderRadius: BorderRadius.circular(12),
         ),
-        child: const Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(Icons.verified, size: 18, color: AppColors.linkGreen),
-            SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                'Official Results Verified',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
+            Row(
+              children: [
+                const Icon(
+                  Icons.verified,
+                  size: 18,
                   color: AppColors.linkGreen,
                 ),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'Official Results Verified',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.linkGreen,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            if (verifiedAt != null) ...[
+              const SizedBox(height: 4),
+              Padding(
+                padding: const EdgeInsets.only(left: 26),
+                child: Text(
+                  'Verified ${DateFormat('MMM d, yyyy · h:mm a').format(verifiedAt)}',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: AppColors.linkGreen,
+                  ),
+                ),
+              ),
+            ],
+            const SizedBox(height: 4),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: busy ? null : onUnverify,
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.muted,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                ),
+                child: const Text('Unverify', style: TextStyle(fontSize: 12)),
               ),
             ),
           ],
@@ -229,20 +317,65 @@ class _VerificationBanner extends StatelessWidget {
         color: AppColors.fieldBg,
         borderRadius: BorderRadius.circular(12),
       ),
-      child: const Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.info_outline, size: 18, color: AppColors.subtle),
-          SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              'Results Pending Verification',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
+          Row(
+            children: [
+              const Icon(
+                Icons.info_outline,
+                size: 18,
                 color: AppColors.subtle,
               ),
-            ),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'Results Not Yet Verified',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.subtle,
+                  ),
+                ),
+              ),
+            ],
           ),
+          if (hasResults) ...[
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: busy ? null : onVerify,
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.accentTeal,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+                child: busy
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Text('Verify Results'),
+              ),
+            ),
+          ] else ...[
+            const SizedBox(height: 4),
+            const Padding(
+              padding: EdgeInsets.only(left: 26),
+              child: Text(
+                'Post results before they can be verified.',
+                style: TextStyle(fontSize: 12, color: AppColors.muted),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -320,11 +453,7 @@ class _EventInfoCard extends StatelessWidget {
           const SizedBox(height: 10),
           Row(
             children: [
-              const Icon(
-                Icons.groups_outlined,
-                size: 15,
-                color: AppColors.muted,
-              ),
+              const Icon(Icons.groups_outlined, size: 15, color: AppColors.muted),
               const SizedBox(width: 6),
               Text(
                 '${event.registrationCount} entries',
@@ -408,7 +537,11 @@ class _PodiumSpot extends StatelessWidget {
     return Column(
       children: [
         if (elevated)
-          const Icon(Icons.emoji_events, size: 20, color: Color(0xFFFBBF24)),
+          const Icon(
+            Icons.emoji_events,
+            size: 20,
+            color: Color(0xFFFBBF24),
+          ),
         SizedBox(height: elevated ? 4 : 24),
         Container(
           width: size,
@@ -549,83 +682,6 @@ class _RosterTile extends StatelessWidget {
               ),
             ),
         ],
-      ),
-    );
-  }
-}
-
-class _MyRankBar extends StatelessWidget {
-  const _MyRankBar({required this.result});
-  final EventResultRow result;
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      top: false,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-        decoration: BoxDecoration(
-          color: AppColors.cardBg,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.06),
-              blurRadius: 10,
-              offset: const Offset(0, -2),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'YOUR RANK',
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.4,
-                    color: AppColors.muted,
-                  ),
-                ),
-                Text(
-                  '${_rankLabel(result.rank)} Place',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.accentTeal,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    result.displayName,
-                    textAlign: TextAlign.end,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.ink,
-                    ),
-                  ),
-                  if (result.scoreText.isNotEmpty)
-                    Text(
-                      result.scoreText,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: AppColors.muted,
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

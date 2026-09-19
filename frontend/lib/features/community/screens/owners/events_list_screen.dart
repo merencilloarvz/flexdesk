@@ -23,10 +23,20 @@ class _EventsListScreenState extends ConsumerState<EventsListScreen> {
   String? _error;
   _EventTab _tab = _EventTab.upcoming;
 
+  bool _isSearching = false;
+  final _searchController = TextEditingController();
+  String _searchQuery = '';
+
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -57,6 +67,16 @@ class _EventsListScreenState extends ConsumerState<EventsListScreen> {
     _load();
   }
 
+  void _toggleSearch() {
+    setState(() {
+      _isSearching = !_isSearching;
+      if (!_isSearching) {
+        _searchQuery = '';
+        _searchController.clear();
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final today = GymTime.today();
@@ -65,11 +85,18 @@ class _EventsListScreenState extends ConsumerState<EventsListScreen> {
       ..sort((a, b) => a.eventDate.compareTo(b.eventDate));
     final past = events.where((e) => e.eventDate.isBefore(today)).toList()
       ..sort((a, b) => b.eventDate.compareTo(a.eventDate));
-    final visible = switch (_tab) {
+    final tabEvents = switch (_tab) {
       _EventTab.upcoming => upcoming,
       _EventTab.past => past,
       _EventTab.all => events,
     };
+    final visible = _searchQuery.isEmpty
+        ? tabEvents
+        : tabEvents.where((e) {
+            return e.title.toLowerCase().contains(_searchQuery) ||
+                e.description.toLowerCase().contains(_searchQuery) ||
+                e.locationText.toLowerCase().contains(_searchQuery);
+          }).toList();
 
     return Scaffold(
       backgroundColor: AppColors.pageBg,
@@ -81,11 +108,17 @@ class _EventsListScreenState extends ConsumerState<EventsListScreen> {
           style: TextStyle(color: AppColors.ink, fontWeight: FontWeight.w600),
         ),
         iconTheme: const IconThemeData(color: AppColors.ink),
+        actions: [
+          IconButton(
+            icon: Icon(_isSearching ? Icons.close : Icons.search),
+            onPressed: _toggleSearch,
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _openCreate,
         backgroundColor: AppColors.accentTeal,
-        child: const Icon(Icons.add),
+        child: const Icon(Icons.add, color: Colors.white),
       ),
       body: SafeArea(
         child: _error != null
@@ -97,13 +130,56 @@ class _EventsListScreenState extends ConsumerState<EventsListScreen> {
             : Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  if (_isSearching)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                      child: TextField(
+                        controller: _searchController,
+                        autofocus: true,
+                        onChanged: (val) =>
+                            setState(() => _searchQuery = val.trim().toLowerCase()),
+                        decoration: InputDecoration(
+                          hintText: 'Search events...',
+                          hintStyle: const TextStyle(
+                            fontSize: 13,
+                            color: AppColors.muted,
+                          ),
+                          prefixIcon: const Icon(
+                            Icons.search,
+                            size: 18,
+                            color: AppColors.accentTeal,
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 10,
+                          ),
+                          filled: true,
+                          fillColor: AppColors.cardBg,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(color: AppColors.border),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(color: AppColors.border),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(
+                              color: AppColors.accentTeal,
+                              width: 1.5,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
                     child: Container(
                       padding: const EdgeInsets.all(4),
                       decoration: BoxDecoration(
                         color: AppColors.fieldBg,
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(999),
                       ),
                       child: Row(
                         children: [
@@ -134,67 +210,40 @@ class _EventsListScreenState extends ConsumerState<EventsListScreen> {
                       ),
                     ),
                   ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 6,
-                          height: 6,
-                          decoration: const BoxDecoration(
-                            color: AppColors.accentTeal,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          switch (_tab) {
-                            _EventTab.upcoming => 'UPCOMING HIGHLIGHTS',
-                            _EventTab.past => 'PAST EVENTS',
-                            _EventTab.all => 'ALL EVENTS',
-                          },
-                          style: const TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.4,
-                            color: AppColors.subtle,
-                          ),
-                        ),
-                        const Spacer(),
-                        Text(
-                          '${visible.length} event${visible.length == 1 ? '' : 's'}',
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: AppColors.accentTeal,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 8),
                   Expanded(
-                    child: visible.isEmpty
-                        ? Center(
-                            child: Text(switch (_tab) {
-                              _EventTab.upcoming => 'No upcoming events',
-                              _EventTab.past => 'No past events',
-                              _EventTab.all => 'No events',
-                            }, style: const TextStyle(color: AppColors.subtle)),
-                          )
-                        : RefreshIndicator(
-                            onRefresh: _load,
-                            color: AppColors.accentTeal,
-                            child: ListView(
-                              padding: const EdgeInsets.fromLTRB(16, 0, 16, 40),
+                    child: RefreshIndicator(
+                      onRefresh: _load,
+                      color: AppColors.accentTeal,
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          if (visible.isEmpty) {
+                            return ListView(
+                              padding: EdgeInsets.zero,
                               children: [
-                                for (final e in visible)
-                                  _EventCard(
-                                    event: e,
-                                    onTap: () => _openDetail(e),
+                                ConstrainedBox(
+                                  constraints: BoxConstraints(
+                                    minHeight: constraints.maxHeight,
                                   ),
+                                  child: const _TabEmptyState(),
+                                ),
                               ],
-                            ),
-                          ),
+                            );
+                          }
+                          return ListView(
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 40),
+                            children: [
+                              _SectionHeader(tab: _tab, count: visible.length),
+                              const SizedBox(height: 10),
+                              for (final e in visible)
+                                _EventCard(
+                                  event: e,
+                                  onTap: () => _openDetail(e),
+                                ),
+                            ],
+                          );
+                        },
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -222,7 +271,7 @@ class _TabButton extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 9),
         decoration: BoxDecoration(
           color: selected ? AppColors.cardBg : Colors.transparent,
-          borderRadius: BorderRadius.circular(9),
+          borderRadius: BorderRadius.circular(999),
           boxShadow: selected
               ? [
                   BoxShadow(
@@ -244,6 +293,73 @@ class _TabButton extends StatelessWidget {
       ),
     );
   }
+}
+
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({required this.tab, required this.count});
+  final _EventTab tab;
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = switch (tab) {
+      _EventTab.upcoming => 'Upcoming Highlights',
+      _EventTab.past => 'Past Events',
+      _EventTab.all => 'All Events',
+    };
+
+    return Row(
+      children: [
+        Container(
+          width: 7,
+          height: 7,
+          decoration: const BoxDecoration(
+            color: AppColors.accentTeal,
+            shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(width: 7),
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+            color: AppColors.ink,
+          ),
+        ),
+        const Spacer(),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+          decoration: BoxDecoration(
+            color: AppColors.accentTealBg,
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Text(
+            '$count event${count == 1 ? '' : 's'}',
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: AppColors.accentTeal,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// The event's start_time, on its own event_date, as a gym-local
+/// [DateTime] comparable against [GymTime.now]. Caller must check
+/// `event.startTime != null` first.
+DateTime _startMoment(Event event) {
+  final t = event.startTime!.split(':');
+  return DateTime(
+    event.eventDate.year,
+    event.eventDate.month,
+    event.eventDate.day,
+    int.parse(t[0]),
+    int.parse(t[1]),
+  );
 }
 
 class _EventCard extends StatelessWidget {
@@ -269,211 +385,282 @@ class _EventCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final d = event.eventDate;
-    final dateLabel = '${_months[d.month - 1]} ${d.day}, ${d.year}';
-    final isPast = event.eventDate.isBefore(GymTime.today());
+    var dateLabel = '${_months[d.month - 1]} ${d.day}, ${d.year}';
+    if (event.startTime != null) dateLabel += ' · ${event.startTime}';
+    final today = GymTime.today();
+    final isPast = event.eventDate.isBefore(today);
+    // Date-only comparison never flips for the rest of the event's own
+    // day — a 6pm event would read "REGISTRATION OPEN" at 11pm without
+    // this. Only meaningful when start_time exists.
+    final startedToday = !isPast &&
+        !event.eventDate.isAfter(today) &&
+        event.startTime != null &&
+        !GymTime.now().isBefore(_startMoment(event));
     final full =
         event.capacity != null && event.registrationCount >= event.capacity!;
-    final fillPct = event.capacity != null && event.capacity! > 0
-        ? (event.registrationCount / event.capacity! * 100).clamp(0, 100)
-        : null;
 
     final (statusBg, statusText, statusLabel) = switch (true) {
       _ when event.isCanceled => (
         AppColors.errorBg,
         AppColors.errorText,
-        'Cancelled',
+        'CANCELLED',
       ),
-      _ when isPast => (AppColors.fieldBg, AppColors.subtle, 'Completed'),
-      _ when full => (AppColors.errorBg, AppColors.errorText, 'Full'),
-      _ => (AppColors.successBg, AppColors.linkGreen, 'Open for Registration'),
+      _ when isPast => (AppColors.fieldBg, AppColors.subtle, 'COMPLETED'),
+      _ when startedToday => (
+        AppColors.fieldBg,
+        AppColors.subtle,
+        'IN PROGRESS',
+      ),
+      _ when full => (AppColors.errorBg, AppColors.errorText, 'FULL'),
+      _ when event.feeCentavos > 0 => (
+        AppColors.accentTealBg,
+        AppColors.accentTeal,
+        'REGISTRATION OPEN',
+      ),
+      _ => (AppColors.fieldBg, AppColors.subtle, 'UPCOMING'),
     };
 
-    // Stripe color tied to the SAME real status as the badge above —
-    // not a decorative hash like the Schedule cards use, since Events
-    // actually has a meaningful status to reflect.
-    final stripe = switch (true) {
-      _ when event.isCanceled => AppColors.errorText,
-      _ when isPast => AppColors.subtle,
-      _ when full => AppColors.errorText,
-      _ => AppColors.accentTeal,
-    };
+    final priceLabel = event.feeCentavos > 0
+        ? '₱${(event.feeCentavos / 100).toStringAsFixed(0)}'
+        : 'Free';
 
     return Opacity(
       opacity: event.isCanceled ? 0.6 : 1.0,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        clipBehavior: Clip.antiAlias,
+        margin: const EdgeInsets.only(bottom: 12),
         decoration: BoxDecoration(
           color: AppColors.cardBg,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.06),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
+        clipBehavior: Clip.antiAlias,
         child: Material(
           color: Colors.transparent,
           child: InkWell(
             onTap: onTap,
-            child: IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(width: 4, color: stripe),
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(10, 14, 14, 14),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 3,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: statusBg,
-                                  borderRadius: BorderRadius.circular(999),
-                                ),
-                                child: Text(
-                                  statusLabel,
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w700,
-                                    color: statusText,
-                                  ),
-                                ),
-                              ),
-                              const Spacer(),
-                              Text(
-                                dateLabel,
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  color: AppColors.muted,
-                                ),
-                              ),
-                            ],
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: statusBg,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          statusLabel,
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.4,
+                            color: statusText,
                           ),
-                          const SizedBox(height: 8),
-                          Text(
-                            event.title,
-                            style: const TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.ink,
-                            ),
-                          ),
-                          if (event.locationText.isNotEmpty) ...[
-                            const SizedBox(height: 2),
-                            Row(
-                              children: [
-                                const Icon(
-                                  Icons.place_outlined,
-                                  size: 13,
-                                  color: AppColors.muted,
-                                ),
-                                const SizedBox(width: 4),
-                                Expanded(
-                                  child: Text(
-                                    event.locationText,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      color: AppColors.muted,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                          const SizedBox(height: 10),
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Text(
-                                          event.capacity != null
-                                              ? '${event.registrationCount}/${event.capacity} Registered'
-                                              : '${event.registrationCount} Registered',
-                                          style: const TextStyle(
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w600,
-                                            color: AppColors.ink,
-                                          ),
-                                        ),
-                                        if (fillPct != null) ...[
-                                          const Spacer(),
-                                          Text(
-                                            '${fillPct.round()}%',
-                                            style: TextStyle(
-                                              fontSize: 11,
-                                              color: stripe,
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                          ),
-                                        ],
-                                      ],
-                                    ),
-                                    if (fillPct != null) ...[
-                                      const SizedBox(height: 4),
-                                      ClipRRect(
-                                        borderRadius: BorderRadius.circular(
-                                          999,
-                                        ),
-                                        child: LinearProgressIndicator(
-                                          value: fillPct / 100,
-                                          minHeight: 5,
-                                          backgroundColor: AppColors.fieldBg,
-                                          valueColor: AlwaysStoppedAnimation(
-                                            stripe,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              FilledButton.icon(
-                                onPressed: onTap,
-                                icon: Icon(
-                                  isPast
-                                      ? Icons.visibility_outlined
-                                      : Icons.settings_outlined,
-                                  size: 15,
-                                ),
-                                label: Text(
-                                  isPast ? 'View Details' : 'Manage',
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                                style: FilledButton.styleFrom(
-                                  backgroundColor: AppColors.ink,
-                                  foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 14,
-                                    vertical: 10,
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(999),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
+                        ),
+                      ),
+                      const Spacer(),
+                      Text(
+                        priceLabel,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.accentTeal,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    event.title,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.ink,
+                    ),
+                  ),
+                  if (event.description.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      event.description,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        color: AppColors.muted,
+                        height: 1.35,
                       ),
                     ),
+                  ],
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.calendar_today_rounded,
+                        size: 13,
+                        color: AppColors.muted,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        dateLabel,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: AppColors.subtle,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (event.locationText.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.place_outlined,
+                          size: 13,
+                          color: AppColors.muted,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            event.locationText,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppColors.subtle,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  const Divider(height: 1, color: AppColors.fieldBg),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      _AvatarStack(count: event.registrationCount),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '${event.registrationCount} Registrant${event.registrationCount == 1 ? '' : 's'}',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.subtle,
+                          ),
+                        ),
+                      ),
+                      InkWell(
+                        onTap: onTap,
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'View Details',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.accentTeal,
+                              ),
+                            ),
+                            SizedBox(width: 3),
+                            Icon(
+                              Icons.arrow_forward_rounded,
+                              size: 14,
+                              color: AppColors.accentTeal,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AvatarStack extends StatelessWidget {
+  const _AvatarStack({required this.count});
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final shown = count.clamp(0, 3);
+    if (shown == 0) {
+      return const SizedBox.shrink();
+    }
+    return SizedBox(
+      width: 18.0 + (shown - 1) * 14.0,
+      height: 24,
+      child: Stack(
+        children: [
+          for (var i = 0; i < shown; i++)
+            Positioned(
+              left: i * 14.0,
+              child: Container(
+                width: 24,
+                height: 24,
+                decoration: BoxDecoration(
+                  color: AppColors.accentTealBg,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: AppColors.cardBg, width: 1.5),
+                ),
+                child: const Icon(
+                  Icons.person,
+                  size: 13,
+                  color: AppColors.accentTeal,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TabEmptyState extends StatelessWidget {
+  const _TabEmptyState();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.event_busy_outlined,
+              size: 40,
+              color: AppColors.muted,
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              'No events yet',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: AppColors.subtle,
+              ),
+            ),
+          ],
         ),
       ),
     );

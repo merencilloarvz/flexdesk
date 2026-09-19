@@ -97,11 +97,11 @@ class _MembersListScreenState extends ConsumerState<MembersListScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.pageBg,
-      body: SafeArea(
-        child: Stack(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+      body: Stack(
+        children: [
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -109,8 +109,8 @@ class _MembersListScreenState extends ConsumerState<MembersListScreen> {
                     'Members',
                     style: TextStyle(
                       fontSize: 22,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.ink,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.black,
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -138,13 +138,13 @@ class _MembersListScreenState extends ConsumerState<MembersListScreen> {
 
                   Container(
                     decoration: BoxDecoration(
-                      color: AppColors.cardBg,
+                      color: AppColors.fieldBg,
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: TextField(
                       controller: _searchController,
                       decoration: const InputDecoration(
-                        hintText: 'Search by name',
+                        hintText: 'Search by name or member ID...',
                         hintStyle: TextStyle(
                           color: AppColors.muted,
                           fontSize: 14,
@@ -161,45 +161,39 @@ class _MembersListScreenState extends ConsumerState<MembersListScreen> {
                   ),
                   const SizedBox(height: 14),
 
-                  Container(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    decoration: const BoxDecoration(
-                      border: Border(
-                        bottom: BorderSide(color: AppColors.border, width: 0.5),
-                      ),
-                    ),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
                     child: Row(
                       children: [
-                        _TabLabel(
+                        _FilterPill(
                           label: 'All',
-                          dotColor: AppColors.accentTeal,
+                          selectedColor: AppColors.accentTeal,
                           selected: _filter == _StatusFilter.all,
                           onTap: () =>
                               setState(() => _filter = _StatusFilter.all),
                         ),
-                        const SizedBox(width: 16),
-                        _TabLabel(
+                        const SizedBox(width: 8),
+                        _FilterPill(
                           label: 'Active',
-                          // Blue override — see _activeColorOverride.
-                          dotColor: _activeColorOverride,
+                          // Same token as the row avatar for Active — see
+                          // _activeColorOverride.
+                          selectedColor: _activeColorOverride,
                           selected: _filter == _StatusFilter.active,
                           onTap: () =>
                               setState(() => _filter = _StatusFilter.active),
                         ),
-                        const SizedBox(width: 16),
-                        _TabLabel(
+                        const SizedBox(width: 8),
+                        _FilterPill(
                           label: 'Expiring',
-                          // Light brown — unchanged.
-                          dotColor: AppColors.expiringBg,
+                          selectedColor: AppColors.expiringBg,
                           selected: _filter == _StatusFilter.expiring,
                           onTap: () =>
                               setState(() => _filter = _StatusFilter.expiring),
                         ),
-                        const SizedBox(width: 16),
-                        _TabLabel(
+                        const SizedBox(width: 8),
+                        _FilterPill(
                           label: 'Expired',
-                          // Red — unchanged.
-                          dotColor: AppColors.expiredBg,
+                          selectedColor: AppColors.expiredBg,
                           selected: _filter == _StatusFilter.expired,
                           onTap: () =>
                               setState(() => _filter = _StatusFilter.expired),
@@ -207,7 +201,7 @@ class _MembersListScreenState extends ConsumerState<MembersListScreen> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 14),
 
                   Expanded(
                     child: membersAsync.when(
@@ -234,7 +228,7 @@ class _MembersListScreenState extends ConsumerState<MembersListScreen> {
                             cacheExtent: 600,
                             itemCount: filtered.length,
                             separatorBuilder: (_, _) =>
-                                const SizedBox(height: 8),
+                                const SizedBox(height: 10),
                             itemBuilder: (context, index) {
                               final member = filtered[index];
                               return RepaintBoundary(
@@ -262,29 +256,29 @@ class _MembersListScreenState extends ConsumerState<MembersListScreen> {
                 ],
               ),
             ),
+          ),
 
-            _ActionMenu(
-              bottomInset: AppShell.reservedNavHeight,
-              onNewMember: () => context.push('/members/create'),
-              onManagePlans: () => context.push('/plans/manage'),
-            ),
-          ],
-        ),
+          _ActionMenu(
+            bottomInset: AppShell.reservedNavHeight,
+            onNewMember: () => context.push('/members/create'),
+            onManagePlans: () => context.push('/plans/manage'),
+          ),
+        ],
       ),
     );
   }
 }
 
-class _TabLabel extends StatelessWidget {
-  const _TabLabel({
+class _FilterPill extends StatelessWidget {
+  const _FilterPill({
     required this.label,
-    required this.dotColor,
+    required this.selectedColor,
     required this.selected,
     required this.onTap,
   });
 
   final String label;
-  final Color dotColor;
+  final Color selectedColor;
   final bool selected;
   final VoidCallback onTap;
 
@@ -293,35 +287,19 @@ class _TabLabel extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.only(bottom: 8),
-        decoration: selected
-            ? const BoxDecoration(
-                border: Border(
-                  bottom: BorderSide(color: AppColors.accentTeal, width: 2),
-                ),
-              )
-            : null,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 6,
-              height: 6,
-              decoration: BoxDecoration(
-                color: dotColor,
-                shape: BoxShape.circle,
-              ),
-            ),
-            const SizedBox(width: 5),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-                color: selected ? AppColors.ink : AppColors.subtle,
-              ),
-            ),
-          ],
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected ? selectedColor : AppColors.fieldBg,
+          borderRadius: BorderRadius.circular(999),
+          border: selected ? null : Border.all(color: AppColors.border),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: selected ? Colors.white : AppColors.subtle,
+          ),
         ),
       ),
     );
@@ -342,90 +320,126 @@ class _MemberTile extends StatelessWidget {
 
     // Expiring (light brown) and Expired (red) stay exactly as they've
     // always been. Active uses the local blue override for this screen.
-    final (avatarBg, avatarIcon) = switch (status) {
-      MembershipStatus.active => (_activeColorOverride, AppColors.activeIcon),
-      MembershipStatus.expiring => (
-        AppColors.expiringBg,
-        AppColors.expiringIcon,
-      ),
-      MembershipStatus.expired => (AppColors.expiredBg, AppColors.expiredIcon),
-      MembershipStatus.noMembership => (
-        AppColors.noMembershipBg,
-        AppColors.noMembershipIcon,
-      ),
-    };
-    final labelColor = switch (status) {
+    // Avatar icon is always white for contrast against the filled circle.
+    final avatarBg = switch (status) {
       MembershipStatus.active => _activeColorOverride,
       MembershipStatus.expiring => AppColors.expiringBg,
       MembershipStatus.expired => AppColors.expiredBg,
       MembershipStatus.noMembership => AppColors.noMembershipBg,
     };
+    // Active renders in green text specifically (distinct from the teal
+    // avatar fill) to match Active/Expired's green/red pairing elsewhere.
+    // linkGreen (darker) instead of accentGreen — accentGreen read as too
+    // pale/low-contrast against the white card background.
+    final labelColor = switch (status) {
+      MembershipStatus.active => AppColors.linkGreen,
+      MembershipStatus.expiring => AppColors.expiringBg,
+      MembershipStatus.expired => AppColors.expiredBg,
+      MembershipStatus.noMembership => AppColors.subtle,
+    };
 
-    return Material(
-      color: AppColors.cardBg,
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: () => context.push('/members/${member.id}'),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          child: Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: avatarBg,
-                  shape: BoxShape.circle,
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.cardBg,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: () => context.push('/members/${member.id}'),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: avatarBg,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.person,
+                    size: 18,
+                    color: Colors.white,
+                  ),
                 ),
-                child: Icon(Icons.person, size: 18, color: avatarIcon),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      fullName,
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        fullName,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.ink,
+                        ),
+                      ),
+                      if (member.currentPlanCategory != null &&
+                          member.currentPlanCategory!.isNotEmpty)
+                        Text(
+                          member.currentPlanCategory!,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppColors.muted,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                if (status == MembershipStatus.noMembership)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.disabledBg,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      _statusLabel(status, remaining),
                       style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w500,
-                        color: AppColors.ink,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.subtle,
                       ),
                     ),
-                    if (member.currentPlanCategory != null &&
-                        member.currentPlanCategory!.isNotEmpty)
+                  )
+                else
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
                       Text(
-                        member.currentPlanCategory!,
-                        style: const TextStyle(
+                        _statusLabel(status, remaining),
+                        style: TextStyle(
                           fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: labelColor,
+                        ),
+                      ),
+                      Text(
+                        _detailLabel(status, remaining),
+                        style: const TextStyle(
+                          fontSize: 11,
                           color: AppColors.muted,
                         ),
                       ),
-                  ],
-                ),
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    _statusLabel(status, remaining),
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                      color: labelColor,
-                    ),
+                    ],
                   ),
-                  Text(
-                    _detailLabel(status, remaining),
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: AppColors.muted,
-                    ),
-                  ),
-                ],
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

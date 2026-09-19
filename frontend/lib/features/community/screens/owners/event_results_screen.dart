@@ -160,7 +160,59 @@ class _EventResultsScreenState extends ConsumerState<EventResultsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.pageBg,
-      appBar: AppBar(title: const Text('Results')),
+      appBar: AppBar(
+        backgroundColor: AppColors.pageBg,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: AppColors.ink),
+        titleSpacing: 0,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Results',
+              style: TextStyle(
+                color: AppColors.ink,
+                fontWeight: FontWeight.w600,
+                fontSize: 17,
+              ),
+            ),
+            const Text(
+              'Enter competitor scores & ranks',
+              style: TextStyle(
+                color: AppColors.muted,
+                fontWeight: FontWeight.w400,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 16),
+            child: Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
+                ),
+                decoration: BoxDecoration(
+                  color: AppColors.successBg,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  '${_rows.length} ${_rows.length == 1 ? 'Entry' : 'Entries'}',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.linkGreen,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
       body: SafeArea(
         child: _loading
             ? const Center(child: CircularProgressIndicator())
@@ -169,14 +221,27 @@ class _EventResultsScreenState extends ConsumerState<EventResultsScreen> {
                 children: [
                   for (var i = 0; i < _rows.length; i++)
                     _ResultRowCard(
+                      rank: i + 1,
                       row: _rows[i],
                       onRemove: () => _removeRow(i),
                     ),
-                  const SizedBox(height: 8),
-                  OutlinedButton.icon(
-                    onPressed: _addRow,
-                    icon: const Icon(Icons.add),
-                    label: const Text('Add row'),
+                  const SizedBox(height: 4),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: _addRow,
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('Add Competitor Row'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.linkGreen,
+                        backgroundColor: AppColors.successBg,
+                        side: BorderSide.none,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
                   ),
                   if (_error != null) ...[
                     const SizedBox(height: 12),
@@ -187,13 +252,13 @@ class _EventResultsScreenState extends ConsumerState<EventResultsScreen> {
                   ],
                   const SizedBox(height: 20),
                   SizedBox(
-                    height: 48,
-                    child: FilledButton(
+                    height: 52,
+                    child: FilledButton.icon(
                       onPressed: _saving ? null : _submit,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: AppColors.accentTeal,
-                      ),
-                      child: _saving
+                      icon: _saving
+                          ? const SizedBox.shrink()
+                          : const Icon(Icons.check, size: 18),
+                      label: _saving
                           ? const SizedBox(
                               width: 20,
                               height: 20,
@@ -203,7 +268,20 @@ class _EventResultsScreenState extends ConsumerState<EventResultsScreen> {
                               ),
                             )
                           : const Text('Save Results'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.accentTeal,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                      ),
                     ),
+                  ),
+                  const SizedBox(height: 10),
+                  const Text(
+                    'Updates will immediately reflect on the public leaderboard',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 11.5, color: AppColors.muted),
                   ),
                 ],
               ),
@@ -213,67 +291,165 @@ class _EventResultsScreenState extends ConsumerState<EventResultsScreen> {
 }
 
 class _ResultRowCard extends StatelessWidget {
-  const _ResultRowCard({required this.row, required this.onRemove});
+  const _ResultRowCard({
+    required this.rank,
+    required this.row,
+    required this.onRemove,
+  });
+  final int rank;
   final _ResultRowInput row;
   final VoidCallback onRemove;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: AppColors.cardBg,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             children: [
-              SizedBox(
-                width: 56,
-                child: TextField(
-                  controller: row.rankController,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'Rank'),
+              Container(
+                width: 22,
+                height: 22,
+                alignment: Alignment.center,
+                decoration: const BoxDecoration(
+                  color: AppColors.accentTeal,
+                  shape: BoxShape.circle,
+                ),
+                child: Text(
+                  '$rank',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
                 ),
               ),
               const SizedBox(width: 8),
-              Expanded(
-                child: TextField(
-                  controller: row.nameController,
-                  decoration: const InputDecoration(labelText: 'Name'),
+              Text(
+                'RANK #$rank',
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.3,
+                  color: AppColors.accentTeal,
                 ),
               ),
-              IconButton(
-                icon: const Icon(Icons.close, size: 18),
-                onPressed: onRemove,
+              const Spacer(),
+              InkWell(
+                onTap: onRemove,
+                borderRadius: BorderRadius.circular(999),
+                child: const Padding(
+                  padding: EdgeInsets.all(4),
+                  child: Icon(
+                    Icons.close,
+                    size: 18,
+                    color: AppColors.muted,
+                  ),
+                ),
               ),
             ],
           ),
+          const SizedBox(height: 12),
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: TextField(
-                  controller: row.scoreController,
-                  decoration: const InputDecoration(
-                    labelText: 'Score (e.g. 82kg, 3:41)',
-                  ),
+              SizedBox(
+                width: 72,
+                child: _labeledField(
+                  label: 'RANK',
+                  controller: row.rankController,
+                  keyboardType: TextInputType.number,
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 10),
               Expanded(
-                child: TextField(
+                child: _labeledField(
+                  label: 'COMPETITOR NAME',
+                  controller: row.nameController,
+                  hint: 'e.g. Juan Dela Cruz',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: _labeledField(
+                  label: 'SCORE',
+                  controller: row.scoreController,
+                  hint: 'e.g. 82kg, 3:41',
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _labeledField(
+                  label: 'NOTE (OPTIONAL)',
                   controller: row.noteController,
-                  decoration: const InputDecoration(
-                    labelText: 'Note (optional)',
-                  ),
+                  hint: 'Rx, penalty, etc.',
                 ),
               ),
             ],
           ),
         ],
       ),
+    );
+  }
+
+  Widget _labeledField({
+    required String label,
+    required TextEditingController controller,
+    String? hint,
+    TextInputType? keyboardType,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 10.5,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.3,
+            color: AppColors.subtle,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Container(
+          decoration: BoxDecoration(
+            color: AppColors.fieldBg,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: TextField(
+            controller: controller,
+            keyboardType: keyboardType,
+            style: const TextStyle(fontSize: 14, color: AppColors.ink),
+            decoration: InputDecoration(
+              hintText: hint,
+              hintStyle: const TextStyle(color: AppColors.muted, fontSize: 13),
+              border: InputBorder.none,
+              isDense: true,
+              contentPadding: const EdgeInsets.symmetric(vertical: 12),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

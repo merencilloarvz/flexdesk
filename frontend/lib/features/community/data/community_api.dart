@@ -41,6 +41,15 @@ class CommunityApi {
   Future<List<Map<String, dynamic>>> fetchAnnouncements() =>
       _fetchAllPages('/announcements/');
 
+  Future<Map<String, dynamic>> fetchAnnouncement(String id) async {
+    try {
+      final r = await _dio.get('/announcements/$id/');
+      return r.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw ApiException.from(e);
+    }
+  }
+
   Future<Map<String, dynamic>> createAnnouncement(
     Map<String, dynamic> body,
   ) async {
@@ -92,6 +101,25 @@ class CommunityApi {
     String itemPath,
     String itemId,
   ) => _fetchAllPages('/$itemPath/$itemId/comments/');
+
+  /// A single page of the raw paginated response (`results`, `next`,
+  /// `count`), for lists that load on demand. Newest first, so page 1 is
+  /// the latest conversation and a fresh comment belongs at the top.
+  Future<Map<String, dynamic>> fetchCommentsPage(
+    String itemPath,
+    String itemId,
+    int page,
+  ) async {
+    try {
+      final r = await _dio.get(
+        '/$itemPath/$itemId/comments/',
+        queryParameters: {'page': page, 'ordering': '-created_at'},
+      );
+      return r.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw ApiException.from(e);
+    }
+  }
 
   Future<Map<String, dynamic>> postComment(
     String itemPath,

@@ -14,8 +14,14 @@ const Color _cSubtle = Color(0xFF6B7570);
 const Color _cMuted = Color(0xFF8A938E);
 const Color _cFieldBg = Color(0xFFF5F6F7);
 const Color _cCardBg = Colors.white;
-const Color _cAccentTeal = Color(0xFF2F6FE4);
-const Color _cAccentTealBg = Color(0xFFEAF1FE);
+const Color _cAccentTeal = Color(0xFF0F6E56);
+const Color _cAccentTealBg = Color(0xFFE1F5EE);
+// Darker than a plain amber/yellow on purpose — the lighter shade read as
+// too pale/low-contrast against the field background.
+const Color _cAccentAmber = Color(0xFF92600B);
+// linkGreen (darker), not a pale accent green — same legibility fix as
+// the Members List "Active" status text.
+const Color _cAccentGreen = Color(0xFF1F7A4D);
 const Color _cErrorBg = Color(0xFFFCEBE8);
 const Color _cErrorText = Color(0xFF9E3125);
 const Color _cDisabledBg = Color(0xFFE2E5E3);
@@ -233,6 +239,24 @@ class _MemberCreateScreenState extends ConsumerState<MemberCreateScreen> {
                 controller: _phoneCtrl,
                 keyboardType: TextInputType.phone,
                 error: _errorFor('phone'),
+                leadingChip: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: _cFieldBg,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Text(
+                    'PH +63',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: _cSubtle,
+                    ),
+                  ),
+                ),
                 trailing: const Text(
                   'Optional',
                   style: TextStyle(fontSize: 11, color: _cMuted),
@@ -250,7 +274,10 @@ class _MemberCreateScreenState extends ConsumerState<MemberCreateScreen> {
               const SizedBox(height: 12),
               _planCard(plansAsync),
 
-              const SizedBox(height: 24),
+              const SizedBox(height: 20),
+              _privacyNote(),
+
+              const SizedBox(height: 20),
               _saveButton(
                 enabled: homeLocationId != null,
                 onPressed: homeLocationId == null
@@ -262,6 +289,33 @@ class _MemberCreateScreenState extends ConsumerState<MemberCreateScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _privacyNote() {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Icon(Icons.lock_outline, size: 16, color: _cMuted),
+        const SizedBox(width: 8),
+        Expanded(
+          child: RichText(
+            text: const TextSpan(
+              style: TextStyle(fontSize: 11, height: 1.4, color: _cMuted),
+              children: [
+                TextSpan(text: 'Member data is stored securely and '),
+                TextSpan(
+                  text: 'never shared with third parties.\n',
+                  style: TextStyle(color: _cAccentTeal),
+                ),
+                TextSpan(
+                  text: 'Only gym staff can view this information.',
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -284,6 +338,7 @@ class _MemberCreateScreenState extends ConsumerState<MemberCreateScreen> {
     TextInputType? keyboardType,
     String? error,
     IconData? prefixIcon,
+    Widget? leadingChip,
     Widget? trailing,
   }) {
     return Container(
@@ -319,6 +374,10 @@ class _MemberCreateScreenState extends ConsumerState<MemberCreateScreen> {
           const SizedBox(height: 6),
           Row(
             children: [
+              if (leadingChip != null) ...[
+                leadingChip,
+                const SizedBox(width: 8),
+              ],
               if (prefixIcon != null) ...[
                 Icon(prefixIcon, size: 18, color: _cMuted),
                 const SizedBox(width: 8),
@@ -380,7 +439,7 @@ class _MemberCreateScreenState extends ConsumerState<MemberCreateScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      'Manage plans',
+                      'Manage plans →',
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
@@ -402,7 +461,16 @@ class _MemberCreateScreenState extends ConsumerState<MemberCreateScreen> {
             child: plansAsync.when(
               data: (plans) {
                 final items = <DropdownMenuItem<String?>>[
-                  const DropdownMenuItem(value: null, child: Text('No plan')),
+                  const DropdownMenuItem(
+                    value: null,
+                    child: Text(
+                      'No plan',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: _cAccentAmber,
+                      ),
+                    ),
+                  ),
                   ...plans.map(
                     (p) => DropdownMenuItem(
                       value: p.id as String,
@@ -410,6 +478,7 @@ class _MemberCreateScreenState extends ConsumerState<MemberCreateScreen> {
                         p.category.isEmpty
                             ? p.name as String
                             : '${p.name} (${p.category})',
+                        style: const TextStyle(color: _cInk),
                       ),
                     ),
                   ),
@@ -445,6 +514,11 @@ class _MemberCreateScreenState extends ConsumerState<MemberCreateScreen> {
                 ),
               ),
             ),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'You can attach or renew packages anytime later.',
+            style: TextStyle(fontSize: 11, color: _cAccentGreen),
           ),
           if (_planId != null)
             plansAsync.maybeWhen(
