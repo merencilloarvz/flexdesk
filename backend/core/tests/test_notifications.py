@@ -177,6 +177,26 @@ class SendToUsersTests(FirebaseAppCleanupMixin, TestCase):
                 sent, pruned = notifications.send_to_users([self.user], "Title", "Body")
         self.assertEqual((sent, pruned), (1, 0))
 
+    def test_send_sets_high_priority_android_channel(self):
+        # Without this, a backgrounded/terminated app either doesn't get
+        # a heads-up banner + sound, or falls back to a default channel
+        # that doesn't match the one the app actually creates — see
+        # PushNotificationService.ensureNotificationChannel in the
+        # frontend and the default_notification_channel_id meta-data in
+        # AndroidManifest.xml, which both must agree with this channel id.
+        DeviceToken.objects.create(user=self.user, token="tok-d", platform="android")
+        response = _multicast_response([True])
+        with override_settings(FIREBASE_SERVICE_ACCOUNT_JSON=FAKE_SERVICE_ACCOUNT_JSON):
+            with mock.patch.object(messaging, "send_each_for_multicast",
+                                   return_value=response) as send_mock:
+                notifications.send_to_users([self.user], "Title", "Body")
+
+        message = send_mock.call_args.args[0]
+        self.assertEqual(message.android.priority, "high")
+        self.assertEqual(
+            message.android.notification.channel_id, "high_importance_channel",
+        )
+
 
 class DailyNotificationsCommandTests(TestCase):
     def setUp(self):

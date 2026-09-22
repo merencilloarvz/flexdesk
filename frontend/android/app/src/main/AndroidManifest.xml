@@ -27,6 +27,16 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- Must match pushNotificationChannelId in
+             lib/core/notifications/push_notification_service.dart and the
+             channel_id the backend sets on every AndroidNotification
+             (backend/core/notifications.py) — this is what FCM falls back
+             to for a notification-only message when the app is backgrounded
+             or terminated, so it still lands on the HIGH-importance channel
+             instead of a silent default one. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="high_importance_channel" />
     </application>
     <queries>
         <intent>

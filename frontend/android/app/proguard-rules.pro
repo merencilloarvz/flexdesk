@@ -19,3 +19,11 @@
 -dontwarn okio.**
 -keep class okhttp3.** { *; }
 -keep class okio.** { *; }
+
+# Keep Firebase Cloud Messaging and its background message handler —
+# release builds run with minification on, and R8 stripping any of this
+# is a plausible reason a release APK (but not a debug run) fails to
+# receive or display push notifications while backgrounded/terminated.
+-keep class com.google.firebase.messaging.** { *; }
+-keep class com.google.firebase.** { *; }
+-dontwarn com.google.firebase.**
