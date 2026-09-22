@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/notifications/push_notification_service.dart';
 import '../../../core/theme/colors.dart';
 import '../../auth/providers/auth_providers.dart';
 import '../providers/staff_providers.dart';
@@ -26,6 +27,35 @@ class SettingsScreen extends ConsumerWidget {
     final activeStaffCount = staffAsync?.asData?.value
         .where((s) => s.isActive)
         .length;
+
+    final notificationsEnabledAsync = ref.watch(notificationsEnabledProvider);
+    final notificationsEnabled = notificationsEnabledAsync.asData?.value;
+
+    Future<void> onTapNotifications() async {
+      if (notificationsEnabled == false) {
+        await ref
+            .read(pushNotificationServiceProvider)
+            .openSystemNotificationSettings();
+      }
+      ref.invalidate(notificationsEnabledProvider);
+    }
+
+    Future<void> onSendTestNotification() async {
+      try {
+        await ref.read(deviceTokenApiProvider).sendTest();
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Test notification sent.')),
+        );
+      } catch (_) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Couldn't send it. Check your connection."),
+          ),
+        );
+      }
+    }
 
     Future<void> onToggleClasses(bool value) async {
       try {
@@ -157,6 +187,30 @@ class SettingsScreen extends ConsumerWidget {
                 onTap: () => context.push('/subscribe'),
               ),
             ],
+
+            const SizedBox(height: 20),
+            const _SectionLabel('NOTIFICATIONS'),
+            const SizedBox(height: 8),
+            _SettingsRow(
+              icon: notificationsEnabled == false
+                  ? Icons.notifications_off_outlined
+                  : Icons.notifications_outlined,
+              title: 'Notifications',
+              subtitle: notificationsEnabled == false
+                  ? 'Off — tap to turn on in Android settings'
+                  : 'Announcements, renewals & stock alerts',
+              badge: notificationsEnabled == null
+                  ? null
+                  : (notificationsEnabled ? 'On' : 'Off'),
+              onTap: onTapNotifications,
+            ),
+            const SizedBox(height: 8),
+            _SettingsRow(
+              icon: Icons.send_outlined,
+              title: 'Send test notification',
+              subtitle: 'Check that push notifications are working',
+              onTap: onSendTestNotification,
+            ),
 
             const SizedBox(height: 20),
             _SettingsRow(

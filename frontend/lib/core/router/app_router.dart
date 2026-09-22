@@ -36,6 +36,8 @@ import '../../features/members_home/screens/digital_card_screen.dart';
 import '../../features/scheduling/screens/member_schedule_screen.dart';
 import '../../features/scheduling/screens/time_slot_list_screen.dart';
 import '../../features/community/screens/member/community_screen.dart';
+import '../../features/community/screens/member/announcement_detail_screen.dart';
+import '../../features/pos/screens/inventory_screen.dart';
 import '../../features/workout_guides/screens/workout_guides_screen.dart';
 import '../../features/subscription/screens/subscribe_screen.dart';
 import '../../features/about/screens/about_credits_screen.dart';
@@ -558,3 +560,30 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     ],
   );
 });
+
+/// Pushes the announcement detail screen onto the member Community tab.
+/// Called right after `router.go('/member-community')` from a push
+/// notification tap — that GoRoute only shows the list, so opening the
+/// specific announcement means pushing onto that branch's own Navigator
+/// the same way CommunityScreen itself does when a member taps a card.
+void openAnnouncementDetail(String announcementId) {
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    _memberCommunityNavigatorKey.currentState?.push(
+      MaterialPageRoute(
+        builder: (_) => AnnouncementDetailScreen(announcementId: announcementId),
+      ),
+    );
+  });
+}
+
+/// Pushes the inventory screen onto the owner Modules tab, the same way
+/// PosScreen's own "Inventory" entry point does. Used to route a tap on
+/// an out-of-stock or low-stock push notification straight to the stock
+/// list rather than leaving the owner on the POS screen.
+void openInventory() {
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    _modulesNavigatorKey.currentState?.push(
+      MaterialPageRoute(builder: (_) => const InventoryScreen()),
+    );
+  });
+}

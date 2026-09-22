@@ -21,6 +21,14 @@ _TOKENS_PER_BATCH = 500
 # retried on the next send.
 _PRUNE_ON = (messaging.UnregisteredError, exceptions.InvalidArgumentError)
 
+# Must match pushNotificationChannelId in
+# frontend/lib/core/notifications/push_notification_service.dart and the
+# default_notification_channel_id meta-data in AndroidManifest.xml — all
+# three have to agree for a backgrounded/terminated app to show the
+# notification at HIGH importance (sound + heads-up banner) rather than
+# falling back to a silent default channel.
+_ANDROID_CHANNEL_ID = "high_importance_channel"
+
 
 def _get_app():
     """
@@ -82,6 +90,12 @@ def send_to_users(users, title, body, data=None):
             notification=messaging.Notification(title=title, body=body),
             data=string_data,
             tokens=batch,
+            android=messaging.AndroidConfig(
+                priority="high",
+                notification=messaging.AndroidNotification(
+                    channel_id=_ANDROID_CHANNEL_ID,
+                ),
+            ),
         )
         try:
             response = messaging.send_each_for_multicast(message, app=app)

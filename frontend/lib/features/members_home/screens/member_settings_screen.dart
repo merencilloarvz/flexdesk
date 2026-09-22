@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/api/api_exception.dart';
+import '../../../core/notifications/push_notification_service.dart';
 import '../../../core/theme/colors.dart';
 import '../../auth/providers/auth_providers.dart';
 import '../providers/qr_card_providers.dart';
@@ -18,6 +19,9 @@ class MemberSettingsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final authState = ref.watch(authControllerProvider);
     final user = authState is AuthAuthenticated ? authState.user : null;
+
+    final notificationsEnabledAsync = ref.watch(notificationsEnabledProvider);
+    final notificationsEnabled = notificationsEnabledAsync.asData?.value;
 
     return Scaffold(
       backgroundColor: AppColors.pageBg,
@@ -80,6 +84,50 @@ class MemberSettingsScreen extends ConsumerWidget {
               borderRadius: BorderRadius.circular(14),
             ),
             child: ListTile(
+              leading: Icon(
+                notificationsEnabled == false
+                    ? Icons.notifications_off_outlined
+                    : Icons.notifications_outlined,
+              ),
+              title: const Text('Notifications'),
+              subtitle: Text(
+                notificationsEnabled == false
+                    ? 'Off — tap to turn on in Android settings'
+                    : 'Announcements, renewals & stock alerts',
+              ),
+              trailing: notificationsEnabled == null
+                  ? null
+                  : Text(
+                      notificationsEnabled ? 'On' : 'Off',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.muted,
+                      ),
+                    ),
+              onTap: () => _onTapNotifications(ref, notificationsEnabled),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            decoration: BoxDecoration(
+              color: AppColors.cardBg,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: ListTile(
+              leading: const Icon(Icons.send_outlined),
+              title: const Text('Send test notification'),
+              subtitle: const Text('Check that push notifications are working'),
+              onTap: () => _sendTestNotification(context, ref),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            decoration: BoxDecoration(
+              color: AppColors.cardBg,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: ListTile(
               leading: const Icon(Icons.info_outline),
               title: const Text('About'),
               subtitle: const Text('App version, licences & credits'),
@@ -131,6 +179,30 @@ class MemberSettingsScreen extends ConsumerWidget {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(e.message)),
+      );
+    }
+  }
+
+  Future<void> _onTapNotifications(WidgetRef ref, bool? enabled) async {
+    if (enabled == false) {
+      await ref
+          .read(pushNotificationServiceProvider)
+          .openSystemNotificationSettings();
+    }
+    ref.invalidate(notificationsEnabledProvider);
+  }
+
+  Future<void> _sendTestNotification(BuildContext context, WidgetRef ref) async {
+    try {
+      await ref.read(deviceTokenApiProvider).sendTest();
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Test notification sent.')));
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Couldn't send it. Check your connection.")),
       );
     }
   }

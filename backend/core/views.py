@@ -2117,6 +2117,26 @@ class DeviceTokenView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+class DeviceTokenTestView(APIView):
+    """
+    Sends a push notification to the logged-in user's own devices — lets
+    someone confirm push delivery end-to-end (permission, channel,
+    background handler, tap routing) with only the one phone they're
+    holding, no second account needed. type "test" so main.dart's tap
+    router falls through to its default case (home).
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        sent, pruned = send_to_users(
+            [request.user],
+            title="FlexDesk",
+            body="This is a test notification from FlexDesk.",
+            data={"type": "test"},
+        )
+        return Response({"sent": sent, "pruned": pruned})
+
+
 class EngagementViewMixin:
     """
     Shared by the like/comment views, which serve both announcements and
