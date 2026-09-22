@@ -15,4 +15,11 @@ class DeviceTokenApi {
   Future<void> delete(String token) {
     return _dio.delete('/devices/', data: {'token': token});
   }
+
+  /// Sends a push to the logged-in user's own devices — lets someone
+  /// confirm delivery end-to-end with only the one phone they're
+  /// holding, from the Settings screen.
+  Future<void> sendTest() {
+    return _dio.post('/devices/test/');
+  }
 }

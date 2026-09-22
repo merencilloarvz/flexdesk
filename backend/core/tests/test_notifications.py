@@ -118,6 +118,43 @@ class DeviceTokenEndpointTests(APITestCase):
         self.assertFalse(DeviceToken.objects.filter(token="tok-2").exists())
 
 
+class DeviceTokenTestEndpointTests(FirebaseAppCleanupMixin, APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email="selftestuser@example.com", password="StrongPass123!")
+        self.other_user = User.objects.create_user(
+            email="othertestuser@example.com", password="StrongPass123!")
+
+    def test_sends_only_to_the_caller_s_own_devices(self):
+        DeviceToken.objects.create(user=self.user, token="own-tok", platform="android")
+        DeviceToken.objects.create(user=self.other_user, token="other-tok", platform="android")
+        response = _multicast_response([True])
+
+        _auth(self.client, self.user)
+        with override_settings(FIREBASE_SERVICE_ACCOUNT_JSON=FAKE_SERVICE_ACCOUNT_JSON):
+            with mock.patch.object(messaging, "send_each_for_multicast",
+                                   return_value=response) as send_mock:
+                resp = self.client.post(f"{API}/devices/test/", format="json")
+
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp.data, {"sent": 1, "pruned": 0})
+        message = send_mock.call_args.args[0]
+        self.assertEqual(message.tokens, ["own-tok"])
+        self.assertEqual(message.data["type"], "test")
+
+    def test_requires_authentication(self):
+        resp = self.client.post(f"{API}/devices/test/", format="json")
+        self.assertEqual(resp.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_no_devices_registered_reports_zero_sent(self):
+        _auth(self.client, self.user)
+        with override_settings(FIREBASE_SERVICE_ACCOUNT_JSON=FAKE_SERVICE_ACCOUNT_JSON):
+            resp = self.client.post(f"{API}/devices/test/", format="json")
+
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp.data, {"sent": 0, "pruned": 0})
+
+
 class SendToUsersTests(FirebaseAppCleanupMixin, TestCase):
     def setUp(self):
         self.user = User.objects.create_user(

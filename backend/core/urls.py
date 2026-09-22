@@ -16,7 +16,7 @@ from .views import ChangePasswordView, StaffViewSet
 from .views import MeRestDaysView  # add to the existing .views import block
 from .views import SubscriptionPaymentInfoView, SubscriptionView
 from .views import MeQrSecretView
-from .views import DeviceTokenView
+from .views import DeviceTokenView, DeviceTokenTestView
 from .views import CommentDeleteView, CommentListCreateView, LikeToggleView
 from .models import Announcement, Event
 router = DefaultRouter()
@@ -80,6 +80,7 @@ urlpatterns = [
     path("me/rest-days/", MeRestDaysView.as_view(), name="me-rest-days"),
     path("me/qr-secret/", MeQrSecretView.as_view(), name="me-qr-secret"),
     path("devices/", DeviceTokenView.as_view(), name="devices"),
+    path("devices/test/", DeviceTokenTestView.as_view(), name="devices-test"),
     path("auth/logout/", LogoutView.as_view(), name="auth-logout"),
     path("subscription/", SubscriptionView.as_view(), name="subscription"),
     path("subscription/payment-info/", SubscriptionPaymentInfoView.as_view(),

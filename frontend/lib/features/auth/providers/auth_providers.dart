@@ -59,10 +59,16 @@ class AuthController extends Notifier<AuthState> {
         state = AuthAuthenticated(user);
         // Tokens can silently rotate between sessions — re-register on
         // every app start while already authenticated, not just on a
-        // fresh login/claim. Never a permission prompt here: that only
-        // happens right after claim() or login(), never at launch.
+        // fresh login/claim.
         // ignore: unawaited_futures
         ref.read(pushNotificationServiceProvider).registerToken();
+        // Someone who was already logged in before push notifications
+        // existed (or who denied the prompt back then and later enabled
+        // it from Settings) would otherwise never get asked again by
+        // requestPermissionOnce, which only tracks "have we ever asked".
+        // This checks the real OS state on every app start instead.
+        // ignore: unawaited_futures
+        ref.read(pushNotificationServiceProvider).requestPermissionIfNotGranted();
       } else {
         state = const AuthUnauthenticated();
       }

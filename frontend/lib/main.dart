@@ -34,11 +34,14 @@ class _FlexDeskAppState extends ConsumerState<FlexDeskApp> {
         .initMessageHandling(onMessageTap: _handleNotificationTap);
   }
 
-  // Routes a tap on a push notification — from the foreground banner,
-  // from the OS tray (background), or from a cold start (terminated).
-  // An unrecognized type must land on home rather than crash or show a
-  // blank screen, since a future server version may send a type this
-  // build doesn't know about. See E in FLEXDESK_PHASE4_PART_B_SPEC.md.
+  // Routes a tap on a push notification, whether it arrived while the
+  // app was open, backgrounded, or fully terminated — all three show a
+  // real system tray notification now (see PushNotificationService) and
+  // route through here the same way. An unrecognized type (including the
+  // "test" type from the Settings screen's test button) must land on
+  // home rather than crash or show a blank screen, since a future server
+  // version may send a type this build doesn't know about. See E in
+  // FLEXDESK_PHASE4_PART_B_SPEC.md.
   void _handleNotificationTap(Map<String, dynamic> data) {
     final authState = ref.read(authControllerProvider);
     final isMember = authState is AuthAuthenticated && authState.user.isMember;
@@ -72,7 +75,6 @@ class _FlexDeskAppState extends ConsumerState<FlexDeskApp> {
     final router = ref.watch(appRouterProvider);
     return MaterialApp.router(
       title: 'FlexDesk',
-      scaffoldMessengerKey: PushNotificationService.messengerKey,
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(seedColor: AppColors.accentTeal),
