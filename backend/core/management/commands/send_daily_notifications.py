@@ -1,10 +1,12 @@
 import logging
+from datetime import datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
 from django.core.management.base import BaseCommand
-from django.db.models import F
-from datetime import timedelta
+from django.db.models import F, Sum
 
-from core.models import Gym, Member, NotificationSend, Product, StaffProfile
+from core.models import (CheckIn, Gym, Member, NotificationSend, Product, Sale,
+                         StaffProfile, Subscription)
 from core.notifications import send_to_users
 from core.utils import gym_today
 
@@ -13,12 +15,15 @@ logger = logging.getLogger(__name__)
 
 class Command(BaseCommand):
     """
-    Renewal reminders and the low-stock digest — A5. Run once a day (see
-    A6 for how it's scheduled); safe to run any number of times in the
-    same gym-local day because every send is gated on a NotificationSend
-    row that either already exists or gets created right before sending.
+    Renewal reminders, the low-stock digest, trial/subscription-ending
+    reminders, and the daily sales summary — runs once a day, at 8:00 AM
+    Philippine time (Railway cron; see the project's scheduling setup).
+    Safe to run any number of times in the same gym-local day because
+    every send is gated on a NotificationSend row that either already
+    exists or gets created right before sending.
     """
-    help = "Sends renewal reminders and the low-stock digest, once per gym per day."
+    help = ("Sends renewal reminders, the low-stock digest, trial-ending "
+           "reminders, and the daily sales summary, once per gym per day.")
 
     def handle(self, *args, **options):
         for gym in Gym.objects.all():
@@ -26,6 +31,8 @@ class Command(BaseCommand):
                 today = gym_today(gym)
                 self._send_renewal_reminders(gym, today)
                 self._send_low_stock_digest(gym, today)
+                self._send_trial_reminders(gym, today)
+                self._send_daily_summary(gym, today)
             except Exception:
                 # One gym's bad data (or anything else) must not cost
                 # every gym after it its notifications for the day.
@@ -75,6 +82,7 @@ class Command(BaseCommand):
                     title="FlexDesk",
                     body=f"Your membership at {gym.name} ends {phrase}.",
                     data={"type": "renewal", "id": str(membership.id)},
+                    notif_type="renewal",
                 )
 
                 NotificationSend.objects.create(
@@ -116,6 +124,87 @@ class Command(BaseCommand):
         send_to_users(
             [owner.user], title="FlexDesk", body=body,
             data={"type": "inventory", "id": None},
+            notif_type="inventory",
+        )
+
+        NotificationSend.objects.create(user=owner.user, kind=kind, subject_id=None)
+
+    def _send_trial_reminders(self, gym, today):
+        subscription = Subscription.objects.filter(gym=gym).first()
+        if subscription is None or subscription.status != Subscription.TRIALING:
+            return
+
+        owner = StaffProfile.objects.filter(gym=gym, role=StaffProfile.OWNER).first()
+        if owner is None:
+            return
+
+        tz = ZoneInfo(gym.timezone)
+        trial_end_date = subscription.trial_ends_at.astimezone(tz).date()
+
+        for kind, target_date, phrase in (
+            ("trial_3day", today + timedelta(days=Subscription.EXPIRING_SOON_DAYS), "in 3 days"),
+            ("trial_lastday", today, "today"),
+        ):
+            if trial_end_date != target_date:
+                continue
+
+            already_sent = NotificationSend.objects.filter(
+                user=owner.user, kind=kind, subject_id=subscription.id,
+            ).exists()
+            if already_sent:
+                continue
+
+            send_to_users(
+                [owner.user], title="FlexDesk",
+                body=f"Your free trial ends {phrase}. Subscribe to keep FlexDesk running.",
+                data={"type": "trial_ending", "id": str(subscription.id)},
+                notif_type="trial_ending",
+            )
+
+            NotificationSend.objects.create(
+                user=owner.user, kind=kind, subject_id=subscription.id,
+            )
+
+    def _send_daily_summary(self, gym, today):
+        owner = StaffProfile.objects.filter(gym=gym, role=StaffProfile.OWNER).first()
+        if owner is None:
+            return
+
+        yesterday = today - timedelta(days=1)
+        kind = f"daily_summary_{yesterday:%Y_%m_%d}"
+        already_sent = NotificationSend.objects.filter(
+            user=owner.user, kind=kind, subject_id=None,
+        ).exists()
+        if already_sent:
+            return
+
+        # Explicit gym-local day -> UTC range, same shape as
+        # CheckInViewSet.get_queryset — never a bare __date lookup, which
+        # would use settings.TIME_ZONE (UTC) instead of the gym's.
+        tz = ZoneInfo(gym.timezone)
+        start = datetime.combine(yesterday, time.min, tzinfo=tz)
+        end = start + timedelta(days=1)
+
+        sales_qs = Sale.objects.filter(
+            gym=gym, voided_at__isnull=True, sold_at__gte=start, sold_at__lt=end)
+        total_sales = sales_qs.aggregate(total=Sum("total_amount"))["total"] or 0
+        checkins_count = CheckIn.objects.filter(
+            gym=gym, voided_at__isnull=True, checked_in_at__gte=start, checked_in_at__lt=end,
+        ).count()
+
+        if total_sales == 0 and checkins_count == 0:
+            return
+
+        new_members_count = Member.objects.filter(
+            gym=gym, created_at__gte=start, created_at__lt=end).count()
+
+        body = (f"₱{total_sales:,.0f} in sales · {checkins_count} check-ins · "
+               f"{new_members_count} new member{'s' if new_members_count != 1 else ''}")
+
+        send_to_users(
+            [owner.user], title=f"Yesterday at {gym.name}", body=body,
+            data={"type": "daily_summary", "id": None},
+            notif_type="daily_summary",
         )
 
         NotificationSend.objects.create(user=owner.user, kind=kind, subject_id=None)

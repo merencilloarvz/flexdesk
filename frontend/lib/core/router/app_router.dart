@@ -37,6 +37,10 @@ import '../../features/scheduling/screens/member_schedule_screen.dart';
 import '../../features/scheduling/screens/time_slot_list_screen.dart';
 import '../../features/community/screens/member/community_screen.dart';
 import '../../features/community/screens/member/announcement_detail_screen.dart';
+import '../../features/community/screens/member/member_event_detail_screen.dart';
+import '../../features/community/screens/owners/announcement_detail_screen.dart'
+    as owner_announcement;
+import '../../features/community/screens/owners/event_detail_screen.dart';
 import '../../features/pos/screens/inventory_screen.dart';
 import '../../features/workout_guides/screens/workout_guides_screen.dart';
 import '../../features/subscription/screens/subscribe_screen.dart';
@@ -181,6 +185,12 @@ List<({IconData icon, String label, int branchIndex})> _memberTabsFor(
   return classesEnabled ? _memberTabsWithSchedule : _memberTabsBase;
 }
 
+/// GoRouter's own top-level navigator — used to push a detail screen
+/// (e.g. EventDetailScreen) on top of a route that lives outside every
+/// shell branch, like /events and /announcements, the way
+/// _memberCommunityNavigatorKey etc. do for routes inside a shell.
+final _rootNavigatorKey = GlobalKey<NavigatorState>();
+
 final _homeNavigatorKey = GlobalKey<NavigatorState>();
 final _membersNavigatorKey = GlobalKey<NavigatorState>();
 final _checkinNavigatorKey = GlobalKey<NavigatorState>();
@@ -204,6 +214,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   });
 
   return GoRouter(
+    navigatorKey: _rootNavigatorKey,
     initialLocation: '/splash',
     refreshListenable: refreshNotifier,
     redirect: (context, state) {
@@ -584,6 +595,51 @@ void openInventory() {
   WidgetsBinding.instance.addPostFrameCallback((_) {
     _modulesNavigatorKey.currentState?.push(
       MaterialPageRoute(builder: (_) => const InventoryScreen()),
+    );
+  });
+}
+
+/// Pushes the member-facing event detail screen onto the Community tab
+/// — same pattern as [openAnnouncementDetail], for a "new event" or
+/// "comment on an event" (when the tapper is a member — comments notify
+/// staff, not members, so this path is really just new_event today, kept
+/// generic since a future member-facing comment type would want it too).
+void openMemberEventDetail(String eventId) {
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    _memberCommunityNavigatorKey.currentState?.push(
+      MaterialPageRoute(
+        builder: (_) => MemberEventDetailScreen(eventId: eventId),
+      ),
+    );
+  });
+}
+
+/// Pushes the owner-facing event detail screen on top of /events. Unlike
+/// the shell-branch routes above, /events lives outside every shell
+/// branch, so there's no per-tab navigator key to push onto — this uses
+/// GoRouter's own root navigator instead.
+void openOwnerEventDetail(String eventId) {
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    _rootNavigatorKey.currentState?.push(
+      MaterialPageRoute(builder: (_) => EventDetailScreen(eventId: eventId)),
+    );
+  });
+}
+
+/// Pushes the owner-facing announcement detail screen on top of
+/// /announcements — same reasoning as [openOwnerEventDetail]. Named with
+/// the `owner_announcement` prefix at the import site because the
+/// member-side screen this file already imports unprefixed
+/// (announcement_detail_screen.dart under screens/member/) has the exact
+/// same class name.
+void openOwnerAnnouncementDetail(String announcementId) {
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    _rootNavigatorKey.currentState?.push(
+      MaterialPageRoute(
+        builder: (_) => owner_announcement.AnnouncementDetailScreen(
+          announcementId: announcementId,
+        ),
+      ),
     );
   });
 }

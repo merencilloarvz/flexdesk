@@ -1,8 +1,10 @@
 import json
 import threading
 from datetime import date, datetime, timedelta, timezone as dt_timezone
+from decimal import Decimal
 from types import SimpleNamespace
 from unittest import mock
+from zoneinfo import ZoneInfo
 
 from django.core.management import call_command
 from django.db import connections
@@ -15,15 +17,39 @@ from rest_framework.test import APIClient, APITestCase
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from core import notifications
-from core.models import (Announcement, DeviceToken, Gym, Location, Member,
+from core.models import (Announcement, CheckIn, Comment, DeviceToken, Event,
+                         EventRegistration, Gym, Location, Member,
                          Membership, MembershipPlan, NotificationSend,
-                         Product, StaffProfile, User)
+                         Product, Sale, StaffProfile, Subscription, User)
 from core.tests.test_pos import (make_gym, make_location, make_member_user,
                                  make_product, make_staff_user)
 from core.utils import gym_today
 from core.views import _notify_announcement, create_sale
 
 API = "/api/v1"
+
+
+def _run_thread_inline():
+    """
+    Every new notification trigger fires on a real background thread
+    (threading.Thread(..., daemon=True).start()) the same way
+    _notify_announcement does, so the create/action response doesn't
+    wait on FCM. This patches threading.Thread to run inline instead —
+    same approach as AnnouncementNotificationTests._run_announcement_
+    thread_inline, generalized for reuse across every trigger below.
+    """
+    class ImmediateThread:
+        def __init__(self, target=None, args=(), daemon=None):
+            self._target = target
+            self._args = args
+
+        def start(self):
+            self._target(*self._args)
+
+        def join(self):
+            pass
+
+    return mock.patch("core.views.threading.Thread", ImmediateThread)
 
 # Shape-valid but entirely fake — never a real credential. Enough for
 # firebase_admin.credentials.Certificate to parse locally; no network
@@ -119,37 +145,26 @@ class DeviceTokenEndpointTests(APITestCase):
 
 
 class DeviceTokenTestEndpointTests(FirebaseAppCleanupMixin, APITestCase):
+    """
+    Auth/plumbing only — the type picker's own behavior (audience
+    filtering, per-type channel/sample, own-devices-only scoping) is
+    covered by DeviceTokenTestPickerTests below, against the real
+    TYPE_CATALOG rather than a placeholder "test" type.
+    """
     def setUp(self):
         self.user = User.objects.create_user(
             email="selftestuser@example.com", password="StrongPass123!")
-        self.other_user = User.objects.create_user(
-            email="othertestuser@example.com", password="StrongPass123!")
-
-    def test_sends_only_to_the_caller_s_own_devices(self):
-        DeviceToken.objects.create(user=self.user, token="own-tok", platform="android")
-        DeviceToken.objects.create(user=self.other_user, token="other-tok", platform="android")
-        response = _multicast_response([True])
-
-        _auth(self.client, self.user)
-        with override_settings(FIREBASE_SERVICE_ACCOUNT_JSON=FAKE_SERVICE_ACCOUNT_JSON):
-            with mock.patch.object(messaging, "send_each_for_multicast",
-                                   return_value=response) as send_mock:
-                resp = self.client.post(f"{API}/devices/test/", format="json")
-
-        self.assertEqual(resp.status_code, status.HTTP_200_OK)
-        self.assertEqual(resp.data, {"sent": 1, "pruned": 0})
-        message = send_mock.call_args.args[0]
-        self.assertEqual(message.tokens, ["own-tok"])
-        self.assertEqual(message.data["type"], "test")
 
     def test_requires_authentication(self):
-        resp = self.client.post(f"{API}/devices/test/", format="json")
+        resp = self.client.post(f"{API}/devices/test/", {"type": "out_of_stock"},
+                                format="json")
         self.assertEqual(resp.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_no_devices_registered_reports_zero_sent(self):
         _auth(self.client, self.user)
         with override_settings(FIREBASE_SERVICE_ACCOUNT_JSON=FAKE_SERVICE_ACCOUNT_JSON):
-            resp = self.client.post(f"{API}/devices/test/", format="json")
+            resp = self.client.post(f"{API}/devices/test/", {"type": "out_of_stock"},
+                                    format="json")
 
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         self.assertEqual(resp.data, {"sent": 0, "pruned": 0})
@@ -693,3 +708,495 @@ class ConcurrentOutOfStockNotificationTests(TransactionTestCase):
         # thread's transaction actually commits), so the notification for
         # the one successful sale should have fired exactly once.
         self.assertEqual(send_mock.call_count, 1)
+
+
+class NewEventNotificationTests(APITestCase):
+    def setUp(self):
+        self.gym = make_gym("Event Gym")
+        self.location = make_location(self.gym)
+        self.owner = make_staff_user(self.gym, "eventowner@test.com",
+                                     role=StaffProfile.OWNER, location=self.location)
+        self.member_user = make_member_user(self.gym, self.location, "eventmember@test.com")
+
+        self.other_gym = make_gym("Other Event Gym")
+        self.other_location = make_location(self.other_gym)
+        self.other_member_user = make_member_user(
+            self.other_gym, self.other_location, "othereventmember@test.com")
+
+    def as_owner(self):
+        c = APIClient()
+        c.force_authenticate(user=self.owner)
+        return c
+
+    def _post_event(self, **overrides):
+        payload = {
+            "title": "Summer Showdown",
+            "event_date": "2026-10-12",
+            "registration_fee": "200.00",
+        }
+        payload.update(overrides)
+        return self.as_owner().post(f"{API}/events/", payload, format="json")
+
+    def test_new_event_notifies_members_of_same_gym_only(self):
+        with _run_thread_inline():
+            with mock.patch("core.views.send_to_users", return_value=(0, 0)) as send_mock:
+                resp = self._post_event()
+
+        self.assertIn(resp.status_code, (200, 201))
+        send_mock.assert_called_once()
+        recipients = send_mock.call_args.args[0]
+        self.assertIn(self.member_user, recipients)
+        self.assertNotIn(self.other_member_user, recipients)
+        self.assertNotIn(self.owner, recipients)
+        self.assertEqual(send_mock.call_args.kwargs["notif_type"], "new_event")
+
+    def test_title_and_fee_in_body(self):
+        with _run_thread_inline():
+            with mock.patch("core.views.send_to_users", return_value=(0, 0)) as send_mock:
+                self._post_event(title="Summer Showdown", **{"registration_fee": "200.00"})
+
+        title = send_mock.call_args.kwargs.get("title") or send_mock.call_args.args[1]
+        body = send_mock.call_args.kwargs.get("body") or send_mock.call_args.args[2]
+        self.assertIn("Summer Showdown", title)
+        self.assertIn("₱200", body)
+
+    def test_free_event_says_free(self):
+        with _run_thread_inline():
+            with mock.patch("core.views.send_to_users", return_value=(0, 0)) as send_mock:
+                self._post_event(registration_fee="0")
+
+        body = send_mock.call_args.kwargs.get("body") or send_mock.call_args.args[2]
+        self.assertIn("Free", body)
+
+    def test_creates_notification_send_row_per_member(self):
+        with _run_thread_inline():
+            with mock.patch("core.views.send_to_users", return_value=(0, 0)):
+                resp = self._post_event()
+
+        event_id = resp.data["id"]
+        self.assertTrue(
+            NotificationSend.objects.filter(
+                user=self.member_user, kind="new_event", subject_id=event_id).exists()
+        )
+
+    def test_send_failure_does_not_fail_the_create_request(self):
+        with _run_thread_inline():
+            with mock.patch("core.views.send_to_users", side_effect=RuntimeError("boom")):
+                resp = self._post_event()
+
+        self.assertIn(resp.status_code, (200, 201))
+        self.assertEqual(Event.objects.count(), 1)
+
+
+class CommentNotificationTests(APITestCase):
+    def setUp(self):
+        self.gym = make_gym("Comment Gym")
+        self.location = make_location(self.gym)
+        self.owner = make_staff_user(self.gym, "commentowner@test.com",
+                                     role=StaffProfile.OWNER, location=self.location)
+        self.staff = make_staff_user(self.gym, "commentstaff@test.com",
+                                     role=StaffProfile.STAFF, location=self.location)
+        self.member_user = make_member_user(self.gym, self.location, "commentmember@test.com")
+        self.announcement = Announcement.objects.create(
+            gym=self.gym, created_by=self.owner, title="Gym closed Sunday",
+            body="We're closed this Sunday.")
+        self.event = Event.objects.create(
+            gym=self.gym, title="Summer Showdown", event_date="2026-10-12")
+
+    def as_(self, user):
+        c = APIClient()
+        c.force_authenticate(user=user)
+        return c
+
+    def test_staff_comment_notifies_owner_but_not_the_commenter(self):
+        with _run_thread_inline():
+            with mock.patch("core.views.send_to_users", return_value=(0, 0)) as send_mock:
+                resp = self.as_(self.staff).post(
+                    f"{API}/announcements/{self.announcement.id}/comments/",
+                    {"body": "Noted, thanks!"}, format="json")
+
+        self.assertIn(resp.status_code, (200, 201))
+        send_mock.assert_called_once()
+        recipients = send_mock.call_args.args[0]
+        self.assertIn(self.owner, recipients)
+        self.assertNotIn(self.staff, recipients)
+
+    def test_member_comment_notifies_all_staff(self):
+        with _run_thread_inline():
+            with mock.patch("core.views.send_to_users", return_value=(0, 0)) as send_mock:
+                resp = self.as_(self.member_user).post(
+                    f"{API}/announcements/{self.announcement.id}/comments/",
+                    {"body": "What time do you reopen?"}, format="json")
+
+        self.assertIn(resp.status_code, (200, 201))
+        recipients = send_mock.call_args.args[0]
+        self.assertIn(self.owner, recipients)
+        self.assertIn(self.staff, recipients)
+        self.assertNotIn(self.member_user, recipients)
+
+    def test_title_and_quoted_body_preview(self):
+        with _run_thread_inline():
+            with mock.patch("core.views.send_to_users", return_value=(0, 0)) as send_mock:
+                self.as_(self.member_user).post(
+                    f"{API}/announcements/{self.announcement.id}/comments/",
+                    {"body": "What time do you reopen?"}, format="json")
+
+        title = send_mock.call_args.kwargs.get("title") or send_mock.call_args.args[1]
+        body = send_mock.call_args.kwargs.get("body") or send_mock.call_args.args[2]
+        self.assertIn("Gym closed Sunday", title)
+        self.assertIn('"What time do you reopen?"', body)
+
+    def test_comment_on_event_uses_event_title_and_target_type(self):
+        with _run_thread_inline():
+            with mock.patch("core.views.send_to_users", return_value=(0, 0)) as send_mock:
+                self.as_(self.member_user).post(
+                    f"{API}/events/{self.event.id}/comments/",
+                    {"body": "Can't wait!"}, format="json")
+
+        title = send_mock.call_args.kwargs.get("title") or send_mock.call_args.args[1]
+        self.assertIn("Summer Showdown", title)
+        data = send_mock.call_args.kwargs["data"]
+        self.assertEqual(data["target_type"], "event")
+        self.assertEqual(data["id"], str(self.event.id))
+
+    def test_creates_notification_send_row(self):
+        with _run_thread_inline():
+            with mock.patch("core.views.send_to_users", return_value=(0, 0)):
+                self.as_(self.member_user).post(
+                    f"{API}/announcements/{self.announcement.id}/comments/",
+                    {"body": "Noted"}, format="json")
+
+        comment = Comment.objects.get(announcement=self.announcement)
+        self.assertTrue(
+            NotificationSend.objects.filter(
+                user=self.owner, kind="comment", subject_id=comment.id).exists()
+        )
+
+    def test_like_sends_no_notification(self):
+        with _run_thread_inline():
+            with mock.patch("core.views.send_to_users", return_value=(0, 0)) as send_mock:
+                resp = self.as_(self.member_user).post(
+                    f"{API}/announcements/{self.announcement.id}/like/")
+
+        self.assertEqual(resp.status_code, 200)
+        send_mock.assert_not_called()
+
+
+class CheckInNotificationTests(APITestCase):
+    def setUp(self):
+        self.gym = make_gym("CheckIn Gym")
+        self.location = make_location(self.gym)
+        self.staff = make_staff_user(self.gym, "checkinstaff@test.com",
+                                     role=StaffProfile.STAFF, location=self.location)
+        self.member_user = make_member_user(self.gym, self.location, "checkinmember@test.com")
+        self.member = self.member_user.member_profile
+
+    def as_staff(self):
+        c = APIClient()
+        c.force_authenticate(user=self.staff)
+        return c
+
+    def _post_checkin(self, member_id, checked_in_at):
+        return self.as_staff().post(f"{API}/check-ins/", {
+            "visit_type": "MEMBER", "member": str(member_id),
+            "checked_in_at": checked_in_at.isoformat(),
+        }, format="json")
+
+    def test_fresh_checkin_notifies_the_member(self):
+        with _run_thread_inline():
+            with mock.patch("core.views.send_to_users", return_value=(0, 0)) as send_mock:
+                resp = self._post_checkin(self.member.id, timezone.now())
+
+        self.assertIn(resp.status_code, (200, 201))
+        send_mock.assert_called_once()
+        self.assertEqual(send_mock.call_args.args[0], [self.member_user])
+        self.assertEqual(send_mock.call_args.kwargs["notif_type"], "checkin")
+
+    def test_checkin_more_than_an_hour_old_does_not_notify(self):
+        with _run_thread_inline():
+            with mock.patch("core.views.send_to_users", return_value=(0, 0)) as send_mock:
+                resp = self._post_checkin(
+                    self.member.id, timezone.now() - timedelta(hours=2))
+
+        self.assertIn(resp.status_code, (200, 201))
+        send_mock.assert_not_called()
+
+    def test_checkin_just_under_an_hour_old_still_notifies(self):
+        with _run_thread_inline():
+            with mock.patch("core.views.send_to_users", return_value=(0, 0)) as send_mock:
+                resp = self._post_checkin(
+                    self.member.id, timezone.now() - timedelta(minutes=59))
+
+        self.assertIn(resp.status_code, (200, 201))
+        send_mock.assert_called_once()
+
+    def test_unclaimed_member_checkin_does_not_notify(self):
+        unclaimed = Member.objects.create(
+            gym=self.gym, home_location=self.location, first_name="No",
+            last_name="Account", member_type=Member.MEMBER)
+
+        with _run_thread_inline():
+            with mock.patch("core.views.send_to_users", return_value=(0, 0)) as send_mock:
+                resp = self._post_checkin(unclaimed.id, timezone.now())
+
+        self.assertIn(resp.status_code, (200, 201))
+        send_mock.assert_not_called()
+
+    def test_walkin_checkin_does_not_notify(self):
+        with _run_thread_inline():
+            with mock.patch("core.views.send_to_users", return_value=(0, 0)) as send_mock:
+                resp = self.as_staff().post(f"{API}/check-ins/", {
+                    "visit_type": "WALKIN", "visitor_name": "Drop-in Dave",
+                    "category": "regular", "checked_in_at": timezone.now().isoformat(),
+                }, format="json")
+
+        self.assertIn(resp.status_code, (200, 201))
+        send_mock.assert_not_called()
+
+
+class EventRegistrationNotificationTests(APITestCase):
+    def setUp(self):
+        self.gym = make_gym("Registration Gym")
+        self.location = make_location(self.gym)
+        self.owner = make_staff_user(self.gym, "regowner@test.com",
+                                     role=StaffProfile.OWNER, location=self.location)
+        self.staff = make_staff_user(self.gym, "regstaff@test.com",
+                                     role=StaffProfile.STAFF, location=self.location)
+        self.member_user = make_member_user(self.gym, self.location, "regmember@test.com")
+        self.event = Event.objects.create(
+            gym=self.gym, title="Summer Showdown", event_date="2026-10-12")
+
+    def as_(self, user):
+        c = APIClient()
+        c.force_authenticate(user=user)
+        return c
+
+    def test_registration_notifies_owner_and_staff(self):
+        with _run_thread_inline():
+            with mock.patch("core.views.send_to_users", return_value=(0, 0)) as send_mock:
+                resp = self.as_(self.member_user).post(
+                    f"{API}/events/{self.event.id}/register/")
+
+        self.assertIn(resp.status_code, (200, 201))
+        send_mock.assert_called_once()
+        recipients = send_mock.call_args.args[0]
+        self.assertIn(self.owner, recipients)
+        self.assertIn(self.staff, recipients)
+        self.assertNotIn(self.member_user, recipients)
+        self.assertEqual(send_mock.call_args.kwargs["notif_type"], "event_registration")
+
+    def test_body_includes_member_name_event_and_count(self):
+        with _run_thread_inline():
+            with mock.patch("core.views.send_to_users", return_value=(0, 0)) as send_mock:
+                self.as_(self.member_user).post(f"{API}/events/{self.event.id}/register/")
+
+        body = send_mock.call_args.kwargs.get("body") or send_mock.call_args.args[2]
+        self.assertIn("Test Member", body)
+        self.assertIn("Summer Showdown", body)
+        self.assertIn("1 registered", body)
+
+    def test_creates_notification_send_row_per_recipient(self):
+        with _run_thread_inline():
+            with mock.patch("core.views.send_to_users", return_value=(0, 0)):
+                resp = self.as_(self.member_user).post(
+                    f"{API}/events/{self.event.id}/register/")
+
+        registration = EventRegistration.objects.get(event=self.event)
+        self.assertTrue(
+            NotificationSend.objects.filter(
+                user=self.owner, kind="event_registration",
+                subject_id=registration.id).exists()
+        )
+
+
+class TrialReminderCommandTests(TestCase):
+    def setUp(self):
+        self.gym = make_gym("Trial Gym")
+        self.location = make_location(self.gym)
+        self.owner = make_staff_user(self.gym, "trialowner@test.com",
+                                     role=StaffProfile.OWNER, location=self.location)
+
+    def _sub(self, **kwargs):
+        defaults = {"gym": self.gym, "status": Subscription.TRIALING}
+        defaults.update(kwargs)
+        return Subscription.objects.create(**defaults)
+
+    def test_sends_3day_and_lastday_reminders(self):
+        today = gym_today(self.gym)
+        self._sub(trial_ends_at=timezone.now() + timedelta(days=3))
+
+        with mock.patch(
+            "core.management.commands.send_daily_notifications.send_to_users"
+        ) as send_mock:
+            call_command("send_daily_notifications")
+
+        send_mock.assert_called_once()
+        self.assertEqual(send_mock.call_args.args[0], [self.owner])
+        self.assertEqual(send_mock.call_args.kwargs["data"]["type"], "trial_ending")
+        self.assertTrue(
+            NotificationSend.objects.filter(
+                user=self.owner, kind="trial_3day").exists()
+        )
+
+    def test_active_subscription_is_never_reminded(self):
+        self._sub(status=Subscription.ACTIVE,
+                  trial_ends_at=timezone.now() + timedelta(days=3),
+                  current_period_end=timezone.now() + timedelta(days=3))
+
+        with mock.patch(
+            "core.management.commands.send_daily_notifications.send_to_users"
+        ) as send_mock:
+            call_command("send_daily_notifications")
+
+        send_mock.assert_not_called()
+
+    def test_running_twice_sends_once(self):
+        self._sub(trial_ends_at=timezone.now())  # ends today
+
+        with mock.patch(
+            "core.management.commands.send_daily_notifications.send_to_users"
+        ) as send_mock:
+            call_command("send_daily_notifications")
+            call_command("send_daily_notifications")
+
+        self.assertEqual(send_mock.call_count, 1)
+        self.assertEqual(
+            NotificationSend.objects.filter(
+                user=self.owner, kind="trial_lastday").count(),
+            1,
+        )
+
+
+class DailySummaryCommandTests(TestCase):
+    def setUp(self):
+        self.gym = make_gym("Summary Gym")
+        self.location = make_location(self.gym)
+        self.owner = make_staff_user(self.gym, "summaryowner@test.com",
+                                     role=StaffProfile.OWNER, location=self.location)
+
+    def _yesterday_range(self):
+        today = gym_today(self.gym)
+        yesterday = today - timedelta(days=1)
+        tz = ZoneInfo(self.gym.timezone)
+        start = datetime.combine(yesterday, datetime.min.time(), tzinfo=tz)
+        return start + timedelta(hours=10)  # mid-morning yesterday
+
+    def test_skips_when_zero_sales_and_zero_checkins(self):
+        with mock.patch(
+            "core.management.commands.send_daily_notifications.send_to_users"
+        ) as send_mock:
+            call_command("send_daily_notifications")
+
+        send_mock.assert_not_called()
+
+    def test_sends_with_totals_when_sales_present(self):
+        member_user = make_member_user(self.gym, self.location, "summarymember@test.com")
+        Sale.objects.create(
+            gym=self.gym, member=member_user.member_profile,
+            total_amount=Decimal("500.00"), sold_at=self._yesterday_range(),
+            sold_by=self.owner,
+        )
+
+        with mock.patch(
+            "core.management.commands.send_daily_notifications.send_to_users"
+        ) as send_mock:
+            call_command("send_daily_notifications")
+
+        send_mock.assert_called_once()
+        self.assertEqual(send_mock.call_args.args[0], [self.owner])
+        body = send_mock.call_args.kwargs["body"]
+        self.assertIn("500", body)
+        self.assertEqual(send_mock.call_args.kwargs["data"]["type"], "daily_summary")
+
+    def test_running_twice_sends_once(self):
+        Sale.objects.create(
+            gym=self.gym, total_amount=Decimal("100.00"),
+            sold_at=self._yesterday_range(), sold_by=self.owner,
+        )
+
+        with mock.patch(
+            "core.management.commands.send_daily_notifications.send_to_users"
+        ) as send_mock:
+            call_command("send_daily_notifications")
+            call_command("send_daily_notifications")
+
+        self.assertEqual(send_mock.call_count, 1)
+
+    def test_voided_sale_does_not_count(self):
+        Sale.objects.create(
+            gym=self.gym, total_amount=Decimal("100.00"),
+            sold_at=self._yesterday_range(), sold_by=self.owner,
+            voided_at=timezone.now(),
+        )
+
+        with mock.patch(
+            "core.management.commands.send_daily_notifications.send_to_users"
+        ) as send_mock:
+            call_command("send_daily_notifications")
+
+        send_mock.assert_not_called()
+
+
+class DeviceTokenTestPickerTests(APITestCase):
+    def setUp(self):
+        self.gym = make_gym("Picker Gym")
+        self.location = make_location(self.gym)
+        self.owner = make_staff_user(self.gym, "pickerowner@test.com",
+                                     role=StaffProfile.OWNER, location=self.location)
+        self.member_user = make_member_user(self.gym, self.location, "pickermember@test.com")
+
+    def _auth(self, user):
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {RefreshToken.for_user(user).access_token}")
+
+    def test_owner_sees_only_owner_facing_types(self):
+        self._auth(self.owner)
+        resp = self.client.get(f"{API}/devices/test/")
+
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        types = {t["type"] for t in resp.data["types"]}
+        self.assertIn("out_of_stock", types)
+        self.assertIn("daily_summary", types)
+        self.assertNotIn("announcement", types)
+        self.assertNotIn("checkin", types)
+
+    def test_member_sees_only_member_facing_types(self):
+        self._auth(self.member_user)
+        resp = self.client.get(f"{API}/devices/test/")
+
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        types = {t["type"] for t in resp.data["types"]}
+        self.assertIn("announcement", types)
+        self.assertIn("checkin", types)
+        self.assertNotIn("out_of_stock", types)
+
+    def test_post_sends_sample_to_own_devices_only(self):
+        other_user = make_staff_user(self.gym, "pickerother@test.com",
+                                     role=StaffProfile.STAFF, location=self.location)
+        DeviceToken.objects.create(user=self.owner, token="picker-own-tok", platform="android")
+        DeviceToken.objects.create(user=other_user, token="picker-other-tok", platform="android")
+        response = _multicast_response([True])
+
+        self._auth(self.owner)
+        with override_settings(FIREBASE_SERVICE_ACCOUNT_JSON=FAKE_SERVICE_ACCOUNT_JSON):
+            with mock.patch.object(messaging, "send_each_for_multicast",
+                                   return_value=response) as send_mock:
+                resp = self.client.post(
+                    f"{API}/devices/test/", {"type": "out_of_stock"}, format="json")
+
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        message = send_mock.call_args.args[0]
+        self.assertEqual(message.tokens, ["picker-own-tok"])
+        self.assertEqual(message.android.notification.channel_id, "channel_store")
+
+    def test_post_rejects_type_for_wrong_role(self):
+        self._auth(self.member_user)
+        resp = self.client.post(
+            f"{API}/devices/test/", {"type": "out_of_stock"}, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_post_rejects_unknown_type(self):
+        self._auth(self.owner)
+        resp = self.client.post(
+            f"{API}/devices/test/", {"type": "not_a_real_type"}, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)

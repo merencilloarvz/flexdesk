@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/notifications/notification_test_picker.dart';
 import '../../../core/notifications/push_notification_service.dart';
 import '../../../core/theme/colors.dart';
 import '../../auth/providers/auth_providers.dart';
@@ -38,23 +39,6 @@ class SettingsScreen extends ConsumerWidget {
             .openSystemNotificationSettings();
       }
       ref.invalidate(notificationsEnabledProvider);
-    }
-
-    Future<void> onSendTestNotification() async {
-      try {
-        await ref.read(deviceTokenApiProvider).sendTest();
-        if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Test notification sent.')),
-        );
-      } catch (_) {
-        if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Couldn't send it. Check your connection."),
-          ),
-        );
-      }
     }
 
     Future<void> onToggleClasses(bool value) async {
@@ -209,7 +193,7 @@ class SettingsScreen extends ConsumerWidget {
               icon: Icons.send_outlined,
               title: 'Send test notification',
               subtitle: 'Check that push notifications are working',
-              onTap: onSendTestNotification,
+              onTap: () => showNotificationTestPicker(context, ref),
             ),
 
             const SizedBox(height: 20),

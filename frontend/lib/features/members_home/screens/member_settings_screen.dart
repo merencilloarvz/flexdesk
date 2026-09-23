@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/api/api_exception.dart';
+import '../../../core/notifications/notification_test_picker.dart';
 import '../../../core/notifications/push_notification_service.dart';
 import '../../../core/theme/colors.dart';
 import '../../auth/providers/auth_providers.dart';
@@ -118,7 +119,7 @@ class MemberSettingsScreen extends ConsumerWidget {
               leading: const Icon(Icons.send_outlined),
               title: const Text('Send test notification'),
               subtitle: const Text('Check that push notifications are working'),
-              onTap: () => _sendTestNotification(context, ref),
+              onTap: () => showNotificationTestPicker(context, ref),
             ),
           ),
           const SizedBox(height: 16),
@@ -190,21 +191,6 @@ class MemberSettingsScreen extends ConsumerWidget {
           .openSystemNotificationSettings();
     }
     ref.invalidate(notificationsEnabledProvider);
-  }
-
-  Future<void> _sendTestNotification(BuildContext context, WidgetRef ref) async {
-    try {
-      await ref.read(deviceTokenApiProvider).sendTest();
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Test notification sent.')));
-    } catch (_) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Couldn't send it. Check your connection.")),
-      );
-    }
   }
 
   Future<void> _confirmLogout(BuildContext context, WidgetRef ref) async {
