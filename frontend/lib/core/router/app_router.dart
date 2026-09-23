@@ -16,6 +16,7 @@ import '../../features/auth/screens/role_picker_screen.dart';
 import '../../features/auth/screens/login_screen.dart';
 import '../../features/auth/screens/set_password_screen.dart';
 import '../../features/auth/screens/claim_screen.dart';
+import '../../features/auth/screens/help_screen.dart';
 import '../../features/auth/screens/no_gym_screen.dart';
 import '../../features/settings/screens/staff_list_screen.dart';
 import '../../features/settings/screens/staff_create_screen.dart';
@@ -233,7 +234,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                   // /claim-anything route, which /login's prefix check
                   // needs (for /login/:role) but this doesn't.
                   loc == '/claim' ||
-                  loc == '/claim/scan')
+                  loc == '/claim/scan' ||
+                  // Linked from every pre-login screen's "Need help?" /
+                  // "Contact support" / "Contact gym staff" text.
+                  loc == '/help')
               ? null
               : '/role',
         AuthAuthenticated(:final user) => () {
@@ -327,6 +331,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/claim/scan',
         builder: (context, state) => const ClaimQrScannerScreen(),
       ),
+      GoRoute(path: '/help', builder: (context, state) => const HelpScreen()),
       GoRoute(
         path: '/no-gym',
         builder: (context, state) => const NoGymScreen(),

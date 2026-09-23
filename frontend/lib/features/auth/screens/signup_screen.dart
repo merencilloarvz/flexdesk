@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/api/api_exception.dart';
 import '../providers/auth_providers.dart';
+import '../widgets/app_version.dart';
 
 /// Owner-only. Creates a brand-new gym tenant. This screen must never be
 /// reachable from the member entry point — see RolePickerScreen.
@@ -356,24 +357,28 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                     const SizedBox(height: 28),
 
                     Center(
-                      child: RichText(
-                        textAlign: TextAlign.center,
-                        text: const TextSpan(
-                          style: TextStyle(fontSize: 11.5, color: Colors.grey),
-                          children: [
-                            TextSpan(text: 'Need assistance? '),
-                            TextSpan(
-                              text: 'Contact support',
-                              style: TextStyle(
-                                color: _linkTeal,
-                                fontWeight: FontWeight.w600,
+                      child: GestureDetector(
+                        onTap: () => context.push('/help'),
+                        child: RichText(
+                          textAlign: TextAlign.center,
+                          text: const TextSpan(
+                            style: TextStyle(fontSize: 11.5, color: Colors.grey),
+                            children: [
+                              TextSpan(text: 'Need assistance? '),
+                              TextSpan(
+                                text: 'Contact support',
+                                style: TextStyle(
+                                  color: _linkTeal,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
-                            ),
-                            TextSpan(text: '   ·   v2.4.0'),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     ),
+                    const SizedBox(height: 4),
+                    const Center(child: AppVersionText()),
                     const SizedBox(height: 12),
                   ],
                 ),

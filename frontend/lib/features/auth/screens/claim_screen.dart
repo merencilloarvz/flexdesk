@@ -440,20 +440,23 @@ class _ClaimScreenState extends ConsumerState<ClaimScreen> {
                     const SizedBox(height: 28),
 
                     Center(
-                      child: RichText(
-                        textAlign: TextAlign.center,
-                        text: const TextSpan(
-                          style: TextStyle(fontSize: 11.5, color: Colors.grey),
-                          children: [
-                            TextSpan(text: 'Need assistance? '),
-                            TextSpan(
-                              text: 'Contact gym staff',
-                              style: TextStyle(
-                                color: _linkTeal,
-                                fontWeight: FontWeight.w600,
+                      child: GestureDetector(
+                        onTap: () => context.push('/help'),
+                        child: RichText(
+                          textAlign: TextAlign.center,
+                          text: const TextSpan(
+                            style: TextStyle(fontSize: 11.5, color: Colors.grey),
+                            children: [
+                              TextSpan(text: 'Need assistance? '),
+                              TextSpan(
+                                text: 'Contact gym staff',
+                                style: TextStyle(
+                                  color: _linkTeal,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     ),
