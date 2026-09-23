@@ -5,6 +5,7 @@ import '../../../../core/api/api_exception.dart';
 import '../../../../core/theme/colors.dart';
 import '../../data/community_repository.dart';
 import '../../providers/community_providers.dart';
+import 'announcement_detail_screen.dart';
 import 'announcement_edit_screen.dart';
 
 const List<({String label, IconData icon, Color color})> _quickTopics = [
@@ -63,6 +64,18 @@ class _AnnouncementsListScreenState
       ),
     );
     if (changed == true) _load();
+  }
+
+  Future<void> _openDetail(Announcement a) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AnnouncementDetailScreen(announcementId: a.id),
+      ),
+    );
+    // Editing happens from inside the detail screen now, not here — just
+    // refresh in case anything changed (title, pin state) while it was
+    // open, the same way pulling to refresh would.
+    _load();
   }
 
   @override
@@ -133,14 +146,14 @@ class _AnnouncementsListScreenState
                           for (final a in pinned)
                             _AnnouncementCard(
                               announcement: a,
-                              onTap: () => _openEdit(a),
+                              onTap: () => _openDetail(a),
                             ),
                           if (pinned.isNotEmpty && others.isNotEmpty)
                             const SizedBox(height: 4),
                           for (final a in others)
                             _AnnouncementCard(
                               announcement: a,
-                              onTap: () => _openEdit(a),
+                              onTap: () => _openDetail(a),
                             ),
                         ],
                       ),

@@ -55,7 +55,16 @@ class _ChannelSpec {
 /// "Announcements". Check-ins and the daily summary are normal
 /// importance (sound, no heads-up pop-up); everything else is high
 /// importance.
+///
+/// [pushNotificationChannelId] (the fallback) is listed FIRST and
+/// created before the others in [PushNotificationService.
+/// ensureNotificationChannel] — it's the one a currently-deployed
+/// backend still running the pre-split contract sends every push on, so
+/// it must exist even if creating one of the newer, per-type channels
+/// below it somehow fails.
 const List<_ChannelSpec> _channelSpecs = [
+  _ChannelSpec(pushNotificationChannelId, 'Important notifications',
+      'Fallback channel for anything not covered below', Importance.max),
   _ChannelSpec(channelAnnouncements, 'Announcements',
       'New announcements from your gym', Importance.max),
   _ChannelSpec(channelEvents, 'Events',
@@ -70,8 +79,6 @@ const List<_ChannelSpec> _channelSpecs = [
       'Comments on announcements and events', Importance.max),
   _ChannelSpec(channelDailySummary, 'Daily summary',
       "Yesterday's sales, check-ins, and new members", Importance.defaultImportance),
-  _ChannelSpec(pushNotificationChannelId, 'Important notifications',
-      'Fallback channel for anything not covered above', Importance.max),
 ];
 
 class _TypeSpec {
@@ -146,6 +153,16 @@ class PushNotificationService {
   /// only needs to be created once per app install; recreating it with
   /// the same id is a harmless no-op (and cannot downgrade an
   /// already-created channel's importance even if this ever changed).
+  ///
+  /// Each channel is created in its own try/catch — one channel failing
+  /// must never take the rest down with it. This used to be a single
+  /// try around the whole loop, which meant one bad channel silently
+  /// stopped every channel after it (including the fallback) from ever
+  /// being created, with nothing printed in release builds to say so.
+  /// Every failure here is now logged unconditionally, not just in
+  /// debug mode — channel setup runs before there's any UI to show an
+  /// error in, so a console log reachable via `adb logcat` is the only
+  /// way to diagnose it on a release build.
   Future<void> ensureNotificationChannel() async {
     try {
       await _localNotifications.initialize(
@@ -153,14 +170,26 @@ class PushNotificationService {
           android: AndroidInitializationSettings('ic_notif_default'),
         ),
       );
-      final android = _localNotifications
-          .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin
-          >();
-      for (final spec in _channelSpecs) {
+    } catch (e) {
+      debugPrint('flutter_local_notifications initialize() failed: $e');
+      return;
+    }
+
+    final android = _localNotifications
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
+    if (android == null) {
+      debugPrint('No Android-specific local notifications implementation '
+          '— not running on Android?');
+      return;
+    }
+
+    for (final spec in _channelSpecs) {
+      try {
         final useCustomSound =
             _hasCustomChime && spec.importance == Importance.max;
-        await android?.createNotificationChannel(
+        await android.createNotificationChannel(
           AndroidNotificationChannel(
             spec.id,
             spec.name,
@@ -172,9 +201,9 @@ class PushNotificationService {
                 : null,
           ),
         );
+      } catch (e) {
+        debugPrint('Failed to create notification channel ${spec.id}: $e');
       }
-    } catch (e) {
-      if (kDebugMode) debugPrint('Notification channel setup failed: $e');
     }
   }
 

@@ -38,6 +38,8 @@ import '../../features/scheduling/screens/time_slot_list_screen.dart';
 import '../../features/community/screens/member/community_screen.dart';
 import '../../features/community/screens/member/announcement_detail_screen.dart';
 import '../../features/community/screens/member/member_event_detail_screen.dart';
+import '../../features/community/screens/owners/announcement_detail_screen.dart'
+    as owner_announcement;
 import '../../features/community/screens/owners/event_detail_screen.dart';
 import '../../features/pos/screens/inventory_screen.dart';
 import '../../features/workout_guides/screens/workout_guides_screen.dart';
@@ -620,6 +622,24 @@ void openOwnerEventDetail(String eventId) {
   WidgetsBinding.instance.addPostFrameCallback((_) {
     _rootNavigatorKey.currentState?.push(
       MaterialPageRoute(builder: (_) => EventDetailScreen(eventId: eventId)),
+    );
+  });
+}
+
+/// Pushes the owner-facing announcement detail screen on top of
+/// /announcements — same reasoning as [openOwnerEventDetail]. Named with
+/// the `owner_announcement` prefix at the import site because the
+/// member-side screen this file already imports unprefixed
+/// (announcement_detail_screen.dart under screens/member/) has the exact
+/// same class name.
+void openOwnerAnnouncementDetail(String announcementId) {
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    _rootNavigatorKey.currentState?.push(
+      MaterialPageRoute(
+        builder: (_) => owner_announcement.AnnouncementDetailScreen(
+          announcementId: announcementId,
+        ),
+      ),
     );
   });
 }

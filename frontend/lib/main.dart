@@ -79,11 +79,8 @@ class _FlexDeskAppState extends ConsumerState<FlexDeskApp> {
         }
       case 'comment':
         // Comments notify gym staff, not members — always routes to the
-        // owner side. There's no per-id "announcement detail" screen on
-        // the owner side to deep-link into (only the list and an edit
-        // form that expects an already-loaded Announcement), so an
-        // announcement comment opens the list; an event comment can open
-        // the real by-id event detail screen.
+        // owner side, to the specific announcement or event the comment
+        // was posted on.
         if (data['target_type'] == 'event') {
           router.go('/events');
           if (id != null && id.isNotEmpty) {
@@ -91,6 +88,9 @@ class _FlexDeskAppState extends ConsumerState<FlexDeskApp> {
           }
         } else {
           router.go('/announcements');
+          if (id != null && id.isNotEmpty) {
+            openOwnerAnnouncementDetail(id);
+          }
         }
       case 'trial_ending':
         router.go('/subscribe');

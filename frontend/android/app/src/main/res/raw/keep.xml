@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android's release-build resource shrinker only sees resources that are
+  statically referenced from Kotlin/Java/XML code — it can't see the
+  drawable names PushNotificationService passes as plain strings at
+  runtime (see notificationTypeCatalog in
+  frontend/lib/core/notifications/push_notification_service.dart, and
+  the matching icon names in backend/core/notifications.py's
+  TYPE_CATALOG). Without this file, the shrinker strips every one of
+  these as "not reachable" except ic_notif_default (the only one also
+  referenced directly from AndroidManifest.xml), and any notification
+  asking for a stripped icon fails to post at all — not just with a
+  missing icon. See https://developer.android.com/studio/build/shrink-code#keep-resources.
+-->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/ic_notif_megaphone,@drawable/ic_notif_calendar,@drawable/ic_notif_check_circle,@drawable/ic_notif_clock_alert,@drawable/ic_notif_bar_chart,@drawable/ic_notif_package,@drawable/ic_notif_chat_bubble,@drawable/ic_notif_person_add,@drawable/ic_notif_default" />
