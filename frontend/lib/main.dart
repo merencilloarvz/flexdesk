@@ -49,10 +49,10 @@ class _FlexDeskAppState extends ConsumerState<FlexDeskApp> {
     final router = ref.read(appRouterProvider);
     final id = data['id'] as String?;
 
-    // Types and their string values come from backend/core/notifications.py
-    // (announcement, out_of_stock) and send_daily_notifications.py
-    // (renewal, inventory) — these must match exactly what the server
-    // sends in the `data` payload.
+    // Types and their string values come from backend's
+    // core/notifications.TYPE_CATALOG — the single source of truth for
+    // every type this build needs to route, used by real triggers and
+    // by the Settings "Send test notification" picker alike.
     switch (data['type']) {
       case 'renewal':
         router.go('/me/membership');
@@ -61,10 +61,41 @@ class _FlexDeskAppState extends ConsumerState<FlexDeskApp> {
         if (id != null && id.isNotEmpty) {
           openAnnouncementDetail(id);
         }
+      case 'new_event':
+        router.go('/member-community');
+        if (id != null && id.isNotEmpty) {
+          openMemberEventDetail(id);
+        }
+      case 'checkin':
+        router.go('/member-home');
       case 'out_of_stock':
       case 'inventory':
         router.go('/modules');
         openInventory();
+      case 'event_registration':
+        router.go('/events');
+        if (id != null && id.isNotEmpty) {
+          openOwnerEventDetail(id);
+        }
+      case 'comment':
+        // Comments notify gym staff, not members — always routes to the
+        // owner side. There's no per-id "announcement detail" screen on
+        // the owner side to deep-link into (only the list and an edit
+        // form that expects an already-loaded Announcement), so an
+        // announcement comment opens the list; an event comment can open
+        // the real by-id event detail screen.
+        if (data['target_type'] == 'event') {
+          router.go('/events');
+          if (id != null && id.isNotEmpty) {
+            openOwnerEventDetail(id);
+          }
+        } else {
+          router.go('/announcements');
+        }
+      case 'trial_ending':
+        router.go('/subscribe');
+      case 'daily_summary':
+        router.go('/home');
       default:
         router.go(homeRoute);
     }

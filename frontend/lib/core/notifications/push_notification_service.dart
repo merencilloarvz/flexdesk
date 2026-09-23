@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:ui' show Color;
 
 import 'package:app_settings/app_settings.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -10,29 +11,95 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../api/device_token_api.dart';
 import '../api/dio_client.dart';
 
-/// Must match the `channel_id` the backend sets on every
-/// AndroidNotification (backend/core/notifications.py) and the
-/// `com.google.firebase.messaging.default_notification_channel_id`
-/// meta-data in AndroidManifest.xml — all three have to agree for a
-/// backgrounded/terminated app to show the notification at HIGH
-/// importance (sound + heads-up banner) instead of falling back to a
-/// silent default channel. This is also the only place in the app that
-/// creates an Android notification channel — a second channel created
-/// anywhere else with this same id would silently win or lose depending
-/// on creation order, since Android treats a channel's importance as
-/// fixed at first creation and ignores later attempts to change it.
+/// The pre-split fallback channel — kept for the
+/// `default_notification_channel_id` meta-data in AndroidManifest.xml
+/// (what FCM falls back to for a notification-only message whose
+/// `channel_id` this build doesn't recognize) and for any notification
+/// `type` missing from [_notificationTypeCatalog]. Every other channel id
+/// below must match backend/core/notifications.py's CHANNEL_* constants
+/// exactly, and must be created here and only here — Android fixes a
+/// channel's importance at first creation and ignores later attempts to
+/// change it, so a second creation site for the same id could silently
+/// win or lose depending on start-up ordering.
 const String pushNotificationChannelId = 'high_importance_channel';
-const String _pushNotificationChannelName = 'Important notifications';
-const String _pushNotificationChannelDescription =
-    'Announcements, renewal reminders, and stock alerts';
+
+const String channelAnnouncements = 'channel_announcements';
+const String channelEvents = 'channel_events';
+const String channelMembership = 'channel_membership';
+const String channelCheckins = 'channel_checkins';
+const String channelStore = 'channel_store';
+const String channelCommunity = 'channel_community';
+const String channelDailySummary = 'channel_daily_summary';
+
+const Color _colorPrimary = Color(0xFF0F6E56); // AppColors.accentTeal
+const Color _colorWarning = Color(0xFF92600B); // AppColors.expiringBg
+
+// frontend/android/app/src/main/res/raw/flexdesk_chime.mp3 doesn't exist
+// yet — flip to true once it's added. Only applied to high-importance
+// channels; check-ins and the daily summary always use the system
+// default sound regardless of this flag.
+const bool _hasCustomChime = false;
+const String _customChimeResource = 'flexdesk_chime';
+
+class _ChannelSpec {
+  const _ChannelSpec(this.id, this.name, this.description, this.importance);
+  final String id;
+  final String name;
+  final String description;
+  final Importance importance;
+}
+
+/// One entry per Android channel, each mutable independently from the
+/// phone's own notification settings (Settings app, per app, per
+/// channel) — this is what lets someone mute "Check-ins" without losing
+/// "Announcements". Check-ins and the daily summary are normal
+/// importance (sound, no heads-up pop-up); everything else is high
+/// importance.
+const List<_ChannelSpec> _channelSpecs = [
+  _ChannelSpec(channelAnnouncements, 'Announcements',
+      'New announcements from your gym', Importance.max),
+  _ChannelSpec(channelEvents, 'Events',
+      'New events and registration activity', Importance.max),
+  _ChannelSpec(channelMembership, 'Membership',
+      'Renewal reminders and subscription alerts', Importance.max),
+  _ChannelSpec(channelCheckins, 'Check-ins',
+      'Confirmation when you check in', Importance.defaultImportance),
+  _ChannelSpec(channelStore, 'Store alerts',
+      'Out-of-stock and low-stock alerts', Importance.max),
+  _ChannelSpec(channelCommunity, 'Community',
+      'Comments on announcements and events', Importance.max),
+  _ChannelSpec(channelDailySummary, 'Daily summary',
+      "Yesterday's sales, check-ins, and new members", Importance.defaultImportance),
+  _ChannelSpec(pushNotificationChannelId, 'Important notifications',
+      'Fallback channel for anything not covered above', Importance.max),
+];
+
+class _TypeSpec {
+  const _TypeSpec(this.channelId, this.icon, this.color);
+  final String channelId;
+  final String icon;
+  final Color color;
+}
+
+/// Mirrors backend/core/notifications.py's TYPE_CATALOG — which channel,
+/// small icon, and accent color each notification `type` uses. Icon
+/// names must match a vector drawable under
+/// frontend/android/app/src/main/res/drawable/.
+final Map<String, _TypeSpec> _notificationTypeCatalog = {
+  'announcement': const _TypeSpec(channelAnnouncements, 'ic_notif_megaphone', _colorPrimary),
+  'new_event': const _TypeSpec(channelEvents, 'ic_notif_calendar', _colorPrimary),
+  'event_registration': const _TypeSpec(channelEvents, 'ic_notif_person_add', _colorPrimary),
+  'comment': const _TypeSpec(channelCommunity, 'ic_notif_chat_bubble', _colorPrimary),
+  'checkin': const _TypeSpec(channelCheckins, 'ic_notif_check_circle', _colorPrimary),
+  'renewal': const _TypeSpec(channelMembership, 'ic_notif_clock_alert', _colorWarning),
+  'trial_ending': const _TypeSpec(channelMembership, 'ic_notif_clock_alert', _colorWarning),
+  'out_of_stock': const _TypeSpec(channelStore, 'ic_notif_package', _colorWarning),
+  'inventory': const _TypeSpec(channelStore, 'ic_notif_package', _colorWarning),
+  'daily_summary': const _TypeSpec(channelDailySummary, 'ic_notif_bar_chart', _colorPrimary),
+};
 
 final FlutterLocalNotificationsPlugin _localNotifications =
     FlutterLocalNotificationsPlugin();
-
-/// Local-notification ids just need to not collide with each other
-/// within one app session — a monotonic counter is enough, since nothing
-/// ever needs to look a shown notification back up by id.
-int _notificationIdCounter = 0;
 
 /// Must be a top-level (or static) function, not a method — Android
 /// runs it in its own background isolate, separate from main()'s, when
@@ -73,34 +140,39 @@ class PushNotificationService {
 
   bool _listening = false;
 
-  /// Creates the Android notification channel every push in this app is
-  /// sent on (see [pushNotificationChannelId]), at the highest importance
-  /// so Android shows a heads-up pop-up with sound rather than a silent
-  /// tray entry. Must run before any notification using this channel_id
-  /// can arrive, so it's called once from main() at app start — a
-  /// channel only needs to be created once per app install; recreating
-  /// it with the same id is a harmless no-op (and cannot downgrade an
+  /// Creates every Android notification channel in [_channelSpecs] — must
+  /// run before any notification using one of these channel_ids can
+  /// arrive, so it's called once from main() at app start. A channel
+  /// only needs to be created once per app install; recreating it with
+  /// the same id is a harmless no-op (and cannot downgrade an
   /// already-created channel's importance even if this ever changed).
   Future<void> ensureNotificationChannel() async {
     try {
       await _localNotifications.initialize(
         settings: const InitializationSettings(
-          android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+          android: AndroidInitializationSettings('ic_notif_default'),
         ),
       );
-      await _localNotifications
+      final android = _localNotifications
           .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin
-          >()
-          ?.createNotificationChannel(
-            const AndroidNotificationChannel(
-              pushNotificationChannelId,
-              _pushNotificationChannelName,
-              description: _pushNotificationChannelDescription,
-              importance: Importance.max,
-              playSound: true,
-            ),
-          );
+          >();
+      for (final spec in _channelSpecs) {
+        final useCustomSound =
+            _hasCustomChime && spec.importance == Importance.max;
+        await android?.createNotificationChannel(
+          AndroidNotificationChannel(
+            spec.id,
+            spec.name,
+            description: spec.description,
+            importance: spec.importance,
+            playSound: true,
+            sound: useCustomSound
+                ? const RawResourceAndroidNotificationSound(_customChimeResource)
+                : null,
+          ),
+        );
+      }
     } catch (e) {
       if (kDebugMode) debugPrint('Notification channel setup failed: $e');
     }
@@ -207,7 +279,7 @@ class PushNotificationService {
 
     _localNotifications.initialize(
       settings: const InitializationSettings(
-        android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+        android: AndroidInitializationSettings('ic_notif_default'),
       ),
       onDidReceiveNotificationResponse: (response) {
         final data = _decodeNotificationPayload(response.payload);
@@ -261,18 +333,46 @@ class PushNotificationService {
     final body = message.notification?.body;
     if (title == null && body == null) return;
 
+    final type = message.data['type'] as String?;
+    final typeSpec = _notificationTypeCatalog[type];
+    final channelSpec = _channelSpecs.firstWhere(
+      (c) => c.id == (typeSpec?.channelId ?? pushNotificationChannelId),
+      orElse: () => _channelSpecs.last,
+    );
+
+    // A stable id per type — not a counter — is what makes several
+    // notifications of the same type collapse into one tray entry
+    // instead of piling up as separate ones (matching the `tag` FCM
+    // sends for the same case when the app is backgrounded/terminated):
+    // showing a second notification with the same id replaces the
+    // first rather than adding a new one.
+    final id = (type ?? 'unknown').hashCode & 0x7fffffff;
+
     _localNotifications.show(
-      id: _notificationIdCounter++,
+      id: id,
       title: title,
       body: body,
-      notificationDetails: const NotificationDetails(
+      notificationDetails: NotificationDetails(
         android: AndroidNotificationDetails(
-          pushNotificationChannelId,
-          _pushNotificationChannelName,
-          channelDescription: _pushNotificationChannelDescription,
-          importance: Importance.max,
-          priority: Priority.max,
+          channelSpec.id,
+          channelSpec.name,
+          channelDescription: channelSpec.description,
+          importance: channelSpec.importance,
+          priority: channelSpec.importance == Importance.max
+              ? Priority.max
+              : Priority.defaultPriority,
           playSound: true,
+          tag: type,
+          icon: typeSpec?.icon,
+          color: typeSpec?.color,
+          // Mirrors what Android's own FCM notification builder applies
+          // automatically to an OS-drawn notification's body — without
+          // this, a locally-drawn one would truncate at one line while
+          // an OS-drawn one expands, instead of looking identical.
+          styleInformation: BigTextStyleInformation(
+            body ?? '',
+            contentTitle: title,
+          ),
         ),
       ),
       payload: jsonEncode(message.data),

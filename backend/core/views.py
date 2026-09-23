@@ -49,7 +49,7 @@ from rest_framework.exceptions import PermissionDenied
 from .models import Announcement, Comment, Event, EventRegistration, EventResult, Like
 from .models import Product, Sale, SaleItem, StockAdjustment
 from .models import DeviceToken, NotificationSend
-from .notifications import send_to_users
+from .notifications import send_to_users, TYPE_CATALOG
 from .permissions import CanEngage, IsGymUser, IsGymStaffOrReadOnly
 from .serializers import (AnnouncementSerializer, CommentSerializer, EventRegistrationSerializer,
                           EventResultInputSerializer, EventResultSerializer,
@@ -1097,6 +1097,10 @@ class CheckInViewSet(GymScopedViewSet):
     def get_serializer_class(self):
         return CheckInWriteSerializer if self.action == "create" else CheckInSerializer
 
+    def perform_create(self, serializer):
+        checkin = serializer.save(gym=self.gym)
+        threading.Thread(target=_notify_checkin, args=(checkin,), daemon=True).start()
+
     def get_queryset(self):
         qs = CheckIn.objects.filter(gym=self.gym).select_related("member", "location")
 
@@ -1486,6 +1490,7 @@ def _notify_announcement(announcement):
         send_to_users(
             member_users, title=title, body=body,
             data={"type": "announcement", "id": str(announcement.id)},
+            notif_type="announcement",
         )
 
         NotificationSend.objects.bulk_create(
@@ -1497,6 +1502,151 @@ def _notify_announcement(announcement):
         )
     except Exception:
         logger.exception("Failed to send announcement notification for %s", announcement.id)
+
+
+def _notify_new_event(event):
+    """
+    Same shape and audience as _notify_announcement — every active
+    member of the gym, off-thread from EventViewSet.perform_create.
+    """
+    try:
+        member_users = list(
+            User.objects.filter(
+                member_profile__gym=event.gym,
+                member_profile__archived_at__isnull=True,
+                member_profile__member_type=Member.MEMBER,
+            )
+        )
+        if not member_users:
+            return
+
+        fee = "Free" if not event.registration_fee else f"₱{event.registration_fee:,.0f}"
+        title = f"New event: {event.title}"[:100]
+        body = f"{event.event_date:%b %d, %Y} · {fee}. Tap to register."
+
+        send_to_users(
+            member_users, title=title, body=body,
+            data={"type": "new_event", "id": str(event.id)},
+            notif_type="new_event",
+        )
+
+        NotificationSend.objects.bulk_create(
+            [
+                NotificationSend(user=u, kind="new_event", subject_id=event.id)
+                for u in member_users
+            ],
+            ignore_conflicts=True,
+        )
+    except Exception:
+        logger.exception("Failed to send new-event notification for %s", event.id)
+
+
+def _notify_comment(comment):
+    """
+    Every gym staff member (owner + staff) except whoever wrote the
+    comment — a comment on your own post shouldn't notify you. Likes
+    intentionally send nothing; see LikeToggleView.
+    """
+    try:
+        recipients = list(
+            User.objects.filter(staff_profile__gym=comment.gym)
+            .exclude(id=comment.user_id)
+        )
+        if not recipients:
+            return
+
+        target = comment.target
+        target_type = "announcement" if comment.announcement_id else "event"
+        preview = comment.body[:80]
+        if len(comment.body) > 80:
+            preview += "…"
+
+        title = f"{comment.user.get_full_name()} commented on {target.title}"[:100]
+        body = f'"{preview}"'
+
+        send_to_users(
+            recipients, title=title, body=body,
+            data={"type": "comment", "target_type": target_type, "id": str(target.id)},
+            notif_type="comment",
+        )
+
+        NotificationSend.objects.bulk_create(
+            [
+                NotificationSend(user=u, kind="comment", subject_id=comment.id)
+                for u in recipients
+            ],
+            ignore_conflicts=True,
+        )
+    except Exception:
+        logger.exception("Failed to send comment notification for %s", comment.id)
+
+
+def _notify_checkin(checkin):
+    """
+    Confirms a member's own check-in to them. Offline-first check-ins can
+    sync hours after they actually happened — a "you checked in" push
+    that lands well after the fact reads as broken/spammy, so anything
+    more than an hour stale by the time it reaches the server is
+    dropped silently rather than sent late.
+    """
+    try:
+        if checkin.member_id is None or checkin.member.user_id is None:
+            return
+        if timezone.now() - checkin.checked_in_at > timedelta(hours=1):
+            return
+
+        tz = ZoneInfo(checkin.gym.timezone)
+        time_str = _fmt_time(checkin.checked_in_at, tz)
+
+        send_to_users(
+            [checkin.member.user],
+            title="Checked in",
+            body=f"{checkin.gym.name} · {time_str}. Have a good session.",
+            data={"type": "checkin", "id": None},
+            notif_type="checkin",
+        )
+
+        NotificationSend.objects.create(
+            user=checkin.member.user, kind="checkin", subject_id=checkin.id,
+        )
+    except Exception:
+        logger.exception("Failed to send check-in notification for %s", checkin.id)
+
+
+def _notify_event_registration(registration):
+    """
+    Every event registration today is member-initiated — EventViewSet
+    only exposes /events/{id}/register/ under IsGymMember, and
+    EventRegistrationViewSet.create refuses POST outright (staff can
+    only mark_paid/mark_unpaid on an existing row) — so there's no
+    "staff added them" path to distinguish against yet.
+    """
+    try:
+        recipients = list(User.objects.filter(staff_profile__gym=registration.gym))
+        if not recipients:
+            return
+
+        event = registration.event
+        count = event.registrations.filter(canceled_at__isnull=True).count()
+        title = "New registration"
+        body = f"{registration.member.full_name} joined {event.title} · {count} registered"
+
+        send_to_users(
+            recipients, title=title, body=body,
+            data={"type": "event_registration", "id": str(event.id)},
+            notif_type="event_registration",
+        )
+
+        NotificationSend.objects.bulk_create(
+            [
+                NotificationSend(user=u, kind="event_registration", subject_id=registration.id)
+                for u in recipients
+            ],
+            ignore_conflicts=True,
+        )
+    except Exception:
+        logger.exception(
+            "Failed to send event-registration notification for %s", registration.id)
 
 
 def _notify_out_of_stock(product):
@@ -1527,6 +1677,7 @@ def _notify_out_of_stock(product):
             title="Out of stock",
             body=f"{product.name} is out of stock.",
             data={"type": "out_of_stock", "id": str(product.id)},
+            notif_type="out_of_stock",
         )
 
         kind = f"out_of_stock_{timezone.now():%Y%m%d%H%M%S%f}"
@@ -1898,6 +2049,10 @@ class EventViewSet(GymScopedViewSet):
         ).order_by("-event_date", "id")
         return with_engagement_state(qs, "event", self.request.user)
 
+    def perform_create(self, serializer):
+        event = serializer.save(gym=self.gym)
+        threading.Thread(target=_notify_new_event, args=(event,), daemon=True).start()
+
     def destroy(self, request, *args, **kwargs):
         raise MethodNotAllowed("DELETE", detail="Set canceled_at instead.")
 
@@ -1905,6 +2060,8 @@ class EventViewSet(GymScopedViewSet):
     def register(self, request, pk=None):
         registration = create_event_registration(
             gym=request.user.gym, member=request.user.member_profile, event_id=pk)
+        threading.Thread(
+            target=_notify_event_registration, args=(registration,), daemon=True).start()
         return Response(MemberEventRegistrationSerializer(registration).data,
                         status=status.HTTP_201_CREATED)
 
@@ -2119,20 +2276,47 @@ class DeviceTokenView(APIView):
 
 class DeviceTokenTestView(APIView):
     """
-    Sends a push notification to the logged-in user's own devices — lets
-    someone confirm push delivery end-to-end (permission, channel,
-    background handler, tap routing) with only the one phone they're
-    holding, no second account needed. type "test" so main.dart's tap
-    router falls through to its default case (home).
+    Lets someone confirm push delivery end-to-end (permission, channel,
+    icon, tap routing) with only the one phone they're holding, no
+    second account needed — GET lists the notification types relevant to
+    the caller's own role, POST sends one sample of a chosen type to the
+    caller's own devices only. Every field (title/body/channel/icon) is
+    the real one from notifications.TYPE_CATALOG, the same table real
+    triggers use — this is not a separate fake catalog that could drift
+    out of sync with what actually gets sent.
     """
     permission_classes = [IsAuthenticated]
 
+    def _audience_for(self, user):
+        return "member" if user.account_type == "member" else "owner"
+
+    def get(self, request):
+        audience = self._audience_for(request.user)
+        types = [
+            {"type": key, "label": entry["label"]}
+            for key, entry in TYPE_CATALOG.items()
+            if entry["audience"] == audience
+        ]
+        return Response({"types": types})
+
     def post(self, request):
+        notif_type = request.data.get("type", "")
+        entry = TYPE_CATALOG.get(notif_type)
+        if entry is None:
+            raise ValidationError({"type": "Unknown notification type."})
+        if entry["audience"] != self._audience_for(request.user):
+            raise ValidationError({"type": "Not a notification type for your role."})
+
+        data = {"type": notif_type, "id": None}
+        if notif_type == "comment":
+            data["target_type"] = "announcement"
+
         sent, pruned = send_to_users(
             [request.user],
-            title="FlexDesk",
-            body="This is a test notification from FlexDesk.",
-            data={"type": "test"},
+            title=entry["sample_title"],
+            body=entry["sample_body"],
+            data=data,
+            notif_type=notif_type,
         )
         return Response({"sent": sent, "pruned": pruned})
 
@@ -2197,8 +2381,9 @@ class CommentListCreateView(EngagementViewMixin, ListCreateAPIView):
         ).select_related("user__member_profile", "user__staff_profile")
 
     def perform_create(self, serializer):
-        serializer.save(gym=self.request.user.gym, user=self.request.user,
-                        **{self.item_field: self.get_item()})
+        comment = serializer.save(gym=self.request.user.gym, user=self.request.user,
+                                  **{self.item_field: self.get_item()})
+        threading.Thread(target=_notify_comment, args=(comment,), daemon=True).start()
 
 
 class CommentDeleteView(EngagementViewMixin, DestroyAPIView):

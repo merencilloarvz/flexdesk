@@ -37,6 +37,14 @@
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
             android:value="high_importance_channel" />
+        <!-- Without this, any FCM-drawn notification (backgrounded or
+             terminated app) whose message has no explicit small icon
+             falls back to a plain grey square instead of a real glyph.
+             Per-type icons are still set from the backend (see
+             notif_type in send_to_users) — this is only the fallback. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_notif_default" />
     </application>
     <queries>
         <intent>
