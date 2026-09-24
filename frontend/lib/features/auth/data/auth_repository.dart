@@ -97,6 +97,12 @@ class AuthRepository {
     return user;
   }
 
+  Future<AuthUser> markOwnerWelcomeSeen() async {
+    final user = await _api.markOwnerWelcomeSeen();
+    await _tokenStorage.updateCachedUser(jsonEncode(user.toJson()));
+    return user;
+  }
+
   Future<AuthUser> changePassword(
     String currentPassword,
     String newPassword,

@@ -197,6 +197,16 @@ class AuthController extends Notifier<AuthState> {
 
   void applyUser(AuthUser user) => state = AuthAuthenticated(user);
 
+  /// Marks the welcome carousel seen and pushes the updated AuthUser
+  /// into session state — the redirect in app_router.dart reads
+  /// hasSeenOwnerWelcome off the CURRENT state on every navigation, so
+  /// without this the very next redirect check would send the owner
+  /// straight back to /welcome after they just left it.
+  Future<void> markOwnerWelcomeSeen() async {
+    final user = await ref.read(authRepositoryProvider).markOwnerWelcomeSeen();
+    state = AuthAuthenticated(user);
+  }
+
   Future<void> setClassesEnabled(bool value) async {
     final user = await ref
         .read(authApiProvider)

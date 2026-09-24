@@ -13,6 +13,7 @@ from .views import (ActivityLogView, AnnouncementViewSet, AnalyticsView, Booking
                     SaleViewSet, ScheduleView, TimeSlotViewSet)
 from .views import SignupView
 from .views import GoogleLoginView, GoogleSignupView, GoogleClaimView
+from .views import OwnerWelcomeSeenView
 from .views import ChangePasswordView, StaffViewSet
 from .views import MeRestDaysView  # add to the existing .views import block
 from .views import SubscriptionPaymentInfoView, SubscriptionView
@@ -74,6 +75,8 @@ urlpatterns = [
     path("bookings/", BookingCreateView.as_view(), name="booking-create"),
     path("bookings/<uuid:pk>/cancel/", BookingCancelView.as_view(), name="booking-cancel"),
     path("gym/settings/", GymSettingsView.as_view(), name="gym-settings"),
+    path("auth/owner-welcome-seen/", OwnerWelcomeSeenView.as_view(),
+        name="owner-welcome-seen"),
     path("events/<uuid:event_id>/results/", EventResultsView.as_view(),
         name="event-results"),
     path("events/<uuid:event_id>/verify-results/", EventVerifyResultsView.as_view(),

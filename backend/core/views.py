@@ -96,6 +96,26 @@ class GymSettingsView(APIView):
         return Response(MeSerializer(request.user).data)
 
 
+class OwnerWelcomeSeenView(APIView):
+    """
+    Marks the one-time post-signup welcome carousel as seen for the
+    calling owner. One-way — there's no corresponding "unsee" action,
+    by design; see User.has_seen_owner_welcome. Deliberately NOT gated
+    behind SubscriptionActive: an owner whose trial has somehow already
+    lapsed by the time they first open the app must still be able to
+    dismiss this and reach /subscribe, not get stuck looking at a
+    welcome screen with no way through.
+    """
+    permission_classes = [IsGymStaff, IsOwner]
+
+    def post(self, request):
+        user = request.user
+        if not user.has_seen_owner_welcome:
+            user.has_seen_owner_welcome = True
+            user.save(update_fields=["has_seen_owner_welcome"])
+        return Response(MeSerializer(user).data)
+
+
 class SubscriptionView(RetrieveAPIView):
     """
     Owner AND staff can read this — a blocked gym's front-desk staff

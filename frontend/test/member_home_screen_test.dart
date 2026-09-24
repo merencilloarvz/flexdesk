@@ -83,6 +83,7 @@ AuthUser _member({required bool classesEnabled}) => AuthUser(
   role: UserRole.unknown,
   accountType: 'member',
   mustChangePassword: false,
+  hasSeenOwnerWelcome: false,
   gym: Gym(
     id: 'g1',
     name: 'Iron Works',

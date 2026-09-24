@@ -18,6 +18,7 @@ import '../../features/auth/screens/set_password_screen.dart';
 import '../../features/auth/screens/claim_screen.dart';
 import '../../features/auth/services/google_auth_service.dart';
 import '../../features/auth/screens/help_screen.dart';
+import '../../features/auth/screens/owner_welcome_screen.dart';
 import '../../features/auth/screens/no_gym_screen.dart';
 import '../../features/settings/screens/staff_list_screen.dart';
 import '../../features/settings/screens/staff_create_screen.dart';
@@ -205,6 +206,100 @@ final _memberScheduleNavigatorKey = GlobalKey<NavigatorState>();
 final _memberCommunityNavigatorKey = GlobalKey<NavigatorState>();
 final _memberGuidesNavigatorKey = GlobalKey<NavigatorState>();
 
+/// The router's whole redirect decision, pulled out of [appRouterProvider]
+/// so it can be unit-tested without building any screens. [loc] is the
+/// matched location; returns null to stay put.
+@visibleForTesting
+String? appRedirect(AuthState authState, String loc) {
+  return switch (authState) {
+    AuthUnknown() => loc == '/splash' ? null : '/splash',
+    AuthUnauthenticated() =>
+      (loc == '/role' ||
+              loc.startsWith('/login') ||
+              loc == '/signup' ||
+              // Exact match, not startsWith — only these two /claim
+              // paths exist pre-login (/claim itself and /claim/scan,
+              // D2's scanner); startsWith would also admit any future
+              // /claim-anything route, which /login's prefix check
+              // needs (for /login/:role) but this doesn't.
+              loc == '/claim' ||
+              loc == '/claim/scan' ||
+              // Linked from every pre-login screen's "Need help?" /
+              // "Contact support" / "Contact gym staff" text.
+              loc == '/help')
+          ? null
+          : '/role',
+    AuthAuthenticated(:final user) => () {
+      final isMember = user.accountType == 'member';
+      final gym = user.gym;
+
+      // No StaffProfile and no member_profile — a Django superuser,
+      // or a profile that got removed. Every check below this point
+      // reads gym.something, so this has to come first: not an
+      // error screen, not a crash, a dead end with an exit.
+      if (gym == null) {
+        return loc == '/no-gym' ? null : '/no-gym';
+      }
+
+      if (isMember) {
+        if (loc == '/role' ||
+            loc == '/signup' ||
+            loc.startsWith('/login') ||
+            loc == '/claim' ||
+            loc == '/splash' ||
+            loc == '/change-password' ||
+            loc == '/setup' ||
+            loc == '/welcome' ||
+            loc == '/no-gym') {
+          return '/member-home';
+        }
+        return null;
+      }
+
+      if (user.mustChangePassword) {
+        return loc == '/change-password' ? null : '/change-password';
+      }
+      // Once, right after signup (password or Google) — every other
+      // visit for the rest of this account's life skips straight past
+      // this check, since hasSeenOwnerWelcome only ever flips one way.
+      // No forced pricing step any more: /setup stays reachable
+      // voluntarily (from Settings), but nothing routes there
+      // automatically — the welcome flow's own "set up later" slide
+      // covers that ground instead.
+      if (user.role == UserRole.owner && !user.hasSeenOwnerWelcome) {
+        return loc == '/welcome' ? null : '/welcome';
+      }
+      if (gym.subscriptionBlocked) {
+        return loc == '/subscribe' ? null : '/subscribe';
+      }
+      if (loc.startsWith('/settings/staff') &&
+          user.role != UserRole.owner) {
+        return '/settings';
+      }
+      if (loc == '/role' ||
+          loc == '/signup' ||
+          loc.startsWith('/login') ||
+          loc == '/claim' ||
+          loc == '/splash' ||
+          loc == '/change-password' ||
+          loc == '/setup' ||
+          loc == '/welcome' ||
+          loc == '/no-gym') {
+        return '/home';
+      }
+      // Deliberately NOT evicting '/subscribe' here the way '/setup'
+      // is above: unlike setup, this screen is also reachable
+      // voluntarily while merely trialing (not blocked), and an
+      // unrelated background refresh elsewhere in the app (e.g.
+      // home's periodic /auth/me/ poll) ticks this redirect too —
+      // that must never yank someone off a screen they opened on
+      // purpose. SubscribeScreen navigates itself away once its own
+      // post-checkout refresh confirms the block is gone.
+      return null;
+    }(),
+  };
+}
+
 final appRouterProvider = Provider<GoRouter>((ref) {
   final refreshNotifier = ValueNotifier<int>(0);
   final sub = ref.listen<AuthState>(authControllerProvider, (_, _) {
@@ -219,93 +314,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     navigatorKey: _rootNavigatorKey,
     initialLocation: '/splash',
     refreshListenable: refreshNotifier,
-    redirect: (context, state) {
-      final authState = ref.read(authControllerProvider);
-      final loc = state.matchedLocation;
-
-      return switch (authState) {
-        AuthUnknown() => loc == '/splash' ? null : '/splash',
-        AuthUnauthenticated() =>
-          (loc == '/role' ||
-                  loc.startsWith('/login') ||
-                  loc == '/signup' ||
-                  // Exact match, not startsWith — only these two /claim
-                  // paths exist pre-login (/claim itself and /claim/scan,
-                  // D2's scanner); startsWith would also admit any future
-                  // /claim-anything route, which /login's prefix check
-                  // needs (for /login/:role) but this doesn't.
-                  loc == '/claim' ||
-                  loc == '/claim/scan' ||
-                  // Linked from every pre-login screen's "Need help?" /
-                  // "Contact support" / "Contact gym staff" text.
-                  loc == '/help')
-              ? null
-              : '/role',
-        AuthAuthenticated(:final user) => () {
-          final isMember = user.accountType == 'member';
-          final gym = user.gym;
-
-          // No StaffProfile and no member_profile — a Django superuser,
-          // or a profile that got removed. Every check below this point
-          // reads gym.something, so this has to come first: not an
-          // error screen, not a crash, a dead end with an exit.
-          if (gym == null) {
-            return loc == '/no-gym' ? null : '/no-gym';
-          }
-
-          if (isMember) {
-            if (loc == '/role' ||
-                loc == '/signup' ||
-                loc.startsWith('/login') ||
-                loc == '/claim' ||
-                loc == '/splash' ||
-                loc == '/change-password' ||
-                loc == '/setup' ||
-                loc == '/no-gym') {
-              return '/member-home';
-            }
-            return null;
-          }
-
-          if (user.mustChangePassword) {
-            return loc == '/change-password' ? null : '/change-password';
-          }
-          // Owner-only: a staff account signed in before the owner has
-          // priced anything has no way to act on this screen (plan
-          // writes are owner-only), so sending them here would just be
-          // a second dead end.
-          if (gym.needsSetup && user.role == UserRole.owner) {
-            return loc == '/setup' ? null : '/setup';
-          }
-          if (gym.subscriptionBlocked) {
-            return loc == '/subscribe' ? null : '/subscribe';
-          }
-          if (loc.startsWith('/settings/staff') &&
-              user.role != UserRole.owner) {
-            return '/settings';
-          }
-          if (loc == '/role' ||
-              loc == '/signup' ||
-              loc.startsWith('/login') ||
-              loc == '/claim' ||
-              loc == '/splash' ||
-              loc == '/change-password' ||
-              loc == '/setup' ||
-              loc == '/no-gym') {
-            return '/home';
-          }
-          // Deliberately NOT evicting '/subscribe' here the way '/setup'
-          // is above: unlike setup, this screen is also reachable
-          // voluntarily while merely trialing (not blocked), and an
-          // unrelated background refresh elsewhere in the app (e.g.
-          // home's periodic /auth/me/ poll) ticks this redirect too —
-          // that must never yank someone off a screen they opened on
-          // purpose. SubscribeScreen navigates itself away once its own
-          // post-checkout refresh confirms the block is gone.
-          return null;
-        }(),
-      };
-    },
+    redirect: (context, state) =>
+        appRedirect(ref.read(authControllerProvider), state.matchedLocation),
     routes: [
       GoRoute(
         path: '/splash',
@@ -340,6 +350,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const ClaimQrScannerScreen(),
       ),
       GoRoute(path: '/help', builder: (context, state) => const HelpScreen()),
+      GoRoute(
+        path: '/welcome',
+        builder: (context, state) => const OwnerWelcomeScreen(),
+      ),
       GoRoute(
         path: '/no-gym',
         builder: (context, state) => const NoGymScreen(),

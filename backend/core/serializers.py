@@ -25,6 +25,7 @@ class MeSerializer(serializers.Serializer):
     gym = serializers.SerializerMethodField()
     default_location_id = serializers.SerializerMethodField()
     must_change_password = serializers.BooleanField(read_only=True)
+    has_seen_owner_welcome = serializers.BooleanField(read_only=True)
 
     def get_role(self, obj):
         return obj.role

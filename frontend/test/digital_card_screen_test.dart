@@ -76,6 +76,7 @@ class _FakeAuth extends AuthController {
       accountType: 'member',
       gym: null,
       mustChangePassword: false,
+      hasSeenOwnerWelcome: false,
     ),
   );
 }
