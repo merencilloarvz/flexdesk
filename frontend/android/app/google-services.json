@@ -12,7 +12,28 @@
           "package_name": "com.flexdesk.flexdesk"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "189785138919-523of4nr6b36ai2ml6fsfvi7tg98mrb5.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.flexdesk.flexdesk",
+            "certificate_hash": "04d4e6f4dc6cd6dd00d793501259939f84f6bcae"
+          }
+        },
+        {
+          "client_id": "189785138919-ki3tctc9k70l0jeph251lkneg6g4vo0g.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.flexdesk.flexdesk",
+            "certificate_hash": "8163124981c0cc3f2305d8727cbac0823464ca77"
+          }
+        },
+        {
+          "client_id": "189785138919-71ull6g1nujcculqhe3l14udr6kqiktr.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyBt1GZ9F4vju2nDMyMou7A_ZhKXRf9WYjc"
@@ -20,7 +41,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "189785138919-71ull6g1nujcculqhe3l14udr6kqiktr.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

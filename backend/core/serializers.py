@@ -9,6 +9,7 @@ from django.contrib.auth.password_validation import validate_password
 from django.utils.text import slugify
 from .models import Gym, Location, MembershipPlan, StaffProfile, Subscription, User
 from .utils import generate_claim_code
+from .google_auth import GoogleTokenError, verify_google_id_token
 from .models import Booking, TimeSlot
 from django.db.models import Count
 from .utils import gym_today
@@ -692,6 +693,178 @@ class ClaimAccountSerializer(serializers.Serializer):
         member.claim_code = ""
         member.claim_code_expires_at = None
         member.save(update_fields=["user", "claim_code", "claim_code_expires_at","updated_at"])
+        return user
+
+
+class GoogleTokenSerializerMixin(serializers.Serializer):
+    """
+    Shared first step for every Google-auth serializer below: verify the
+    ID token server-side and refuse an unverified email up front, before
+    any account lookup. Must itself subclass serializers.Serializer, not
+    just be a plain mixin — DRF's serializer metaclass only collects
+    declared fields (id_token, here) from bases that are themselves
+    Serializer subclasses; a plain object mixin's fields are silently
+    invisible to it.
+    """
+    id_token = serializers.CharField(write_only=True)
+
+    def _verify_token(self, token):
+        try:
+            sub, email, verified, full_name = verify_google_id_token(token)
+        except GoogleTokenError as e:
+            raise serializers.ValidationError(str(e))
+        if not verified:
+            raise serializers.ValidationError(
+                "Your Google email isn't verified. Please verify it with "
+                "Google and try again."
+            )
+        return sub, email, full_name
+
+
+class GoogleLoginSerializer(GoogleTokenSerializerMixin):
+    """
+    Logs in an existing account via Google — matched first by a Google
+    identity already linked to it, then by email (linking it on the
+    spot if it wasn't already, without touching any existing password).
+    save() returns None, not an error, when nothing matches at all —
+    GoogleLoginView turns that into a 404 so the frontend can route to
+    GoogleSignupView (owner) or GoogleClaimView (member) instead of
+    treating "no account yet" as a failure.
+    """
+
+    def validate(self, attrs):
+        sub, email, _full_name = self._verify_token(attrs["id_token"])
+
+        user = User.objects.filter(google_sub=sub).first()
+        if user is None:
+            candidate = User.objects.filter(email=email).first()
+            if candidate is not None:
+                if candidate.google_sub and candidate.google_sub != sub:
+                    # This email belongs to an account, but that account
+                    # is already linked to a DIFFERENT Google identity —
+                    # never silently reassign it to this one.
+                    raise serializers.ValidationError(
+                        "This Google account is already linked to a "
+                        "different FlexDesk account."
+                    )
+                user = candidate
+
+        attrs["user"] = user
+        attrs["google_sub"] = sub
+        return attrs
+
+    def save(self):
+        user = self.validated_data["user"]
+        if user is None:
+            return None
+        sub = self.validated_data["google_sub"]
+        if user.google_sub != sub:
+            # First time this password account has signed in with
+            # Google — link it. The existing password keeps working;
+            # this only adds a second way in.
+            user.google_sub = sub
+            user.save(update_fields=["google_sub"])
+        return user
+
+
+class GoogleSignupSerializer(GoogleTokenSerializerMixin):
+    """
+    Google's version of SignupSerializer — same new-gym-plus-owner shape,
+    minus a password. The account is Google-only, so
+    User.objects.create_user(password=None) sets an unusable password on
+    purpose, not as an oversight.
+    """
+    gym_name = serializers.CharField(max_length=255)
+    location_name = serializers.CharField(max_length=255, required=False, default="Main")
+
+    def validate(self, attrs):
+        sub, email, full_name = self._verify_token(attrs["id_token"])
+        if User.objects.filter(email=email).exists() or User.objects.filter(google_sub=sub).exists():
+            raise serializers.ValidationError(
+                "An account already exists for this email. Please sign in instead."
+            )
+        attrs["google_sub"] = sub
+        attrs["email"] = email
+        attrs["full_name"] = full_name or email
+        return attrs
+
+    @transaction.atomic
+    def create(self, data):
+        gym = Gym.objects.create(
+            name=data["gym_name"],
+            slug=_unique_gym_slug(data["gym_name"]),
+        )
+        location = Location.objects.create(
+            gym=gym, name=data.get("location_name") or "Main")
+        user = User.objects.create_user(
+            email=data["email"],
+            password=None,
+            full_name=data["full_name"],
+            google_sub=data["google_sub"],
+        )
+        StaffProfile.objects.create(
+            user=user, gym=gym, role=StaffProfile.OWNER, default_location=location)
+        Subscription.objects.create(
+            gym=gym, trial_ends_at=timezone.now() + timedelta(days=TRIAL_DAYS))
+        MembershipPlan.objects.bulk_create([
+            MembershipPlan(gym=gym, name=n, category=c, duration_value=v,
+                           duration_unit=u, price=0, is_day_pass=d, sort_order=i)
+            for i, (n, c, v, u, d) in enumerate(DEFAULT_PLANS)
+        ])
+        return user
+
+
+class GoogleClaimSerializer(GoogleTokenSerializerMixin):
+    """
+    Google's version of ClaimAccountSerializer — same one-time-code
+    lookup and the same GENERIC_ERROR secrecy (see that class's
+    docstring), just without a password field — the member never sets
+    one — and matching on the Google-verified email instead of a typed
+    one, so there's one less thing to type or get wrong.
+    """
+    claim_code = serializers.CharField()
+
+    GENERIC_ERROR = ClaimAccountSerializer.GENERIC_ERROR
+
+    def validate(self, attrs):
+        sub, email, _full_name = self._verify_token(attrs["id_token"])
+        code = attrs["claim_code"].strip().upper()
+
+        member = (
+            Member.objects.filter(
+                email__iexact=email,
+                claim_code=code,
+                user__isnull=True,
+                archived_at__isnull=True,
+                claim_code_expires_at__gt=timezone.now(),
+            ).first()
+        )
+        if not member:
+            raise serializers.ValidationError(self.GENERIC_ERROR)
+
+        if User.objects.filter(email=email).exists() or User.objects.filter(google_sub=sub).exists():
+            raise serializers.ValidationError(
+                "An account already exists for this email. Please sign in instead."
+            )
+
+        attrs["member"] = member
+        attrs["email"] = email
+        attrs["google_sub"] = sub
+        return attrs
+
+    @transaction.atomic
+    def create(self, validated_data):
+        member = validated_data["member"]
+        user = User.objects.create_user(
+            email=validated_data["email"],
+            password=None,
+            full_name=member.full_name,
+            google_sub=validated_data["google_sub"],
+        )
+        member.user = user
+        member.claim_code = ""
+        member.claim_code_expires_at = None
+        member.save(update_fields=["user", "claim_code", "claim_code_expires_at", "updated_at"])
         return user
 class MeMemberSummarySerializer(serializers.Serializer):
     """

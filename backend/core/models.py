@@ -38,7 +38,13 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_staff = models.BooleanField(default=False)   # Django admin access, NOT gym staff
     date_joined = models.DateTimeField(auto_now_add=True)
     must_change_password = models.BooleanField(default=False)
-    
+    # Google's stable per-account identifier (the ID token's `sub` claim)
+    # — set the moment this account is created via Google or linked to
+    # Google from an existing password account. Nullable/unique: most
+    # accounts have no Google link, and Postgres allows any number of
+    # NULLs under a unique constraint, so that's never a collision.
+    google_sub = models.CharField(max_length=255, unique=True, null=True, blank=True)
+
     objects = UserManager()
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = []

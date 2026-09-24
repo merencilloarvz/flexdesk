@@ -3,12 +3,21 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/api/api_exception.dart';
 import '../providers/auth_providers.dart';
+import '../services/google_auth_service.dart';
 import '../widgets/app_version.dart';
 
 /// Owner-only. Creates a brand-new gym tenant. This screen must never be
 /// reachable from the member entry point — see RolePickerScreen.
+///
+/// [googleContext] is set when reached from the login screen's "Continue
+/// with Google" button after Google confirmed an identity that doesn't
+/// match any existing account — email/password become read-only/hidden
+/// since Google already verified the identity, and there's nothing left
+/// to ask for beyond the gym itself.
 class SignupScreen extends ConsumerStatefulWidget {
-  const SignupScreen({super.key});
+  const SignupScreen({super.key, this.googleContext});
+
+  final GoogleAuthContext? googleContext;
 
   @override
   ConsumerState<SignupScreen> createState() => _SignupScreenState();
@@ -16,8 +25,12 @@ class SignupScreen extends ConsumerStatefulWidget {
 
 class _SignupScreenState extends ConsumerState<SignupScreen> {
   final _gymNameController = TextEditingController();
-  final _fullNameController = TextEditingController();
-  final _emailController = TextEditingController();
+  late final _fullNameController = TextEditingController(
+    text: widget.googleContext?.fullName ?? '',
+  );
+  late final _emailController = TextEditingController(
+    text: widget.googleContext?.email ?? '',
+  );
   final _passwordController = TextEditingController();
   bool _isSubmitting = false;
   String? _errorMessage;
@@ -29,6 +42,8 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
   static const _brandGreen = Color(0xFF0E5B44);
   static const _linkTeal = Color(0xFF1F9D7C);
   static const _labelGrey = Color(0xFF8A9591);
+
+  bool get _isGoogle => widget.googleContext != null;
 
   @override
   void dispose() {
@@ -48,14 +63,24 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     });
 
     try {
-      await ref
-          .read(authControllerProvider.notifier)
-          .signup(
-            gymName: _gymNameController.text.trim(),
-            fullName: _fullNameController.text.trim(),
-            email: _emailController.text.trim(),
-            password: _passwordController.text,
-          );
+      final googleContext = widget.googleContext;
+      if (googleContext != null) {
+        await ref
+            .read(authControllerProvider.notifier)
+            .googleSignup(
+              idToken: googleContext.idToken,
+              gymName: _gymNameController.text.trim(),
+            );
+      } else {
+        await ref
+            .read(authControllerProvider.notifier)
+            .signup(
+              gymName: _gymNameController.text.trim(),
+              fullName: _fullNameController.text.trim(),
+              email: _emailController.text.trim(),
+              password: _passwordController.text,
+            );
+      }
       // Success flips AuthState to authenticated; the router sends the
       // new owner to /setup (needs_setup will be true — no plan has a
       // real price yet) automatically.
@@ -151,10 +176,43 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                     ),
                     const SizedBox(height: 28),
 
+                    if (_isGoogle) ...[
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEAF1FE),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.check_circle,
+                              size: 18,
+                              color: Color(0xFF2F6FE4),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Signing in as ${widget.googleContext!.email} '
+                                'via Google',
+                                style: const TextStyle(
+                                  fontSize: 12.5,
+                                  color: Color(0xFF2F6FE4),
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                    ],
+
                     _fieldLabel('GYM NAME'),
                     TextField(
                       controller: _gymNameController,
                       enabled: !_isSubmitting,
+                      onSubmitted: _isGoogle ? (_) => _submit() : null,
                       decoration: _fieldDecoration(
                         hint: 'e.g. Iron Works Cebu',
                         icon: Icons.storefront_outlined,
@@ -162,63 +220,65 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                     ),
                     const SizedBox(height: 18),
 
-                    _fieldLabel('FULL NAME'),
-                    TextField(
-                      controller: _fullNameController,
-                      enabled: !_isSubmitting,
-                      decoration: _fieldDecoration(
-                        hint: 'e.g. Juan dela Cruz',
-                        icon: Icons.person_outline,
+                    if (!_isGoogle) ...[
+                      _fieldLabel('FULL NAME'),
+                      TextField(
+                        controller: _fullNameController,
+                        enabled: !_isSubmitting,
+                        decoration: _fieldDecoration(
+                          hint: 'e.g. Juan dela Cruz',
+                          icon: Icons.person_outline,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 18),
+                      const SizedBox(height: 18),
 
-                    _fieldLabel('EMAIL ADDRESS'),
-                    TextField(
-                      controller: _emailController,
-                      enabled: !_isSubmitting,
-                      keyboardType: TextInputType.emailAddress,
-                      autofillHints: const [AutofillHints.email],
-                      decoration: _fieldDecoration(
-                        hint: 'e.g. owner@gym.com',
-                        icon: Icons.mail_outline,
+                      _fieldLabel('EMAIL ADDRESS'),
+                      TextField(
+                        controller: _emailController,
+                        enabled: !_isSubmitting,
+                        keyboardType: TextInputType.emailAddress,
+                        autofillHints: const [AutofillHints.email],
+                        decoration: _fieldDecoration(
+                          hint: 'e.g. owner@gym.com',
+                          icon: Icons.mail_outline,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 18),
+                      const SizedBox(height: 18),
 
-                    _fieldLabel('PASSWORD'),
-                    TextField(
-                      controller: _passwordController,
-                      enabled: !_isSubmitting,
-                      obscureText: _obscurePassword,
-                      autofillHints: const [AutofillHints.newPassword],
-                      onSubmitted: (_) => _submit(),
-                      decoration: _fieldDecoration(
-                        hint: 'Create a secure password',
-                        icon: Icons.lock_outline,
-                        suffixIcon: IconButton(
-                          icon: Icon(
-                            _obscurePassword
-                                ? Icons.visibility_outlined
-                                : Icons.visibility_off_outlined,
-                            size: 19,
-                            color: Colors.grey.shade500,
-                          ),
-                          onPressed: () => setState(
-                            () => _obscurePassword = !_obscurePassword,
+                      _fieldLabel('PASSWORD'),
+                      TextField(
+                        controller: _passwordController,
+                        enabled: !_isSubmitting,
+                        obscureText: _obscurePassword,
+                        autofillHints: const [AutofillHints.newPassword],
+                        onSubmitted: (_) => _submit(),
+                        decoration: _fieldDecoration(
+                          hint: 'Create a secure password',
+                          icon: Icons.lock_outline,
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _obscurePassword
+                                  ? Icons.visibility_outlined
+                                  : Icons.visibility_off_outlined,
+                              size: 19,
+                              color: Colors.grey.shade500,
+                            ),
+                            onPressed: () => setState(
+                              () => _obscurePassword = !_obscurePassword,
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'Must contain at least 8 characters with 1 number',
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        color: Colors.grey.shade500,
+                      const SizedBox(height: 6),
+                      Text(
+                        'Must contain at least 8 characters with 1 number',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: Colors.grey.shade500,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 18),
+                      const SizedBox(height: 18),
+                    ],
 
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.center,

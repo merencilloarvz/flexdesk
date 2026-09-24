@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/api/api_exception.dart';
 import '../../../core/theme/colors.dart';
 import '../providers/auth_providers.dart';
+import '../services/google_auth_service.dart';
 import '../widgets/app_logo.dart';
 import '../widgets/app_version.dart';
 import '../widgets/fade_slide_in.dart';
@@ -95,12 +96,56 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
   }
 
-  // Google sign-in isn't built yet — the button is here so the layout
-  // and flow are ready for it, but it doesn't perform any auth.
-  void _showGoogleComingSoon() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Signing in with Google is coming soon.')),
-    );
+  Future<void> _handleGoogleSignIn() async {
+    if (_isSubmitting) return;
+    setState(() {
+      _isSubmitting = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final account = await ref.read(googleAuthServiceProvider).signIn();
+      if (account == null) {
+        // Cancelled the account picker — not an error, just back here.
+        return;
+      }
+
+      final idToken = account.authentication.idToken!;
+      final linked = await ref
+          .read(authControllerProvider.notifier)
+          .googleLogin(idToken: idToken);
+      if (linked) {
+        // Success flips AuthState to authenticated; the router reacts
+        // to that, same as every other auth path here. Nothing else to
+        // do on this screen.
+        return;
+      }
+
+      // No account recognizes this Google identity yet. Hand the
+      // verified token + email on to signup (owner) or claim (member)
+      // so neither screen has to authenticate with Google a second
+      // time or ask the person to retype an email Google already gave
+      // us.
+      if (!mounted) return;
+      final googleContext = GoogleAuthContext(
+        idToken: idToken,
+        email: account.email,
+        fullName: account.displayName,
+      );
+      if (widget.role == AuthRole.owner) {
+        context.push('/signup', extra: googleContext);
+      } else {
+        context.push('/claim', extra: googleContext);
+      }
+    } on GoogleAuthFailure catch (e) {
+      setState(() => _errorMessage = e.message);
+    } on ApiException catch (e) {
+      setState(() => _errorMessage = _friendlyGoogleError(e));
+    } finally {
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+      }
+    }
   }
 
   InputDecoration _fieldDecoration({
@@ -201,7 +246,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         child: OutlinedButton(
                           onPressed: _isSubmitting
                               ? null
-                              : _showGoogleComingSoon,
+                              : _handleGoogleSignIn,
                           style: OutlinedButton.styleFrom(
                             side: BorderSide(color: Colors.grey.shade300),
                             shape: RoundedRectangleBorder(
@@ -530,5 +575,29 @@ String _friendlyLoginError(ApiException e) {
     case ApiExceptionKind.cancelled:
     case ApiExceptionKind.unknown:
       return 'Something went wrong. Please try again.';
+  }
+}
+
+/// Google-specific errors read differently from a bad password — the
+/// backend already writes a clear, specific message for every rejection
+/// reason (unverified email, already linked elsewhere, wrong/expired
+/// claim code), so validation failures are shown verbatim rather than
+/// flattened to a generic line the way a bad login password is.
+String _friendlyGoogleError(ApiException e) {
+  switch (e.kind) {
+    case ApiExceptionKind.validation:
+      return e.message;
+    case ApiExceptionKind.network:
+      return "You'll need an internet connection to sign in with Google.";
+    case ApiExceptionKind.throttled:
+      return 'Too many attempts. Please wait a moment and try again.';
+    case ApiExceptionKind.unauthorized:
+    case ApiExceptionKind.forbidden:
+    case ApiExceptionKind.notFound:
+    case ApiExceptionKind.server:
+    case ApiExceptionKind.subscriptionRequired:
+    case ApiExceptionKind.cancelled:
+    case ApiExceptionKind.unknown:
+      return "Couldn't sign in with Google. Please try again.";
   }
 }

@@ -8,6 +8,7 @@ import '../../../core/notifications/push_notification_service.dart';
 import '../data/auth_api.dart';
 import '../data/auth_repository.dart';
 import '../data/auth_models.dart';
+import '../services/google_auth_service.dart';
 
 export '../data/auth_models.dart';
 
@@ -139,6 +140,52 @@ class AuthController extends Notifier<AuthState> {
     ref.read(pushNotificationServiceProvider).requestPermissionOnce(user.id);
   }
 
+  /// Logs in (or links) an existing account via Google. Returns true on
+  /// success; false means no account matches this Google identity at
+  /// all, and the caller (login_screen.dart) routes to signup (owner)
+  /// or claim (member) instead of showing an error.
+  Future<bool> googleLogin({required String idToken}) async {
+    final user = await ref
+        .read(authRepositoryProvider)
+        .googleLogin(idToken: idToken);
+    if (user == null) return false;
+    state = AuthAuthenticated(user);
+    // ignore: unawaited_futures
+    ref.read(pushNotificationServiceProvider).registerToken();
+    // ignore: unawaited_futures
+    ref.read(pushNotificationServiceProvider).requestPermissionOnce(user.id);
+    return true;
+  }
+
+  Future<void> googleSignup({
+    required String idToken,
+    required String gymName,
+    String? locationName,
+  }) async {
+    final user = await ref
+        .read(authRepositoryProvider)
+        .googleSignup(idToken: idToken, gymName: gymName, locationName: locationName);
+    state = AuthAuthenticated(user);
+    // ignore: unawaited_futures
+    ref.read(pushNotificationServiceProvider).registerToken();
+    // ignore: unawaited_futures
+    ref.read(pushNotificationServiceProvider).requestPermissionOnce(user.id);
+  }
+
+  Future<void> googleClaim({
+    required String idToken,
+    required String claimCode,
+  }) async {
+    final user = await ref
+        .read(authRepositoryProvider)
+        .googleClaim(idToken: idToken, claimCode: claimCode);
+    state = AuthAuthenticated(user);
+    // ignore: unawaited_futures
+    ref.read(pushNotificationServiceProvider).registerToken();
+    // ignore: unawaited_futures
+    ref.read(pushNotificationServiceProvider).requestPermissionOnce(user.id);
+  }
+
   Future<AuthUser> completePasswordChange(
     String currentPassword,
     String newPassword,
@@ -177,6 +224,10 @@ class AuthController extends Notifier<AuthState> {
     // FLEXDESK_PHASE4_PART_B_SPEC.md — deliberately awaited, not
     // fire-and-forget, unlike the other push calls in this file.
     await ref.read(pushNotificationServiceProvider).deleteToken();
+    // Clears Google's own remembered account, not just our tokens — the
+    // next sign-in must show the account picker again, not silently
+    // reuse whoever was last signed in on this device.
+    await ref.read(googleAuthServiceProvider).signOut();
 
     await db.clearAllData();
     await ref.read(authRepositoryProvider).logout();

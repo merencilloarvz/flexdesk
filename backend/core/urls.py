@@ -12,6 +12,7 @@ from .views import (ActivityLogView, AnnouncementViewSet, AnalyticsView, Booking
                     MembershipPlanViewSet, MyBookingsView, ProductViewSet,
                     SaleViewSet, ScheduleView, TimeSlotViewSet)
 from .views import SignupView
+from .views import GoogleLoginView, GoogleSignupView, GoogleClaimView
 from .views import ChangePasswordView, StaffViewSet
 from .views import MeRestDaysView  # add to the existing .views import block
 from .views import SubscriptionPaymentInfoView, SubscriptionView
@@ -56,6 +57,9 @@ urlpatterns = [
     path("auth/me/", MeView.as_view(), name="me"),
     path("auth/signup/", SignupView.as_view(), name="signup"),
     path("auth/claim/", ClaimAccountView.as_view(), name="claim"),
+    path("auth/google/login/", GoogleLoginView.as_view(), name="google-login"),
+    path("auth/google/signup/", GoogleSignupView.as_view(), name="google-signup"),
+    path("auth/google/claim/", GoogleClaimView.as_view(), name="google-claim"),
     path("auth/change-password/", ChangePasswordView.as_view(), name="change-password"),
     path("me/summary/", MeSummaryView.as_view(), name="me-summary"),
     path("analytics/", AnalyticsView.as_view(), name="analytics"),
