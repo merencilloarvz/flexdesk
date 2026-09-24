@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- LOCAL TESTING ONLY. Swapped into the release build only when
+     FLEXDESK_LAN_TESTING=1 is set (see app/build.gradle.kts). Android
+     can't match IP ranges, so plain http is allowed for every host here
+     except production, which stays https-only. Never ship an APK built
+     with this. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="false">flexdesk-production.up.railway.app</domain>
+    </domain-config>
+</network-security-config>
