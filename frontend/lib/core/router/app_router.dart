@@ -16,6 +16,7 @@ import '../../features/auth/screens/role_picker_screen.dart';
 import '../../features/auth/screens/login_screen.dart';
 import '../../features/auth/screens/set_password_screen.dart';
 import '../../features/auth/screens/claim_screen.dart';
+import '../../features/auth/services/google_auth_service.dart';
 import '../../features/auth/screens/help_screen.dart';
 import '../../features/auth/screens/no_gym_screen.dart';
 import '../../features/settings/screens/staff_list_screen.dart';
@@ -324,9 +325,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/signup',
-        builder: (context, state) => const SignupScreen(),
+        builder: (context, state) => SignupScreen(
+          googleContext: state.extra as GoogleAuthContext?,
+        ),
       ),
-      GoRoute(path: '/claim', builder: (context, state) => const ClaimScreen()),
+      GoRoute(
+        path: '/claim',
+        builder: (context, state) => ClaimScreen(
+          googleContext: state.extra as GoogleAuthContext?,
+        ),
+      ),
       GoRoute(
         path: '/claim/scan',
         builder: (context, state) => const ClaimQrScannerScreen(),

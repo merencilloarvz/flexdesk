@@ -89,6 +89,90 @@ class AuthApi {
     }
   }
 
+  /// Logs in (or links) an EXISTING account via a verified Google ID
+  /// token. Returns null — not an exception — when no account matches
+  /// this Google identity at all, since that's an expected outcome the
+  /// caller routes on (owner -> signup, member -> claim), not a failure.
+  /// Every other rejection (unverified email, already linked elsewhere,
+  /// a bad token) still throws ApiException like every other auth call.
+  Future<(AuthTokens, AuthUser, String)?> googleLogin({
+    required String idToken,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/auth/google/login/',
+        data: {'id_token': idToken},
+      );
+      final data = response.data as Map<String, dynamic>;
+      final userJson = data['user'] as Map<String, dynamic>;
+
+      return (
+        AuthTokens.fromJson(data),
+        AuthUser.fromJson(userJson),
+        jsonEncode(userJson),
+      );
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) return null;
+      throw ApiException.from(e);
+    }
+  }
+
+  /// Creates a brand-new gym + owner account via Google — same shape as
+  /// signup(), minus a password; the account is Google-only.
+  Future<(AuthTokens, AuthUser, String)> googleSignup({
+    required String idToken,
+    required String gymName,
+    String? locationName,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/auth/google/signup/',
+        data: {
+          'id_token': idToken,
+          'gym_name': gymName,
+          // The backend's own default ("Main") applies either way — no
+          // need for a conditional entry just to omit a null.
+          'location_name': locationName ?? 'Main',
+        },
+      );
+      final data = response.data as Map<String, dynamic>;
+      final userJson = data['user'] as Map<String, dynamic>;
+
+      return (
+        AuthTokens.fromJson(data),
+        AuthUser.fromJson(userJson),
+        jsonEncode(userJson),
+      );
+    } on DioException catch (e) {
+      throw ApiException.from(e);
+    }
+  }
+
+  /// Google's version of claim() — same one-time-code redemption, minus
+  /// a password (the member never sets one) and minus a typed email
+  /// (the Google-verified one is used instead).
+  Future<(AuthTokens, AuthUser, String)> googleClaim({
+    required String idToken,
+    required String claimCode,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/auth/google/claim/',
+        data: {'id_token': idToken, 'claim_code': claimCode},
+      );
+      final data = response.data as Map<String, dynamic>;
+      final userJson = data['user'] as Map<String, dynamic>;
+
+      return (
+        AuthTokens.fromJson(data),
+        AuthUser.fromJson(userJson),
+        jsonEncode(userJson),
+      );
+    } on DioException catch (e) {
+      throw ApiException.from(e);
+    }
+  }
+
   Future<AuthUser> me() async {
     try {
       final response = await _dio.get('/auth/me/');

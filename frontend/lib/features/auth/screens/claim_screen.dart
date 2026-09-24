@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/api/api_exception.dart';
 import '../providers/auth_providers.dart';
+import '../services/google_auth_service.dart';
 
 /// Forces every character to uppercase and strips whitespace as the
 /// person types. The claim-code alphabet excludes O/0 and I/1 on
@@ -28,8 +29,16 @@ class _ClaimCodeFormatter extends TextInputFormatter {
 /// screen deliberately cannot work offline and never queues — it creates
 /// a server-side account, and there's nothing sensible to do with a
 /// queued claim. See AuthApi.claim()'s doc comment for the same point.
+///
+/// [googleContext] is set when reached from the login screen's "Continue
+/// with Google" button after Google confirmed an identity that isn't
+/// linked to any member yet — email and password/confirm are hidden
+/// since Google already verified the identity and the member never sets
+/// a password on this path; only the claim code is still needed.
 class ClaimScreen extends ConsumerStatefulWidget {
-  const ClaimScreen({super.key});
+  const ClaimScreen({super.key, this.googleContext});
+
+  final GoogleAuthContext? googleContext;
 
   @override
   ConsumerState<ClaimScreen> createState() => _ClaimScreenState();
@@ -53,6 +62,8 @@ class _ClaimScreenState extends ConsumerState<ClaimScreen> {
   static const _brandGreen = Color(0xFF0E5B44);
   static const _linkTeal = Color(0xFF1F9D7C);
   static const _labelGrey = Color(0xFF8A9591);
+
+  bool get _isGoogle => widget.googleContext != null;
 
   @override
   void dispose() {
@@ -87,8 +98,9 @@ class _ClaimScreenState extends ConsumerState<ClaimScreen> {
     });
 
     // Client-side check first — no reason to hit the server for a typo
-    // in the confirm field.
-    if (_passwordController.text != _confirmController.text) {
+    // in the confirm field. Not applicable on the Google path — there's
+    // no password to confirm there.
+    if (!_isGoogle && _passwordController.text != _confirmController.text) {
       setState(() => _passwordError = 'Passwords do not match.');
       return;
     }
@@ -96,13 +108,23 @@ class _ClaimScreenState extends ConsumerState<ClaimScreen> {
     setState(() => _isSubmitting = true);
 
     try {
-      await ref
-          .read(authControllerProvider.notifier)
-          .claim(
-            email: _emailController.text.trim(),
-            claimCode: _codeController.text.trim(),
-            password: _passwordController.text,
-          );
+      final googleContext = widget.googleContext;
+      if (googleContext != null) {
+        await ref
+            .read(authControllerProvider.notifier)
+            .googleClaim(
+              idToken: googleContext.idToken,
+              claimCode: _codeController.text.trim(),
+            );
+      } else {
+        await ref
+            .read(authControllerProvider.notifier)
+            .claim(
+              email: _emailController.text.trim(),
+              claimCode: _codeController.text.trim(),
+              password: _passwordController.text,
+            );
+      }
       // Success flips AuthState to authenticated; the router sees
       // account_type == 'member' and sends them to the member shell.
       // No navigation call belongs here.
@@ -244,25 +266,58 @@ class _ClaimScreenState extends ConsumerState<ClaimScreen> {
                     ),
                     const SizedBox(height: 28),
 
-                    _fieldLabel('EMAIL ADDRESS'),
-                    TextField(
-                      controller: _emailController,
-                      enabled: !_isSubmitting,
-                      keyboardType: TextInputType.emailAddress,
-                      autofillHints: const [AutofillHints.email],
-                      decoration: _fieldDecoration(
-                        hint: 'e.g. member@email.com',
-                        icon: Icons.mail_outline,
-                        helper: 'The address your gym has on file',
+                    if (_isGoogle) ...[
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEAF1FE),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.check_circle,
+                              size: 18,
+                              color: Color(0xFF2F6FE4),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Signing in as ${widget.googleContext!.email} '
+                                'via Google',
+                                style: const TextStyle(
+                                  fontSize: 12.5,
+                                  color: Color(0xFF2F6FE4),
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 18),
+                      const SizedBox(height: 18),
+                    ] else ...[
+                      _fieldLabel('EMAIL ADDRESS'),
+                      TextField(
+                        controller: _emailController,
+                        enabled: !_isSubmitting,
+                        keyboardType: TextInputType.emailAddress,
+                        autofillHints: const [AutofillHints.email],
+                        decoration: _fieldDecoration(
+                          hint: 'e.g. member@email.com',
+                          icon: Icons.mail_outline,
+                          helper: 'The address your gym has on file',
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                    ],
 
                     _fieldLabel('CLAIM CODE'),
                     TextField(
                       controller: _codeController,
                       enabled: !_isSubmitting,
                       textCapitalization: TextCapitalization.characters,
+                      onSubmitted: _isGoogle ? (_) => _submit() : null,
                       inputFormatters: [
                         _ClaimCodeFormatter(),
                         LengthLimitingTextInputFormatter(8),
@@ -284,57 +339,59 @@ class _ClaimScreenState extends ConsumerState<ClaimScreen> {
                     ),
                     const SizedBox(height: 18),
 
-                    _fieldLabel('CHOOSE A PASSWORD'),
-                    TextField(
-                      controller: _passwordController,
-                      enabled: !_isSubmitting,
-                      obscureText: _obscurePassword,
-                      autofillHints: const [AutofillHints.newPassword],
-                      decoration: _fieldDecoration(
-                        hint: '••••••••••',
-                        icon: Icons.lock_outline,
-                        helper: 'The code is one-time — this password is yours',
-                        errorText: _passwordError,
-                        suffixIcon: IconButton(
-                          icon: Icon(
-                            _obscurePassword
-                                ? Icons.visibility_outlined
-                                : Icons.visibility_off_outlined,
-                            size: 19,
-                            color: Colors.grey.shade500,
-                          ),
-                          onPressed: () => setState(
-                            () => _obscurePassword = !_obscurePassword,
+                    if (!_isGoogle) ...[
+                      _fieldLabel('CHOOSE A PASSWORD'),
+                      TextField(
+                        controller: _passwordController,
+                        enabled: !_isSubmitting,
+                        obscureText: _obscurePassword,
+                        autofillHints: const [AutofillHints.newPassword],
+                        decoration: _fieldDecoration(
+                          hint: '••••••••••',
+                          icon: Icons.lock_outline,
+                          helper: 'The code is one-time — this password is yours',
+                          errorText: _passwordError,
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _obscurePassword
+                                  ? Icons.visibility_outlined
+                                  : Icons.visibility_off_outlined,
+                              size: 19,
+                              color: Colors.grey.shade500,
+                            ),
+                            onPressed: () => setState(
+                              () => _obscurePassword = !_obscurePassword,
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 18),
+                      const SizedBox(height: 18),
 
-                    _fieldLabel('CONFIRM PASSWORD'),
-                    TextField(
-                      controller: _confirmController,
-                      enabled: !_isSubmitting,
-                      obscureText: _obscureConfirm,
-                      onSubmitted: (_) => _submit(),
-                      decoration: _fieldDecoration(
-                        hint: '••••••••••',
-                        icon: Icons.lock_outline,
-                        suffixIcon: IconButton(
-                          icon: Icon(
-                            _obscureConfirm
-                                ? Icons.visibility_outlined
-                                : Icons.visibility_off_outlined,
-                            size: 19,
-                            color: Colors.grey.shade500,
-                          ),
-                          onPressed: () => setState(
-                            () => _obscureConfirm = !_obscureConfirm,
+                      _fieldLabel('CONFIRM PASSWORD'),
+                      TextField(
+                        controller: _confirmController,
+                        enabled: !_isSubmitting,
+                        obscureText: _obscureConfirm,
+                        onSubmitted: (_) => _submit(),
+                        decoration: _fieldDecoration(
+                          hint: '••••••••••',
+                          icon: Icons.lock_outline,
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _obscureConfirm
+                                  ? Icons.visibility_outlined
+                                  : Icons.visibility_off_outlined,
+                              size: 19,
+                              color: Colors.grey.shade500,
+                            ),
+                            onPressed: () => setState(
+                              () => _obscureConfirm = !_obscureConfirm,
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 22),
+                      const SizedBox(height: 22),
+                    ],
 
                     if (_generalError != null) ...[
                       Text(

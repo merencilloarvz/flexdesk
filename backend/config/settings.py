@@ -59,6 +59,15 @@ SUBSCRIPTION_CONTACT_INFO = config("SUBSCRIPTION_CONTACT_INFO", default="")
 # sending instead of failing: see core/notifications.py.
 FIREBASE_SERVICE_ACCOUNT_JSON = config("FIREBASE_SERVICE_ACCOUNT_JSON", default="")
 
+# Google Sign-In. The Web OAuth client id (client_type 3 in
+# google-services.json) — this is what an ID token's `aud` claim must
+# match for google.oauth2.id_token.verify_oauth2_token to accept it. Not
+# a secret by itself (it's shipped inside the Android app), but treated
+# as env-configured for the same reason FIREBASE_SERVICE_ACCOUNT_JSON is:
+# empty by default so local dev without it configured fails closed
+# (every Google auth request rejected) rather than silently misbehaving.
+GOOGLE_OAUTH_CLIENT_ID = config("GOOGLE_OAUTH_CLIENT_ID", default="")
+
 # Railway terminates TLS in front of the app, so Django sees plain HTTP
 # unless told otherwise. SECURE_PROXY_SSL_HEADER and SECURE_SSL_REDIRECT
 # must go together — without the first, the second creates an infinite
@@ -98,7 +107,7 @@ REST_FRAMEWORK = {
     "PAGE_SIZE": 50,
     "DEFAULT_THROTTLE_CLASSES": ("rest_framework.throttling.ScopedRateThrottle",),
         "DEFAULT_THROTTLE_RATES": {"signup": "5/hour", "login": "20/hour","claim": "10/hour",
-                                    "qr_secret": "10/hour"},
+                                    "qr_secret": "10/hour", "google_auth": "20/hour"},
     "DEFAULT_FILTER_BACKENDS": (
         "django_filters.rest_framework.DjangoFilterBackend",
         "rest_framework.filters.SearchFilter",

@@ -33,6 +33,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from .serializers import SignupSerializer
+from .serializers import GoogleLoginSerializer, GoogleSignupSerializer, GoogleClaimSerializer
 
 from .serializers import (ChangePasswordSerializer, StaffCreateSerializer,
                           StaffMemberSerializer)
@@ -1267,6 +1268,68 @@ class ClaimAccountView(APIView):
 
     def post(self, request):
         s = ClaimAccountSerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+        user = s.save()
+        refresh = RefreshToken.for_user(user)
+        return Response({
+            "access": str(refresh.access_token),
+            "refresh": str(refresh),
+            "user": MeSerializer(user).data,
+        }, status=status.HTTP_201_CREATED)
+
+
+class GoogleLoginView(APIView):
+    """
+    Logs in (or links) via an existing account. A 404 here isn't an
+    error — it means no account matches this Google identity at all,
+    and the frontend routes to GoogleSignupView (owner) or
+    GoogleClaimView (member) instead.
+    """
+    permission_classes = [AllowAny]
+    authentication_classes = []
+    throttle_scope = "google_auth"
+
+    def post(self, request):
+        s = GoogleLoginSerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+        user = s.save()
+        if user is None:
+            return Response(
+                {"detail": "No account found for this Google sign-in."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        refresh = RefreshToken.for_user(user)
+        return Response({
+            "access": str(refresh.access_token),
+            "refresh": str(refresh),
+            "user": MeSerializer(user).data,
+        })
+
+
+class GoogleSignupView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+    throttle_scope = "google_auth"
+
+    def post(self, request):
+        s = GoogleSignupSerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+        user = s.save()
+        refresh = RefreshToken.for_user(user)
+        return Response({
+            "access": str(refresh.access_token),
+            "refresh": str(refresh),
+            "user": MeSerializer(user).data,
+        }, status=status.HTTP_201_CREATED)
+
+
+class GoogleClaimView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+    throttle_scope = "google_auth"
+
+    def post(self, request):
+        s = GoogleClaimSerializer(data=request.data)
         s.is_valid(raise_exception=True)
         user = s.save()
         refresh = RefreshToken.for_user(user)

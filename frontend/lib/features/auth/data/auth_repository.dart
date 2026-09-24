@@ -47,6 +47,40 @@ class AuthRepository {
     return _establishSession(tokens, user, rawUserJson);
   }
 
+  /// Logs in (or links) an existing account via Google. Returns null —
+  /// not an exception — when no account matches, mirroring AuthApi.
+  /// googleLogin()'s own null-means-no-account contract.
+  Future<AuthUser?> googleLogin({required String idToken}) async {
+    final result = await _api.googleLogin(idToken: idToken);
+    if (result == null) return null;
+    final (tokens, user, rawUserJson) = result;
+    return _establishSession(tokens, user, rawUserJson);
+  }
+
+  Future<AuthUser> googleSignup({
+    required String idToken,
+    required String gymName,
+    String? locationName,
+  }) async {
+    final (tokens, user, rawUserJson) = await _api.googleSignup(
+      idToken: idToken,
+      gymName: gymName,
+      locationName: locationName,
+    );
+    return _establishSession(tokens, user, rawUserJson);
+  }
+
+  Future<AuthUser> googleClaim({
+    required String idToken,
+    required String claimCode,
+  }) async {
+    final (tokens, user, rawUserJson) = await _api.googleClaim(
+      idToken: idToken,
+      claimCode: claimCode,
+    );
+    return _establishSession(tokens, user, rawUserJson);
+  }
+
   /// Shared by login() and claim() — both endpoints return an identical
   /// {access, refresh, user} shape, so both establish a session the same
   /// way. Never duplicate this logic at a call site.
