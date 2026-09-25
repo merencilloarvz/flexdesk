@@ -123,6 +123,11 @@ class AuthUser {
   // NoGymScreen before any gym-dependent screen gets a chance to build.
   final Gym? gym;
   final bool mustChangePassword;
+  // Owner-only in practice — always false for staff/member accounts,
+  // and never checked for them. Flips true, one-way, once this owner
+  // has dismissed the post-signup welcome carousel; see
+  // core.User.has_seen_owner_welcome on the backend.
+  final bool hasSeenOwnerWelcome;
 
   const AuthUser({
     required this.id,
@@ -133,6 +138,7 @@ class AuthUser {
     required this.accountType,
     required this.gym,
     required this.mustChangePassword,
+    required this.hasSeenOwnerWelcome,
   });
 
   factory AuthUser.fromJson(Map<String, dynamic> json) {
@@ -156,6 +162,7 @@ class AuthUser {
           ? Gym.fromJson(json['gym'] as Map<String, dynamic>)
           : null,
       mustChangePassword: json['must_change_password'] as bool? ?? false,
+      hasSeenOwnerWelcome: json['has_seen_owner_welcome'] as bool? ?? false,
     );
   }
 
@@ -168,11 +175,16 @@ class AuthUser {
     'account_type': accountType,
     'gym': gym?.toJson(),
     'must_change_password': mustChangePassword,
+    'has_seen_owner_welcome': hasSeenOwnerWelcome,
   };
 
   bool get isMember => accountType == 'member';
 
-  AuthUser copyWith({bool? mustChangePassword, Gym? gym}) => AuthUser(
+  AuthUser copyWith({
+    bool? mustChangePassword,
+    Gym? gym,
+    bool? hasSeenOwnerWelcome,
+  }) => AuthUser(
     id: id,
     email: email,
     fullName: fullName,
@@ -181,5 +193,6 @@ class AuthUser {
     accountType: accountType,
     gym: gym ?? this.gym,
     mustChangePassword: mustChangePassword ?? this.mustChangePassword,
+    hasSeenOwnerWelcome: hasSeenOwnerWelcome ?? this.hasSeenOwnerWelcome,
   );
 }

@@ -182,6 +182,20 @@ class AuthApi {
     }
   }
 
+  /// One-way — see core.User.has_seen_owner_welcome on the backend.
+  /// Returns the full updated AuthUser (same shape as
+  /// updateGymSettings()) so the caller can push it straight into
+  /// session state, which is what stops the router immediately sending
+  /// this owner right back to /welcome.
+  Future<AuthUser> markOwnerWelcomeSeen() async {
+    try {
+      final response = await _dio.post('/auth/owner-welcome-seen/');
+      return AuthUser.fromJson(response.data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      throw ApiException.from(e);
+    }
+  }
+
   /// Owner-only toggle for gym-level settings. Currently just
   /// classes_enabled, but shaped to take more owner-set gym flags later
   /// without a new endpoint. Returns the full updated AuthUser (same

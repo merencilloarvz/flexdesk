@@ -1,5 +1,5 @@
 import 'package:flutter/foundation.dart'
-    show kIsWeb, defaultTargetPlatform, TargetPlatform;
+    show kIsWeb, kReleaseMode, defaultTargetPlatform, TargetPlatform;
 
 /// Central place for API base URL + timeout configuration.
 ///
@@ -22,9 +22,17 @@ class ApiConfig {
     'FLEXDESK_API_BASE_URL',
   );
 
+  /// Hosted backend. Release builds use this unless an override is given.
+  static const String _productionUrl =
+      'https://flexdesk-production.up.railway.app/api/v1';
+
   /// Resolves the API base URL:
   /// - Non-empty `FLEXDESK_API_BASE_URL` override -> used as-is, trailing
-  ///   slashes stripped.
+  ///   slashes stripped. Wins in release builds too, so a release APK can
+  ///   be pointed at a local backend on purpose.
+  /// - Release build (no override) -> the Railway production backend.
+  ///   Without this a release APK on a real phone would fall through to
+  ///   10.0.2.2, which only exists inside the Android emulator.
   /// - Web -> 127.0.0.1 (runserver on the same machine as Chrome).
   /// - Android -> 10.0.2.2 (emulator's alias for the host loopback).
   /// - Everything else (iOS sim, desktop) -> 127.0.0.1.
@@ -34,6 +42,8 @@ class ApiConfig {
     if (_override.isNotEmpty) {
       return _override.replaceAll(RegExp(r'/+$'), '');
     }
+
+    if (kReleaseMode) return _productionUrl;
 
     if (kIsWeb) {
       return 'http://127.0.0.1:8000/api/v1';

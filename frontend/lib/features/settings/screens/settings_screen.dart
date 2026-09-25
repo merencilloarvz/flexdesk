@@ -6,6 +6,7 @@ import '../../../core/notifications/notification_test_picker.dart';
 import '../../../core/notifications/push_notification_service.dart';
 import '../../../core/theme/colors.dart';
 import '../../auth/providers/auth_providers.dart';
+import '../../pos/screens/inventory_screen.dart';
 import '../providers/staff_providers.dart';
 
 class SettingsScreen extends ConsumerWidget {
@@ -147,6 +148,22 @@ class SettingsScreen extends ConsumerWidget {
                     'Most gyms leave this off.',
                 value: classesEnabled,
                 onChanged: onToggleClasses,
+              ),
+              const SizedBox(height: 8),
+              _SettingsRow(
+                icon: Icons.sell_outlined,
+                title: 'Membership plans',
+                subtitle: 'Pricing & tiers',
+                onTap: () => context.push('/plans/manage'),
+              ),
+              const SizedBox(height: 8),
+              _SettingsRow(
+                icon: Icons.inventory_2_outlined,
+                title: 'Store items',
+                subtitle: 'Products you sell at the counter',
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const InventoryScreen()),
+                ),
               ),
               const SizedBox(height: 20),
               const _SectionLabel('ACCESS & ADMINISTRATION'),

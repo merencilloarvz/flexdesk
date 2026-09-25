@@ -44,6 +44,14 @@ class User(AbstractBaseUser, PermissionsMixin):
     # accounts have no Google link, and Postgres allows any number of
     # NULLs under a unique constraint, so that's never a collision.
     google_sub = models.CharField(max_length=255, unique=True, null=True, blank=True)
+    # One-way: flips to True the first time a new owner dismisses (or
+    # finishes) the post-signup welcome carousel, and never back. Lives
+    # on User, not Gym — a per-account flag, same as
+    # must_change_password, not a per-gym one, so a second owner account
+    # (e.g. added to an existing gym later) would still see it once for
+    # themselves. Meaningless for staff/member accounts; they're never
+    # shown the welcome flow regardless of this value.
+    has_seen_owner_welcome = models.BooleanField(default=False)
 
     objects = UserManager()
     USERNAME_FIELD = "email"

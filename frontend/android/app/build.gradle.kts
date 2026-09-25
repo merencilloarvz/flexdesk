@@ -52,6 +52,15 @@ android {
         }
     }
 
+    // Opt-in for local on-device testing against a LAN backend:
+    //   FLEXDESK_LAN_TESTING=1 flutter run --release --dart-define=FLEXDESK_API_BASE_URL=http://<ip>:8000/api/v1
+    // Swaps in a network config that permits plain http. Without the env
+    // var the release build uses the https-only config from src/main.
+    if (System.getenv("FLEXDESK_LAN_TESTING") == "1") {
+        logger.warn("FLEXDESK_LAN_TESTING=1: release build allows cleartext http. DO NOT SHIP.")
+        sourceSets.getByName("release").res.srcDir("src/lanTesting/res")
+    }
+
     buildTypes {
         release {
             signingConfig = signingConfigs.getByName("release")
