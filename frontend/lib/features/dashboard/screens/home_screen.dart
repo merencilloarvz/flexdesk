@@ -199,7 +199,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                   ),
                 ],
 
-                const _TrialCountdownBanner(),
+                // Billing is the owner's business.
+                if (isOwner) const _TrialCountdownBanner(),
                 _RenewalsBanner(count: stats.expiringSoon),
 
                 const SizedBox(height: 20),
@@ -283,12 +284,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                       subtitle: 'Competitions',
                       onTap: () => context.push('/events'),
                     ),
-                    _ManageItem(
-                      icon: Icons.receipt_long_outlined,
-                      label: 'Manage Plans',
-                      subtitle: 'Pricing & tiers',
-                      onTap: () => context.push('/plans/manage'),
-                    ),
+                    if (isOwner)
+                      _ManageItem(
+                        icon: Icons.receipt_long_outlined,
+                        label: 'Manage Plans',
+                        subtitle: 'Pricing & tiers',
+                        onTap: () => context.push('/plans/manage'),
+                      ),
                     if (isOwner)
                       _ManageItem(
                         icon: Icons.badge_outlined,

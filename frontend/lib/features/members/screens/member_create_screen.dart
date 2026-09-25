@@ -433,6 +433,11 @@ class _MemberCreateScreenState extends ConsumerState<MemberCreateScreen> {
                   color: _cSubtle,
                 ),
               ),
+              if (ref.watch(authControllerProvider) is AuthAuthenticated &&
+                  (ref.watch(authControllerProvider) as AuthAuthenticated)
+                          .user
+                          .role ==
+                      UserRole.owner)
               GestureDetector(
                 onTap: () => context.push('/plans/manage'),
                 child: const Row(

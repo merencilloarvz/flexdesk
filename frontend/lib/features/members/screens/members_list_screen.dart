@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../auth/providers/auth_providers.dart';
 import '../../../core/db/app_database.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/utils/gym_time.dart';
@@ -261,7 +262,13 @@ class _MembersListScreenState extends ConsumerState<MembersListScreen> {
           _ActionMenu(
             bottomInset: AppShell.reservedNavHeight,
             onNewMember: () => context.push('/members/create'),
-            onManagePlans: () => context.push('/plans/manage'),
+            onManagePlans: ref.watch(authControllerProvider) is AuthAuthenticated &&
+                    (ref.watch(authControllerProvider) as AuthAuthenticated)
+                            .user
+                            .role ==
+                        UserRole.owner
+                ? () => context.push('/plans/manage')
+                : null,
           ),
         ],
       ),
@@ -505,12 +512,13 @@ class _ActionMenu extends StatefulWidget {
   const _ActionMenu({
     required this.bottomInset,
     required this.onNewMember,
-    required this.onManagePlans,
+    this.onManagePlans,
   });
 
   final double bottomInset;
   final VoidCallback onNewMember;
-  final VoidCallback onManagePlans;
+  /// Null for staff: plans are owner-managed, so the entry is hidden.
+  final VoidCallback? onManagePlans;
 
   @override
   State<_ActionMenu> createState() => _ActionMenuState();
@@ -564,13 +572,15 @@ class _ActionMenuState extends State<_ActionMenu> {
                     onTap: () => _pick(widget.onNewMember),
                   ),
                   const SizedBox(height: 16),
-                  _CircleAction(
-                    icon: Icons.receipt_long_outlined,
-                    label: 'Manage Plans',
-                    background: AppColors.categoryPurple,
-                    onTap: () => _pick(widget.onManagePlans),
-                  ),
-                  const SizedBox(height: 16),
+                  if (widget.onManagePlans != null) ...[
+                    _CircleAction(
+                      icon: Icons.receipt_long_outlined,
+                      label: 'Manage Plans',
+                      background: AppColors.categoryPurple,
+                      onTap: () => _pick(widget.onManagePlans!),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
                 ],
                 FloatingActionButton(
                   onPressed: _toggle,
