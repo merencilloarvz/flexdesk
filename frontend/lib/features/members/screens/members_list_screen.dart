@@ -262,7 +262,8 @@ class _MembersListScreenState extends ConsumerState<MembersListScreen> {
           _ActionMenu(
             bottomInset: AppShell.reservedNavHeight,
             onNewMember: () => context.push('/members/create'),
-            onManagePlans: ref.watch(authControllerProvider) is AuthAuthenticated &&
+            onManagePlans:
+                ref.watch(authControllerProvider) is AuthAuthenticated &&
                     (ref.watch(authControllerProvider) as AuthAuthenticated)
                             .user
                             .role ==
@@ -517,6 +518,7 @@ class _ActionMenu extends StatefulWidget {
 
   final double bottomInset;
   final VoidCallback onNewMember;
+
   /// Null for staff: plans are owner-managed, so the entry is hidden.
   final VoidCallback? onManagePlans;
 

@@ -1073,7 +1073,10 @@ class _WalkInTabContent extends StatelessWidget {
                         canManagePlans
                             ? 'No day-pass plans set up yet. Add one in Manage Plans.'
                             : 'No day-pass plans set up yet. Ask the gym owner to add one.',
-                        style: const TextStyle(color: AppColors.muted, fontSize: 12),
+                        style: const TextStyle(
+                          color: AppColors.muted,
+                          fontSize: 12,
+                        ),
                       ),
                     );
                   }

@@ -697,10 +697,7 @@ class _PlanFormSheetState extends ConsumerState<_PlanFormSheet> {
               specificMessage = firstList.first;
             }
           }
-          _error =
-              specificMessage ??
-              e.message ??
-              "Couldn't save — check the fields and try again.";
+          _error = specificMessage ?? e.message;
         });
       }
     } catch (e) {

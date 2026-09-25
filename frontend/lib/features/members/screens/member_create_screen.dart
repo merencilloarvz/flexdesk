@@ -308,9 +308,7 @@ class _MemberCreateScreenState extends ConsumerState<MemberCreateScreen> {
                   text: 'never shared with third parties.\n',
                   style: TextStyle(color: _cAccentTeal),
                 ),
-                TextSpan(
-                  text: 'Only gym staff can view this information.',
-                ),
+                TextSpan(text: 'Only gym staff can view this information.'),
               ],
             ),
           ),
@@ -438,22 +436,22 @@ class _MemberCreateScreenState extends ConsumerState<MemberCreateScreen> {
                           .user
                           .role ==
                       UserRole.owner)
-              GestureDetector(
-                onTap: () => context.push('/plans/manage'),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'Manage plans →',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: _cAccentTeal,
+                GestureDetector(
+                  onTap: () => context.push('/plans/manage'),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Manage plans →',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: _cAccentTeal,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
             ],
           ),
           const SizedBox(height: 8),
