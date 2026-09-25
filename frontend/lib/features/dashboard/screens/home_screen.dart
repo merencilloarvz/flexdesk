@@ -135,6 +135,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
 
     final user = authState.user;
     final gymId = user.gym?.id ?? '';
+    final isOwner = user.role == UserRole.owner;
 
     final statsAsync = ref.watch(dashboardStatsProvider(gymId));
 
@@ -176,10 +177,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 // ---------------------------------------------------------
                 // HEADER
                 // ---------------------------------------------------------
-                _GreetingHeader(
-                  fullName: user.fullName,
-                  now: GymTime.now(),
-                ),
+                _GreetingHeader(fullName: user.fullName, now: GymTime.now()),
                 if (_offline) ...[
                   const SizedBox(height: 7),
                   Row(
@@ -217,18 +215,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 const SizedBox(height: 14),
 
                 // ---------------------------------------------------------
-                // SALES
+                // SALES + ACTIVITY LOG — owner-only on the server (analytics,
+                // activity log); a staff account would only see an error.
                 // ---------------------------------------------------------
-                SalesOverviewCard(gymId: gymId),
-
-                const SizedBox(height: 14),
-
-                // ---------------------------------------------------------
-                // TODAY'S ACTIVITY LOG
-                // ---------------------------------------------------------
-                ActivityLogCard(gymId: gymId),
-
-                const SizedBox(height: 14),
+                if (isOwner) ...[
+                  SalesOverviewCard(gymId: gymId),
+                  const SizedBox(height: 14),
+                  ActivityLogCard(gymId: gymId),
+                  const SizedBox(height: 14),
+                ],
 
                 // ---------------------------------------------------------
                 // TODAY'S CHECK-INS  +  SYNC STATUS (one card)
@@ -294,12 +289,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                       subtitle: 'Pricing & tiers',
                       onTap: () => context.push('/plans/manage'),
                     ),
-                    _ManageItem(
-                      icon: Icons.badge_outlined,
-                      label: 'Staff',
-                      subtitle: 'Accounts & roles',
-                      onTap: () => context.push('/settings/staff'),
-                    ),
+                    if (isOwner)
+                      _ManageItem(
+                        icon: Icons.badge_outlined,
+                        label: 'Staff',
+                        subtitle: 'Accounts & roles',
+                        onTap: () => context.push('/settings/staff'),
+                      ),
                   ],
                 ),
               ],
