@@ -1,6 +1,7 @@
 import 'package:flexdesk/core/utils/cash_helpers.dart';
 import 'package:flexdesk/features/pos/data/pos_repository.dart';
 import 'package:flexdesk/features/pos/providers/cart_provider.dart';
+import 'package:flexdesk/features/pos/screens/inventory_screen.dart';
 import 'package:flexdesk/features/pos/screens/pos_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -183,4 +184,16 @@ void main() {
       expect(find.text('₱0.00'), findsOneWidget);
     });
   });
+
+  test(
+    'stock adjustment reason: increases are Restock, decreases need a pick',
+    () {
+      expect(stockAdjustReason(5, null), 'Restock');
+      expect(stockAdjustReason(5, 'Damaged'), 'Restock');
+      expect(stockAdjustReason(-2, null), isNull);
+      expect(stockAdjustReason(-2, 'Damaged'), 'Damaged');
+      expect(stockAdjustReason(-2, 'Correction'), 'Correction');
+      expect(stockAdjustReason(-2, 'Restock'), isNull);
+    },
+  );
 }

@@ -11,6 +11,18 @@ import '../providers/pos_providers.dart';
 
 enum _StockFilter { all, inStock, low, out }
 
+/// Reasons offered when stock goes DOWN. An increase is always a restock.
+const stockDecreaseReasons = ['Correction', 'Damaged'];
+
+/// The reason string sent to the server for a stock change: "Restock" for
+/// an increase; for a decrease, the reason the person picked (required).
+String? stockAdjustReason(int delta, String? picked) {
+  if (delta > 0) return 'Restock';
+  return picked != null && stockDecreaseReasons.contains(picked)
+      ? picked
+      : null;
+}
+
 class InventoryScreen extends ConsumerStatefulWidget {
   const InventoryScreen({super.key, this.startWithAddSheet = false});
 
@@ -114,11 +126,11 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
 
   /// Returns null on success, or an error message on failure — the row
   /// shows that message inline rather than this screen throwing.
-  Future<String?> _adjust(Product product, int delta) async {
+  Future<String?> _adjust(Product product, int delta, String reason) async {
     try {
       await ref
           .read(posRepositoryProvider)
-          .adjustStock(product.id, delta: delta, reason: 'Restock');
+          .adjustStock(product.id, delta: delta, reason: reason);
       _dirty = true;
       await _load();
       return null;
@@ -426,7 +438,8 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                             // restocking until it's reactivated first —
                             // the stepper is disabled for it.
                             onAdjust: product.isActive
-                                ? (delta) => _adjust(product, delta)
+                                ? (delta, reason) =>
+                                      _adjust(product, delta, reason)
                                 : null,
                             onToggleActive: isOwner
                                 ? () => product.isActive
@@ -777,7 +790,7 @@ class _ProductRow extends StatefulWidget {
   final Product product;
   final String currencyCode;
   final bool isOwner;
-  final Future<String?> Function(int delta)? onAdjust;
+  final Future<String?> Function(int delta, String reason)? onAdjust;
   // A single callback that deactivates an active product or reactivates
   // an inactive one — the row picks which action and which icon/label
   // to show based on product.isActive, so the caller doesn't need two
@@ -793,6 +806,11 @@ class _ProductRowState extends State<_ProductRow> {
   late int _pendingQty;
   bool _busy = false;
   String? _rowError;
+  // Only meaningful while the pending number is below the stock on record.
+  String? _reason;
+  // True while the typed text isn't a valid whole number; a failed save
+  // (server error) is NOT this, so it can be retried with Save.
+  bool _invalidInput = false;
 
   @override
   void initState() {
@@ -809,6 +827,7 @@ class _ProductRowState extends State<_ProductRow> {
     // resync the pending value to match rather than leaving a stale
     // number sitting in the field.
     if (widget.product.stockQuantity != oldWidget.product.stockQuantity) {
+      _reason = null;
       _pendingQty = widget.product.stockQuantity;
       _qtyController.text = '$_pendingQty';
     }
@@ -826,6 +845,7 @@ class _ProductRowState extends State<_ProductRow> {
     if (next < 0) next = 0;
     setState(() {
       _pendingQty = next;
+      _invalidInput = false;
       _rowError = null;
       _qtyController.text = '$_pendingQty';
       _qtyController.selection = TextSelection.collapsed(
@@ -839,17 +859,24 @@ class _ProductRowState extends State<_ProductRow> {
     if (trimmed.isEmpty) {
       // Still typing (e.g. just cleared the field) — don't flash an
       // error for a transient empty state.
-      setState(() => _rowError = null);
+      setState(() {
+        _rowError = null;
+        _invalidInput = false;
+      });
       return;
     }
     final parsed = int.tryParse(trimmed);
     if (parsed == null || parsed < 0) {
-      setState(() => _rowError = 'Enter a whole number, 0 or higher.');
+      setState(() {
+        _rowError = 'Enter a whole number, 0 or higher.';
+        _invalidInput = true;
+      });
       return;
     }
     setState(() {
       _pendingQty = parsed;
       _rowError = null;
+      _invalidInput = false;
     });
   }
 
@@ -859,15 +886,18 @@ class _ProductRowState extends State<_ProductRow> {
     // entry sneak through — if there's an active validation error, the
     // person needs to fix it first, not have the last good value
     // silently submitted instead.
-    if (_rowError != null) return;
+    if (_invalidInput) return;
     final delta = _pendingQty - widget.product.stockQuantity;
     if (delta == 0) return;
+    // A decrease must say why; the Save button is disabled until then.
+    final reason = stockAdjustReason(delta, _reason);
+    if (reason == null) return;
 
     setState(() {
       _busy = true;
       _rowError = null;
     });
-    final error = await widget.onAdjust!(delta);
+    final error = await widget.onAdjust!(delta, reason);
     if (!mounted) return;
     setState(() {
       _busy = false;
@@ -880,6 +910,8 @@ class _ProductRowState extends State<_ProductRow> {
     final product = widget.product;
     final canEdit = widget.onAdjust != null;
     final hasChange = _pendingQty != product.stockQuantity;
+    final isDecrease = _pendingQty < product.stockQuantity;
+    final needsReason = isDecrease && _reason == null;
 
     final Color dotColor;
     final String statusWord;
@@ -1019,7 +1051,7 @@ class _ProductRowState extends State<_ProductRow> {
                   const SizedBox(width: 4),
               ],
             ),
-            if (canEdit && hasChange && _rowError == null) ...[
+            if (canEdit && hasChange && !_invalidInput) ...[
               const SizedBox(height: 8),
               Container(
                 padding: const EdgeInsets.fromLTRB(10, 4, 4, 4),
@@ -1041,7 +1073,7 @@ class _ProductRowState extends State<_ProductRow> {
                       ),
                     ),
                     FilledButton(
-                      onPressed: _busy ? null : _confirm,
+                      onPressed: (_busy || needsReason) ? null : _confirm,
                       style: FilledButton.styleFrom(
                         backgroundColor: AppColors.accentTeal,
                         foregroundColor: Colors.white,
@@ -1073,6 +1105,30 @@ class _ProductRowState extends State<_ProductRow> {
                   ],
                 ),
               ),
+              if (isDecrease) ...[
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    const Text(
+                      'Why? ',
+                      style: TextStyle(fontSize: 12, color: AppColors.subtle),
+                    ),
+                    for (final r in stockDecreaseReasons) ...[
+                      ChoiceChip(
+                        label: Text(r, style: const TextStyle(fontSize: 12)),
+                        selected: _reason == r,
+                        showCheckmark: false,
+                        visualDensity: VisualDensity.compact,
+                        selectedColor: AppColors.accentTealBg,
+                        onSelected: _busy
+                            ? null
+                            : (_) => setState(() => _reason = r),
+                      ),
+                      const SizedBox(width: 6),
+                    ],
+                  ],
+                ),
+              ],
             ],
             if (_rowError != null) ...[
               const SizedBox(height: 8),
