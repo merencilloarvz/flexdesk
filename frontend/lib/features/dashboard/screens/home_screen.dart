@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:intl/intl.dart';
 
 import '../../../../core/api/api_exception.dart';
 import '../../../../core/theme/colors.dart';
@@ -179,7 +178,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 // ---------------------------------------------------------
                 _GreetingHeader(
                   fullName: user.fullName,
-                  gymName: user.gym?.name ?? '',
                   now: GymTime.now(),
                 ),
                 if (_offline) ...[
@@ -442,14 +440,9 @@ class _RenewalsBanner extends StatelessWidget {
 }
 
 class _GreetingHeader extends StatelessWidget {
-  const _GreetingHeader({
-    required this.fullName,
-    required this.gymName,
-    required this.now,
-  });
+  const _GreetingHeader({required this.fullName, required this.now});
 
   final String fullName;
-  final String gymName;
 
   /// Gym-local wall clock ([GymTime.now]) — never the device clock.
   final DateTime now;
@@ -458,30 +451,15 @@ class _GreetingHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final first = fullName.trim().split(RegExp(r'\s+')).first;
     final greeting = GymTime.greetingFor(now);
-    final details = [
-      if (gymName.isNotEmpty) gymName,
-      DateFormat('EEE, MMM d').format(now),
-      DateFormat('h:mm a').format(now),
-    ].join(' · ');
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          first.isEmpty ? greeting : '$greeting, $first',
-          style: const TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.w700,
-            height: 1.15,
-            color: AppColors.ink,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          details,
-          style: const TextStyle(fontSize: 12.5, color: AppColors.muted),
-        ),
-      ],
+    return Text(
+      first.isEmpty ? greeting : '$greeting, $first',
+      style: const TextStyle(
+        fontSize: 24,
+        fontWeight: FontWeight.w700,
+        height: 1.15,
+        color: AppColors.ink,
+      ),
     );
   }
 }
