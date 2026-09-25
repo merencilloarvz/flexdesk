@@ -500,7 +500,7 @@ class _CheckInSyncCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final memberCheckIns = (totalToday - walkInsToday).clamp(0, totalToday);
     final allSynced = pendingCount == 0;
-    final pillColor = allSynced ? AppColors.accentTeal : AppColors.expiringIcon;
+    final pillColor = allSynced ? AppColors.accentTeal : AppColors.expiringBg;
     final synced = lastSyncedLabel(lastSyncedAt, DateTime.now());
 
     return Container(
