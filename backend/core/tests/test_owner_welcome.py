@@ -157,3 +157,43 @@ class BackfillMigrationTests(APITestCase):
         self._run_backfill()  # runs at migrate time only, before this signup
         resp = self.client.post(f"{API}/auth/signup/", SIGNUP_PAYLOAD, format="json")
         self.assertFalse(resp.data["user"]["has_seen_owner_welcome"])
+
+
+class StaffCreatedAccountsSkipWelcomeTests(APITestCase):
+    """A person added through Add staff (either role) was not just signed
+    up for a gym, so the owner welcome flow must not be sent to them."""
+
+    def setUp(self):
+        self.gym = Gym.objects.create(name="Team Gym", slug="team-gym")
+        self.location = Location.objects.create(gym=self.gym, name="Main")
+        self.owner = User.objects.create_user(
+            email="boss@example.com", password="StrongPass123!", full_name="Boss")
+        StaffProfile.objects.create(
+            user=self.owner, gym=self.gym, role=StaffProfile.OWNER,
+            default_location=self.location)
+        _auth(self.client, self.owner)
+
+    def _add(self, email, role):
+        return self.client.post(f"{API}/staff/", {
+            "full_name": "New Person", "email": email,
+            "password": "StrongPass123!", "role": role,
+        }, format="json")
+
+    def test_staff_role_created_via_add_staff_has_seen_welcome(self):
+        resp = self._add("desk@example.com", "staff")
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(User.objects.get(email="desk@example.com").has_seen_owner_welcome)
+
+    def test_second_owner_created_via_add_staff_has_seen_welcome(self):
+        resp = self._add("coowner@example.com", "owner")
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(User.objects.get(email="coowner@example.com").has_seen_owner_welcome)
+
+    def test_login_of_added_owner_reports_seen(self):
+        self._add("coowner2@example.com", "owner")
+        self.client.credentials()
+        resp = self.client.post(f"{API}/auth/login/", {
+            "email": "coowner2@example.com", "password": "StrongPass123!",
+        }, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertTrue(resp.data["user"]["has_seen_owner_welcome"])
