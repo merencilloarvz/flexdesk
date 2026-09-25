@@ -581,7 +581,10 @@ class StaffCreateSerializer(serializers.Serializer):
         user = User.objects.create_user(
             email=data["email"], password=data["password"], full_name=data["full_name"])
         user.must_change_password = True
-        user.save(update_fields=["must_change_password"])
+        # Added by an existing owner, not a fresh signup — the welcome
+        # flow (trial message etc.) doesn't apply, for either role.
+        user.has_seen_owner_welcome = True
+        user.save(update_fields=["must_change_password", "has_seen_owner_welcome"])
         return StaffProfile.objects.create(
             user=user, gym=gym, role=data["role"], default_location=location)
 
