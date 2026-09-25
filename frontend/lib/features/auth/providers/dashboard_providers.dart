@@ -27,6 +27,12 @@ class DashboardStats {
   final int pendingSync;
 }
 
+/// The gym-local date, re-evaluated when something invalidates it (the
+/// dashboard does so every minute and on resume). Dependents rebuild only
+/// when the date actually changes, which is what rolls the dashboard over
+/// at gym midnight without a manual refresh.
+final gymTodayProvider = Provider<DateTime>((ref) => GymTime.today());
+
 /// Derives every dashboard number from the same cached streams the
 /// members list and check-in screen already watch — no separate SQL
 /// aggregates. This is deliberate: two independent counts of "expiring"
@@ -38,7 +44,7 @@ final dashboardStatsProvider =
     Provider.family<AsyncValue<DashboardStats>, String>((ref, gymId) {
       final membersAsync = ref.watch(visibleMembersProvider(gymId));
       final checkInsAsync = ref.watch(
-        checkInsForDayProvider(CheckInsDayArg(gymId, GymTime.today())),
+        checkInsForDayProvider(CheckInsDayArg(gymId, ref.watch(gymTodayProvider))),
       );
 
       if (membersAsync.hasError) {
@@ -59,7 +65,7 @@ final dashboardStatsProvider =
 
       final members = membersAsync.value!;
       final checkIns = checkInsAsync.value!;
-      final today = GymTime.today();
+      final today = ref.watch(gymTodayProvider);
 
       int activeMembers = 0;
       int expiringSoon = 0;

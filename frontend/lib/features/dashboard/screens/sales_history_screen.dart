@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import '../../../core/utils/gym_time.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
@@ -285,7 +286,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
     try {
       final csv = _range == '1M' ? _buildWeeklyCsv(_weeks) : _buildGroupedCsv(_groups);
       final dir = await getTemporaryDirectory();
-      final stamp = DateFormat('yyyy-MM-dd').format(DateTime.now());
+      final stamp = DateFormat('yyyy-MM-dd').format(GymTime.today());
       final file = File('${dir.path}/sales-history-${_range.toLowerCase()}-$stamp.csv');
       await file.writeAsString(csv);
       await SharePlus.instance.share(
@@ -388,7 +389,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
       );
     }
 
-    final today = DateTime.now();
+    final today = GymTime.today();
     final showDaySubheaders = _range == '1W';
 
     return ListView(
