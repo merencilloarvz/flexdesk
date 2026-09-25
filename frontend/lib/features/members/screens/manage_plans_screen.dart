@@ -120,6 +120,11 @@ class _ManagePlansScreenState extends ConsumerState<ManagePlansScreen> {
     final plansAsync = ref.watch(allPlansProvider(widget.gymId));
     final hasPricedPlan =
         plansAsync.asData?.value.any((p) => p.priceCentavos > 0) ?? false;
+    // Plans are owner-managed on the server; staff get a plain read-only
+    // price list (no edit/archive/add, no inactive plans).
+    final authState = ref.watch(authControllerProvider);
+    final canEdit =
+        authState is AuthAuthenticated && authState.user.role == UserRole.owner;
 
     return Scaffold(
       backgroundColor: widget.firstRun ? _cPageBg : _cListBg,
@@ -138,7 +143,11 @@ class _ManagePlansScreenState extends ConsumerState<ManagePlansScreen> {
                     ),
                   Expanded(
                     child: Text(
-                      widget.firstRun ? 'Set your pricing' : 'Manage Plans',
+                      widget.firstRun
+                          ? 'Set your pricing'
+                          : canEdit
+                          ? 'Manage Plans'
+                          : 'Membership Plans',
                       style: const TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.w600,
@@ -163,56 +172,72 @@ class _ManagePlansScreenState extends ConsumerState<ManagePlansScreen> {
                   style: TextStyle(fontSize: 13, color: _cSubtle),
                 ),
               ],
+              if (!canEdit) ...[
+                const SizedBox(height: 6),
+                const Text(
+                  'Current plans and prices. The gym owner sets these.',
+                  style: TextStyle(fontSize: 13, color: _cSubtle),
+                ),
+              ],
               const SizedBox(height: 10),
 
-              Row(
-                children: [
-                  _FilterTab(
-                    label: 'All',
-                    selected: _filter == _StatusFilter.all,
-                    onTap: () => setState(() => _filter = _StatusFilter.all),
-                  ),
-                  const SizedBox(width: 8),
-                  _FilterTab(
-                    label: 'Active',
-                    selected: _filter == _StatusFilter.active,
-                    onTap: () =>
-                        setState(() => _filter = _StatusFilter.active),
-                  ),
-                  const SizedBox(width: 8),
-                  _FilterTab(
-                    label: 'Inactive',
-                    selected: _filter == _StatusFilter.inactive,
-                    onTap: () =>
-                        setState(() => _filter = _StatusFilter.inactive),
-                  ),
-                ],
-              ),
+              if (canEdit)
+                Row(
+                  children: [
+                    _FilterTab(
+                      label: 'All',
+                      selected: _filter == _StatusFilter.all,
+                      onTap: () => setState(() => _filter = _StatusFilter.all),
+                    ),
+                    const SizedBox(width: 8),
+                    _FilterTab(
+                      label: 'Active',
+                      selected: _filter == _StatusFilter.active,
+                      onTap: () =>
+                          setState(() => _filter = _StatusFilter.active),
+                    ),
+                    const SizedBox(width: 8),
+                    _FilterTab(
+                      label: 'Inactive',
+                      selected: _filter == _StatusFilter.inactive,
+                      onTap: () =>
+                          setState(() => _filter = _StatusFilter.inactive),
+                    ),
+                  ],
+                ),
               const SizedBox(height: 12),
 
               Expanded(
                 child: plansAsync.when(
                   data: (allPlans) {
                     var plans = allPlans.where((p) => !p.isDayPass).toList();
-                    if (_filter == _StatusFilter.active) {
+                    if (!canEdit) {
+                      plans = plans.where((p) => p.isActive).toList();
+                    } else if (_filter == _StatusFilter.active) {
                       plans = plans.where((p) => p.isActive).toList();
                     } else if (_filter == _StatusFilter.inactive) {
                       plans = plans.where((p) => !p.isActive).toList();
                     }
 
                     if (plans.isEmpty) {
-                      return const Center(
+                      return Center(
                         child: Text(
-                          'No plans yet',
-                          style: TextStyle(color: _cSubtle),
+                          canEdit
+                              ? 'No plans yet'
+                              : 'No plans yet. The gym owner sets these up.',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: _cSubtle),
                         ),
                       );
                     }
                     return ListView.separated(
                       itemCount: plans.length,
                       separatorBuilder: (_, _) => const SizedBox(height: 14),
-                      itemBuilder: (context, index) =>
-                          _PlanTile(plan: plans[index], gymId: widget.gymId),
+                      itemBuilder: (context, index) => _PlanTile(
+                        plan: plans[index],
+                        gymId: widget.gymId,
+                        canEdit: canEdit,
+                      ),
                     );
                   },
                   loading: () =>
@@ -221,61 +246,68 @@ class _ManagePlansScreenState extends ConsumerState<ManagePlansScreen> {
                       Center(child: Text('Something went wrong: $error')),
                 ),
               ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: widget.firstRun
-                    ? FilledButton(
-                        onPressed: hasPricedPlan && !_continuing
-                            ? _continueFromFirstRun
-                            : null,
-                        style: FilledButton.styleFrom(
-                          backgroundColor: _cAccentTeal,
-                          foregroundColor: Colors.white,
-                          disabledBackgroundColor: _cDisabledBg,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(999),
+              if (canEdit) ...[
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: widget.firstRun
+                      ? FilledButton(
+                          onPressed: hasPricedPlan && !_continuing
+                              ? _continueFromFirstRun
+                              : null,
+                          style: FilledButton.styleFrom(
+                            backgroundColor: _cAccentTeal,
+                            foregroundColor: Colors.white,
+                            disabledBackgroundColor: _cDisabledBg,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                          ),
+                          child: _continuing
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Text(
+                                  'Save and continue',
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                        )
+                      : FilledButton.icon(
+                          onPressed: () =>
+                              openPlanForm(context, gymId: widget.gymId),
+                          icon: const Icon(
+                            Icons.add,
+                            size: 18,
+                            color: Colors.white,
+                          ),
+                          label: const Text(
+                            'Add New Plan',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
+                          ),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: _cAccentTeal,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(999),
+                            ),
                           ),
                         ),
-                        child: _continuing
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : const Text(
-                                'Save and continue',
-                                style: TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                      )
-                    : FilledButton.icon(
-                  onPressed: () => openPlanForm(context, gymId: widget.gymId),
-                  icon: const Icon(Icons.add, size: 18, color: Colors.white),
-                  label: const Text(
-                    'Add New Plan',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                    ),
-                  ),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: _cAccentTeal,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                  ),
                 ),
-              ),
+              ],
             ],
           ),
         ),
@@ -382,10 +414,15 @@ void _openPlanForm(
 }
 
 class _PlanTile extends ConsumerWidget {
-  const _PlanTile({required this.plan, required this.gymId});
+  const _PlanTile({
+    required this.plan,
+    required this.gymId,
+    required this.canEdit,
+  });
 
   final MembershipPlan plan;
   final String gymId;
+  final bool canEdit;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -432,20 +469,22 @@ class _PlanTile extends ConsumerWidget {
                     ),
                   ),
                 ),
-                const SizedBox(width: 8),
-                _CardIconButton(
-                  icon: Icons.edit_outlined,
-                  color: _cSubtle,
-                  onPressed: () =>
-                      _openPlanForm(context, gymId: gymId, existing: plan),
-                ),
-                if (isActive) ...[
+                if (canEdit) ...[
                   const SizedBox(width: 8),
                   _CardIconButton(
-                    icon: Icons.archive_outlined,
+                    icon: Icons.edit_outlined,
                     color: _cSubtle,
-                    onPressed: () => _confirmArchive(context, ref, plan),
+                    onPressed: () =>
+                        _openPlanForm(context, gymId: gymId, existing: plan),
                   ),
+                  if (isActive) ...[
+                    const SizedBox(width: 8),
+                    _CardIconButton(
+                      icon: Icons.archive_outlined,
+                      color: _cSubtle,
+                      onPressed: () => _confirmArchive(context, ref, plan),
+                    ),
+                  ],
                 ],
               ],
             ),
@@ -658,10 +697,7 @@ class _PlanFormSheetState extends ConsumerState<_PlanFormSheet> {
               specificMessage = firstList.first;
             }
           }
-          _error =
-              specificMessage ??
-              e.message ??
-              "Couldn't save — check the fields and try again.";
+          _error = specificMessage ?? e.message;
         });
       }
     } catch (e) {

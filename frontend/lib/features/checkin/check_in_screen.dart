@@ -543,6 +543,9 @@ class _CheckInScreenState extends ConsumerState<CheckInScreen> {
                       )
                     : _WalkInTabContent(
                         gymId: widget.gymId,
+                        canManagePlans:
+                            authState is AuthAuthenticated &&
+                            authState.user.role == UserRole.owner,
                         nameController: _walkInNameController,
                         dayPassPlansAsync: plansAsync,
                         dayPassPlans: dayPassPlans,
@@ -934,6 +937,7 @@ class _FilterChip extends StatelessWidget {
 class _WalkInTabContent extends StatelessWidget {
   const _WalkInTabContent({
     required this.gymId,
+    required this.canManagePlans,
     required this.nameController,
     required this.dayPassPlansAsync,
     required this.dayPassPlans,
@@ -953,6 +957,10 @@ class _WalkInTabContent extends StatelessWidget {
   final bool submitting;
   final VoidCallback onSubmit;
   final String gymId;
+
+  /// Only owners can set plan prices; staff get a message instead of a
+  /// link to a screen they can't change.
+  final bool canManagePlans;
 
   bool get _canSubmit {
     if (selectedPlanId == null) return false;
@@ -1059,11 +1067,16 @@ class _WalkInTabContent extends StatelessWidget {
                 ),
                 data: (_) {
                   if (dayPassPlans.isEmpty) {
-                    return const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 8),
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
                       child: Text(
-                        'No day-pass plans set up yet. Add one in Manage Plans.',
-                        style: TextStyle(color: AppColors.muted, fontSize: 12),
+                        canManagePlans
+                            ? 'No day-pass plans set up yet. Add one in Manage Plans.'
+                            : 'No day-pass plans set up yet. Ask the gym owner to add one.',
+                        style: const TextStyle(
+                          color: AppColors.muted,
+                          fontSize: 12,
+                        ),
                       ),
                     );
                   }
@@ -1084,7 +1097,18 @@ class _WalkInTabContent extends StatelessWidget {
                             selected: plan.id == selectedPlanId,
                             onTap: () {
                               if (plan.priceCentavos <= 0) {
-                                context.push('/plans/manage');
+                                if (canManagePlans) {
+                                  context.push('/plans/manage');
+                                } else {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'This plan has no price yet. Ask the '
+                                        'gym owner to set it.',
+                                      ),
+                                    ),
+                                  );
+                                }
                               } else {
                                 onSelectPlan(plan.id);
                               }

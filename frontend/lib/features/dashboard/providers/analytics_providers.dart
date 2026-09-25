@@ -1,3 +1,4 @@
+import '../../../core/utils/gym_time.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api/dio_client.dart';
@@ -70,7 +71,7 @@ class AnalyticsSnapshot {
       series: (revenue['series'] as List).map((p) {
         final m = p as Map<String, dynamic>;
         return RevenuePoint(
-          date: DateTime.parse(m['date'] as String),
+          date: GymTime.parseGymLocal(m['date'] as String),
           amount: double.parse(m['amount'] as String),
         );
       }).toList(),

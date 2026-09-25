@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -28,6 +30,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   bool _offline = false;
   DateTime? _lastResumeRefresh;
 
+  // Real instant of the last successful refresh. In-memory only: it
+  // resets on a cold start, and the first refresh after launch sets it.
+  DateTime? _lastSyncedAt;
+  bool _syncing = false;
+
+  // Re-renders the greeting clock and "Last synced X ago" once a minute;
+  // both are derived from the wall clock and would otherwise go stale.
+  Timer? _tick;
+
   // Someone alt-tabbing repeatedly must not hammer /auth/me/ — this only
   // throttles the automatic resume trigger below, never pull-to-refresh
   // or the initial load, both of which are an explicit ask for fresh data.
@@ -37,11 +48,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _tick = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (!mounted) return;
+      ref.invalidate(gymTodayProvider);
+      setState(() {});
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) => _refresh());
   }
 
   @override
   void dispose() {
+    _tick?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -49,6 +66,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state != AppLifecycleState.resumed) return;
+
+    // A backgrounded app can sleep through gym midnight.
+    ref.invalidate(gymTodayProvider);
 
     final now = DateTime.now();
     if (_lastResumeRefresh != null &&
@@ -66,6 +86,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
 
     final gymId = authState.user.gym?.id ?? '';
 
+    if (mounted) setState(() => _syncing = true);
+
     ref.invalidate(lowStockAlertsProvider);
     // Keyed by (gymId, range) and neither key changes on its own —
     // pull-to-refresh and resume are both an explicit ask for current
@@ -82,10 +104,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
 
       await ref
           .read(checkInsRepositoryProvider)
-          .refreshCheckIns(gymId, day: GymTime.today());
+          .refreshCheckIns(gymId, day: ref.read(gymTodayProvider));
 
       if (mounted) {
-        setState(() => _offline = false);
+        setState(() {
+          _offline = false;
+          _lastSyncedAt = DateTime.now();
+        });
       }
     } on ApiException catch (e) {
       if (e.kind == ApiExceptionKind.network) {
@@ -95,6 +120,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       }
     } catch (_) {
       // Defensive: never let a refresh failure break the home tab.
+    } finally {
+      if (mounted) setState(() => _syncing = false);
     }
   }
 
@@ -108,8 +135,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
 
     final user = authState.user;
     final gymId = user.gym?.id ?? '';
+    final isOwner = user.role == UserRole.owner;
 
     final statsAsync = ref.watch(dashboardStatsProvider(gymId));
+
+    // New gym-local day: pull the new day's check-ins and analytics.
+    ref.listen(gymTodayProvider, (prev, next) {
+      if (prev != null && prev != next) _refresh();
+    });
 
     return Scaffold(
       backgroundColor: AppColors.pageBg,
@@ -131,63 +164,43 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
             color: AppColors.accentTeal,
             child: ListView(
               physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 120),
+              // AppShell floats its nav bar over the body (extendBody), and the
+              // Scaffold reports that bar's height in MediaQuery's bottom
+              // padding, so this clears it on any screen or gesture-nav.
+              padding: EdgeInsets.fromLTRB(
+                16,
+                14,
+                16,
+                MediaQuery.paddingOf(context).bottom + 24,
+              ),
               children: [
                 // ---------------------------------------------------------
                 // HEADER
                 // ---------------------------------------------------------
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'GOOD MORNING',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 0.8,
-                        color: AppColors.subtle,
+                _GreetingHeader(fullName: user.fullName, now: GymTime.now()),
+                if (_offline) ...[
+                  const SizedBox(height: 7),
+                  Row(
+                    children: [
+                      Container(
+                        width: 7,
+                        height: 7,
+                        decoration: const BoxDecoration(
+                          color: AppColors.muted,
+                          shape: BoxShape.circle,
+                        ),
                       ),
-                    ),
-
-                    const SizedBox(height: 4),
-
-                    Text(
-                      user.gym?.name ?? '',
-                      style: const TextStyle(
-                        fontSize: 27,
-                        fontWeight: FontWeight.w700,
-                        height: 1.1,
-                        color: AppColors.ink,
-                      ),
-                    ),
-
-                    if (_offline) ...[
-                      const SizedBox(height: 7),
-                      Row(
-                        children: [
-                          Container(
-                            width: 7,
-                            height: 7,
-                            decoration: const BoxDecoration(
-                              color: AppColors.muted,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                          const SizedBox(width: 7),
-                          const Text(
-                            'Offline — showing saved data',
-                            style: TextStyle(
-                              color: AppColors.muted,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
+                      const SizedBox(width: 7),
+                      const Text(
+                        'Offline — showing saved data',
+                        style: TextStyle(color: AppColors.muted, fontSize: 12),
                       ),
                     ],
-                  ],
-                ),
+                  ),
+                ],
 
-                const _TrialCountdownBanner(),
+                // Billing is the owner's business.
+                if (isOwner) const _TrialCountdownBanner(),
                 _RenewalsBanner(count: stats.expiringSoon),
 
                 const SizedBox(height: 20),
@@ -203,42 +216,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 const SizedBox(height: 14),
 
                 // ---------------------------------------------------------
-                // SALES
+                // SALES + ACTIVITY LOG — owner-only on the server (analytics,
+                // activity log); a staff account would only see an error.
                 // ---------------------------------------------------------
-                SalesOverviewCard(gymId: gymId),
-
-                const SizedBox(height: 14),
-
-                // ---------------------------------------------------------
-                // TODAY'S ACTIVITY LOG
-                // ---------------------------------------------------------
-                ActivityLogCard(gymId: gymId),
-
-                const SizedBox(height: 14),
+                if (isOwner) ...[
+                  SalesOverviewCard(gymId: gymId),
+                  const SizedBox(height: 14),
+                  ActivityLogCard(gymId: gymId),
+                  const SizedBox(height: 14),
+                ],
 
                 // ---------------------------------------------------------
-                // TODAY'S CHECK-INS  +  SYNC STATUS
+                // TODAY'S CHECK-INS  +  SYNC STATUS (one card)
                 // ---------------------------------------------------------
-                IntrinsicHeight(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Expanded(
-                        child: _TodaysCheckInsCard(
-                          totalToday: stats.checkInsToday,
-                          walkInsToday: stats.walkInsToday,
-                          onFastCheckIn: () => context.push('/checkin'),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _SyncStatusCard(
-                          pendingCount: stats.pendingSync,
-                          onSyncNow: _refresh,
-                        ),
-                      ),
-                    ],
-                  ),
+                _CheckInSyncCard(
+                  totalToday: stats.checkInsToday,
+                  walkInsToday: stats.walkInsToday,
+                  pendingCount: stats.pendingSync,
+                  lastSyncedAt: _lastSyncedAt,
+                  syncing: _syncing,
+                  onFastCheckIn: () => context.push('/checkin'),
+                  onSyncNow: _refresh,
                 ),
 
                 const SizedBox(height: 24),
@@ -286,18 +284,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                       subtitle: 'Competitions',
                       onTap: () => context.push('/events'),
                     ),
-                    _ManageItem(
-                      icon: Icons.receipt_long_outlined,
-                      label: 'Manage Plans',
-                      subtitle: 'Pricing & tiers',
-                      onTap: () => context.push('/plans/manage'),
-                    ),
-                    _ManageItem(
-                      icon: Icons.badge_outlined,
-                      label: 'Staff',
-                      subtitle: 'Accounts & roles',
-                      onTap: () => context.push('/settings/staff'),
-                    ),
+                    if (isOwner)
+                      _ManageItem(
+                        icon: Icons.receipt_long_outlined,
+                        label: 'Manage Plans',
+                        subtitle: 'Pricing & tiers',
+                        onTap: () => context.push('/plans/manage'),
+                      ),
+                    if (isOwner)
+                      _ManageItem(
+                        icon: Icons.badge_outlined,
+                        label: 'Staff',
+                        subtitle: 'Accounts & roles',
+                        onTap: () => context.push('/settings/staff'),
+                      ),
                   ],
                 ),
               ],
@@ -324,7 +324,9 @@ class _TrialCountdownBanner extends ConsumerWidget {
 
     final gym = authState.user.gym;
     final trialEndsAt = gym?.trialEndsAt;
-    if (gym == null || gym.subscriptionStatus != 'trialing' || trialEndsAt == null) {
+    if (gym == null ||
+        gym.subscriptionStatus != 'trialing' ||
+        trialEndsAt == null) {
       return const SizedBox.shrink();
     }
 
@@ -435,25 +437,72 @@ class _RenewalsBanner extends StatelessWidget {
   }
 }
 
-/// Left card — real today check-in counts, with a shortcut into
-/// Check-In.
-class _TodaysCheckInsCard extends StatelessWidget {
-  const _TodaysCheckInsCard({
+class _GreetingHeader extends StatelessWidget {
+  const _GreetingHeader({required this.fullName, required this.now});
+
+  final String fullName;
+
+  /// Gym-local wall clock ([GymTime.now]) — never the device clock.
+  final DateTime now;
+
+  @override
+  Widget build(BuildContext context) {
+    final first = fullName.trim().split(RegExp(r'\s+')).first;
+    final greeting = GymTime.greetingFor(now);
+
+    return Text(
+      first.isEmpty ? greeting : '$greeting, $first',
+      style: const TextStyle(
+        fontSize: 24,
+        fontWeight: FontWeight.w700,
+        height: 1.15,
+        color: AppColors.ink,
+      ),
+    );
+  }
+}
+
+/// "Last synced X ago" for a real instant; null means no refresh has
+/// succeeded yet this session.
+String lastSyncedLabel(DateTime? at, DateTime now) {
+  if (at == null) return 'Not synced yet';
+  final diff = now.difference(at);
+  if (diff.inMinutes < 1) return 'Last synced just now';
+  if (diff.inMinutes < 60) return 'Last synced ${diff.inMinutes} min ago';
+  if (diff.inHours < 24) return 'Last synced ${diff.inHours} h ago';
+  return 'Last synced ${diff.inDays} d ago';
+}
+
+/// Today's check-ins and sync status in one card: counts and sync pill on
+/// top, Fast check-in, then a footer with last-synced time and Sync now.
+class _CheckInSyncCard extends StatelessWidget {
+  const _CheckInSyncCard({
     required this.totalToday,
     required this.walkInsToday,
+    required this.pendingCount,
+    required this.lastSyncedAt,
+    required this.syncing,
     required this.onFastCheckIn,
+    required this.onSyncNow,
   });
 
   final int totalToday;
   final int walkInsToday;
+  final int pendingCount;
+  final DateTime? lastSyncedAt;
+  final bool syncing;
   final VoidCallback onFastCheckIn;
+  final Future<void> Function() onSyncNow;
 
   @override
   Widget build(BuildContext context) {
     final memberCheckIns = (totalToday - walkInsToday).clamp(0, totalToday);
+    final allSynced = pendingCount == 0;
+    final pillColor = allSynced ? AppColors.accentTeal : AppColors.expiringBg;
+    final synced = lastSyncedLabel(lastSyncedAt, DateTime.now());
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
       decoration: BoxDecoration(
         color: AppColors.cardBg,
         borderRadius: BorderRadius.circular(18),
@@ -462,61 +511,69 @@ class _TodaysCheckInsCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Check-ins today',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.ink,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '$totalToday',
+                      style: const TextStyle(
+                        fontSize: 30,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.ink,
+                        height: 1,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Members $memberCheckIns · Walk-ins $walkInsToday',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: AppColors.muted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
               Container(
-                width: 6,
-                height: 6,
-                decoration: const BoxDecoration(
-                  color: AppColors.accentTeal,
-                  shape: BoxShape.circle,
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                decoration: BoxDecoration(
+                  color: pillColor.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(999),
                 ),
-              ),
-              const SizedBox(width: 5),
-              const Text(
-                'TODAY',
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.6,
-                  color: AppColors.accentTeal,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      allSynced
+                          ? Icons.check_circle
+                          : Icons.cloud_sync_outlined,
+                      size: 13,
+                      color: pillColor,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      allSynced ? 'All synced' : '$pendingCount pending',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: pillColor,
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          const Text(
-            "Today's Check-ins",
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: AppColors.ink,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            '$totalToday',
-            style: const TextStyle(
-              fontSize: 26,
-              fontWeight: FontWeight.w700,
-              color: AppColors.ink,
-              height: 1,
-            ),
-          ),
-          const Text(
-            'entries',
-            style: TextStyle(fontSize: 11, color: AppColors.muted),
-          ),
-          const SizedBox(height: 10),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Members $memberCheckIns',
-                style: const TextStyle(fontSize: 11, color: AppColors.muted),
-              ),
-              Text(
-                'Walk-ins $walkInsToday',
-                style: const TextStyle(fontSize: 11, color: AppColors.muted),
               ),
             ],
           ),
@@ -527,7 +584,7 @@ class _TodaysCheckInsCard extends StatelessWidget {
               onPressed: onFastCheckIn,
               icon: const Icon(Icons.bolt, size: 16),
               label: const Text(
-                'Fast Check-In',
+                'Fast check-in',
                 style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
               ),
               style: FilledButton.styleFrom(
@@ -540,89 +597,39 @@ class _TodaysCheckInsCard extends StatelessWidget {
               ),
             ),
           ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Right card — button now shares the exact same FilledButton.icon
-/// shape, padding, and solid-fill styling as Fast Check-In on the left,
-/// instead of the lighter outlined/pill treatment it had before. Icon
-/// and label swap between "Sync Now" (pending, enabled) and "Up to
-/// date" (synced, disabled) — same button, same alignment either way.
-class _SyncStatusCard extends StatelessWidget {
-  const _SyncStatusCard({required this.pendingCount, required this.onSyncNow});
-
-  final int pendingCount;
-  final Future<void> Function() onSyncNow;
-
-  @override
-  Widget build(BuildContext context) {
-    final allSynced = pendingCount == 0;
-
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-      decoration: BoxDecoration(
-        color: AppColors.cardBg,
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+          const SizedBox(height: 10),
+          const Divider(height: 1, thickness: 1, color: AppColors.fieldBg),
+          const SizedBox(height: 4),
           Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Flexible(
+              Expanded(
                 child: Text(
-                  allSynced ? 'All synced' : '$pendingCount pending',
-                  style: TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w700,
-                    height: 1,
-                    color: allSynced ? AppColors.accentTeal : AppColors.ink,
-                  ),
+                  allSynced ? synced : '$synced · waiting for connection',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 11, color: AppColors.muted),
                 ),
               ),
-              const SizedBox(width: 6),
-              Icon(
-                allSynced ? Icons.check_circle : Icons.cloud_sync_outlined,
-                size: 17,
-                color: allSynced ? AppColors.accentTeal : AppColors.subtle,
+              TextButton.icon(
+                onPressed: syncing ? null : onSyncNow,
+                icon: syncing
+                    ? const SizedBox(
+                        width: 12,
+                        height: 12,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.sync, size: 14),
+                label: const Text(
+                  'Sync now',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                ),
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.accentTeal,
+                  minimumSize: const Size(0, 36),
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                ),
               ),
             ],
-          ),
-          const SizedBox(height: 6),
-          Text(
-            allSynced
-                ? 'Every record is saved and verified on cloud.'
-                : 'Records waiting for a connection.',
-            style: const TextStyle(fontSize: 11, color: AppColors.muted),
-          ),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              onPressed: allSynced ? null : onSyncNow,
-              icon: Icon(allSynced ? Icons.check : Icons.sync, size: 16),
-              label: Text(
-                allSynced ? 'Up to date' : 'Sync Now',
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              style: FilledButton.styleFrom(
-                backgroundColor: AppColors.accentTeal,
-                foregroundColor: Colors.white,
-                disabledBackgroundColor: AppColors.accentTeal,
-                disabledForegroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 11),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(999),
-                ),
-              ),
-            ),
           ),
         ],
       ),
@@ -644,99 +651,87 @@ class _ManageItem {
   final VoidCallback onTap;
 }
 
+/// One card holding a compact row of icon buttons, four across. Extra
+/// items wrap onto the next row starting at the left (like phone home
+/// screen icons): every cell has the same fixed width, so nothing is
+/// centered or stretched.
 class _ManageGrid extends StatelessWidget {
   const _ManageGrid({required this.items});
 
   final List<_ManageItem> items;
 
+  static const _perRow = 4;
+  static const _gap = 4.0;
+
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        const spacing = 12.0;
-        final cardWidth = (constraints.maxWidth - spacing) / 2;
-
-        return Wrap(
-          spacing: spacing,
-          runSpacing: spacing,
-          children: [
-            for (final item in items)
-              SizedBox(
-                width: cardWidth,
-                height: cardWidth / 1.55,
-                child: _ManageCard(item: item),
-              ),
-          ],
-        );
-      },
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.cardBg,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final cellWidth =
+              (constraints.maxWidth - _gap * (_perRow - 1)) / _perRow;
+          return Wrap(
+            alignment: WrapAlignment.start,
+            spacing: _gap,
+            runSpacing: 12,
+            children: [
+              for (final item in items)
+                SizedBox(
+                  width: cellWidth,
+                  child: _ManageButton(item: item),
+                ),
+            ],
+          );
+        },
+      ),
     );
   }
 }
 
-class _ManageCard extends StatelessWidget {
-  const _ManageCard({required this.item});
+class _ManageButton extends StatelessWidget {
+  const _ManageButton({required this.item});
 
   final _ManageItem item;
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: AppColors.cardBg,
-      borderRadius: BorderRadius.circular(16),
+    return Semantics(
+      button: true,
+      label: '${item.label}, ${item.subtitle}',
       child: InkWell(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
         onTap: item.onTap,
         child: Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(2),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Container(
-                    width: 34,
-                    height: 34,
-                    decoration: BoxDecoration(
-                      color: AppColors.accentTealBg,
-                      borderRadius: BorderRadius.circular(9),
-                    ),
-                    child: Icon(
-                      item.icon,
-                      size: 17,
-                      color: AppColors.accentTeal,
-                    ),
-                  ),
-                  const Icon(
-                    Icons.chevron_right,
-                    size: 18,
-                    color: AppColors.muted,
-                  ),
-                ],
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: AppColors.accentTealBg,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Icon(item.icon, size: 26, color: AppColors.accentTeal),
               ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    item.label,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.ink,
-                    ),
+              const SizedBox(height: 6),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  item.label,
+                  maxLines: 1,
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.ink,
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    item.subtitle,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: AppColors.muted,
-                    ),
-                  ),
-                ],
+                ),
               ),
             ],
           ),

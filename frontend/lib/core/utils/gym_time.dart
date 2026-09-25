@@ -37,8 +37,12 @@ class GymTime {
   /// with the time-of-day fields kept instead of zeroed). For comparisons
   /// that need to know whether a specific time today has passed — [today]
   /// alone can't answer that, since it collapses to midnight.
-  static DateTime now() {
-    final gymNow = DateTime.now().toUtc().add(_gymOffset);
+  static DateTime now() => nowAt(DateTime.now());
+
+  /// [now] for an explicit instant, so callers (and tests) can pin the
+  /// clock. Independent of the device's timezone.
+  static DateTime nowAt(DateTime instant) {
+    final gymNow = instant.toUtc().add(_gymOffset);
     return DateTime(
       gymNow.year,
       gymNow.month,
@@ -89,5 +93,30 @@ class GymTime {
   /// further UTC-instant comparisons.
   static DateTime toGymLocal(DateTime utcInstant) {
     return utcInstant.toUtc().add(_gymOffset);
+  }
+
+  /// Parses a server timestamp into a naive gym-local [DateTime].
+  ///
+  /// Strings carrying an offset or `Z` (e.g. `2026-09-25T19:00:00+08:00`)
+  /// are real instants: `DateTime.parse` turns them into UTC, whose
+  /// fields read 11:00 — 8 hours off on a gym-local label. They're
+  /// converted via [toGymLocal]. Date-only strings (`2026-09-25`) are
+  /// already gym-local calendar dates and pass through unchanged.
+  static DateTime parseGymLocal(String iso) {
+    final parsed = DateTime.parse(iso);
+    if (!parsed.isUtc && !RegExp(r'[Zz]|[+-]\d\d:?\d\d$').hasMatch(iso)) {
+      return parsed;
+    }
+    final g = toGymLocal(parsed);
+    return DateTime(g.year, g.month, g.day, g.hour, g.minute, g.second);
+  }
+
+  /// "Good morning" / "afternoon" / "evening" for a gym-local wall-clock
+  /// time (pass [now] / [nowAt], never a raw `DateTime.now()`).
+  static String greetingFor(DateTime gymLocal) {
+    final h = gymLocal.hour;
+    if (h < 12) return 'Good morning';
+    if (h < 18) return 'Good afternoon';
+    return 'Good evening';
   }
 }
