@@ -1,6 +1,7 @@
 import 'package:flexdesk/core/utils/cash_helpers.dart';
 import 'package:flexdesk/features/pos/data/pos_repository.dart';
 import 'package:flexdesk/features/pos/providers/cart_provider.dart';
+import 'package:flexdesk/features/pos/product_category.dart';
 import 'package:flexdesk/features/pos/screens/inventory_screen.dart';
 import 'package:flexdesk/features/pos/screens/pos_screen.dart';
 import 'package:flutter/material.dart';
@@ -45,23 +46,18 @@ void main() {
     expect(pluralize(6, 'Product'), '6 Products');
   });
 
-  test('stock badge wording reflects reality, including empty', () {
-    expect(
-      stockBadgeLabel(productCount: 0, lowCount: 0, outCount: 0),
-      'No products',
-    );
-    expect(
-      stockBadgeLabel(productCount: 4, lowCount: 0, outCount: 0),
-      'All in stock',
-    );
-    expect(stockBadgeLabel(productCount: 4, lowCount: 1, outCount: 0), '1 Low');
-    expect(stockBadgeLabel(productCount: 4, lowCount: 0, outCount: 2), '2 Out');
+  test('category matching is case-insensitive; unknown stays neutral', () {
+    expect(categoryFor('Drinks')?.name, 'Drinks');
+    expect(categoryFor('merch')?.name, 'Merch');
+    expect(categoryFor(' Gear ')?.name, 'Gear');
+    expect(categoryFor('Whatever'), isNull);
+    expect(categoryFor(''), isNull);
   });
 
   group('ProductTile', () {
     Widget host(Widget child) => MaterialApp(
       home: Scaffold(
-        body: Center(child: SizedBox(width: 105, height: 140, child: child)),
+        body: Center(child: SizedBox(width: 105, child: child)),
       ),
     );
 

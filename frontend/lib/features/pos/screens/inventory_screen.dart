@@ -3,10 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api/api_exception.dart';
 import '../../../core/theme/colors.dart';
-import '../../../core/utils/cash_helpers.dart';
 import '../../../core/utils/money_format.dart';
 import '../../auth/providers/auth_providers.dart';
 import '../data/pos_repository.dart';
+import '../product_category.dart';
 import '../providers/pos_providers.dart';
 
 enum _StockFilter { all, inStock, low, out }
@@ -100,13 +100,14 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     String name,
     int priceCentavos,
     int stock,
+    String category,
   ) async {
     try {
       await ref
           .read(posRepositoryProvider)
           .createProduct(
             name: name,
-            category: '',
+            category: category,
             priceCentavos: priceCentavos,
             initialStock: stock,
             // No threshold input in this quick-entry form — the backend
@@ -245,33 +246,9 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
             icon: const Icon(Icons.arrow_back, color: AppColors.ink),
             onPressed: () => Navigator.of(context).pop(_dirty),
           ),
-          title: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'Inventory',
-                style: TextStyle(
-                  color: AppColors.ink,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: AppColors.accentTealBg,
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  pluralize(allProducts.length, 'item'),
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.accentTeal,
-                  ),
-                ),
-              ),
-            ],
+          title: const Text(
+            'Inventory',
+            style: TextStyle(color: AppColors.ink, fontWeight: FontWeight.w700),
           ),
         ),
         body: SafeArea(
@@ -287,15 +264,13 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                     children: [
                       Row(
                         children: [
-                          Expanded(
+                          const Expanded(
                             child: Text(
-                              'INVENTORY ITEMS · '
-                              '${pluralize(allProducts.length, 'Product')}',
-                              style: const TextStyle(
-                                fontSize: 11,
+                              'What you sell',
+                              style: TextStyle(
+                                fontSize: 15,
                                 fontWeight: FontWeight.w700,
-                                letterSpacing: 0.4,
-                                color: AppColors.muted,
+                                color: AppColors.ink,
                               ),
                             ),
                           ),
@@ -333,8 +308,8 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                           children: [
                             Expanded(
                               child: _FilterTab(
-                                label:
-                                    'All ${_count(allProducts, _StockFilter.all)}',
+                                label: 'All',
+                                count: _count(allProducts, _StockFilter.all),
                                 selected: _filter == _StockFilter.all,
                                 onTap: () =>
                                     setState(() => _filter = _StockFilter.all),
@@ -342,8 +317,11 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                             ),
                             Expanded(
                               child: _FilterTab(
-                                label:
-                                    'In stock ${_count(allProducts, _StockFilter.inStock)}',
+                                label: 'In stock',
+                                count: _count(
+                                  allProducts,
+                                  _StockFilter.inStock,
+                                ),
                                 selected: _filter == _StockFilter.inStock,
                                 onTap: () => setState(
                                   () => _filter = _StockFilter.inStock,
@@ -352,8 +330,8 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                             ),
                             Expanded(
                               child: _FilterTab(
-                                label:
-                                    'Low ${_count(allProducts, _StockFilter.low)}',
+                                label: 'Low',
+                                count: _count(allProducts, _StockFilter.low),
                                 selected: _filter == _StockFilter.low,
                                 onTap: () =>
                                     setState(() => _filter = _StockFilter.low),
@@ -361,8 +339,8 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                             ),
                             Expanded(
                               child: _FilterTab(
-                                label:
-                                    'Out ${_count(allProducts, _StockFilter.out)}',
+                                label: 'Out',
+                                count: _count(allProducts, _StockFilter.out),
                                 selected: _filter == _StockFilter.out,
                                 onTap: () =>
                                     setState(() => _filter = _StockFilter.out),
@@ -462,7 +440,12 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
 class _AddProductSheet extends StatefulWidget {
   const _AddProductSheet({required this.onSubmit});
 
-  final Future<String?> Function(String name, int priceCentavos, int stock)
+  final Future<String?> Function(
+    String name,
+    int priceCentavos,
+    int stock,
+    String category,
+  )
   onSubmit;
 
   @override
@@ -475,6 +458,8 @@ class _AddProductSheetState extends State<_AddProductSheet> {
   final _stockController = TextEditingController();
   bool _submitting = false;
   String? _error;
+  // One of the fixed categories, or null for none (saved as empty).
+  String? _category;
 
   @override
   void dispose() {
@@ -507,7 +492,12 @@ class _AddProductSheetState extends State<_AddProductSheet> {
       _submitting = true;
       _error = null;
     });
-    final error = await widget.onSubmit(name, (price * 100).round(), stock);
+    final error = await widget.onSubmit(
+      name,
+      (price * 100).round(),
+      stock,
+      _category ?? '',
+    );
     if (!mounted) return;
     if (error == null) {
       Navigator.of(context).pop();
@@ -591,6 +581,46 @@ class _AddProductSheetState extends State<_AddProductSheet> {
                         keyboardType: TextInputType.number,
                       ),
                     ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'CATEGORY',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.3,
+                    color: AppColors.muted,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 0,
+                  children: [
+                    for (final c in productCategories)
+                      ChoiceChip(
+                        avatar: Icon(
+                          c.icon,
+                          size: 16,
+                          color: _category == c.name ? Colors.white : c.color,
+                        ),
+                        label: Text(c.name),
+                        selected: _category == c.name,
+                        showCheckmark: false,
+                        selectedColor: c.color,
+                        labelStyle: TextStyle(
+                          fontSize: 12,
+                          color: _category == c.name
+                              ? Colors.white
+                              : AppColors.ink,
+                        ),
+                        onSelected: _submitting
+                            ? null
+                            : (on) => setState(
+                                () => _category = on ? c.name : null,
+                              ),
+                      ),
                   ],
                 ),
                 if (_error != null) ...[
@@ -730,20 +760,23 @@ class _MiniField extends StatelessWidget {
 class _FilterTab extends StatelessWidget {
   const _FilterTab({
     required this.label,
+    required this.count,
     required this.selected,
     required this.onTap,
   });
   final String label;
+  final int count;
   final bool selected;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
+    final fg = selected ? AppColors.accentTeal : AppColors.muted;
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 160),
-        padding: const EdgeInsets.symmetric(vertical: 8),
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 2),
         decoration: BoxDecoration(
           color: selected ? AppColors.cardBg : Colors.transparent,
           borderRadius: BorderRadius.circular(9),
@@ -756,13 +789,36 @@ class _FilterTab extends StatelessWidget {
                 ]
               : null,
         ),
-        child: Text(
-          label,
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: selected ? AppColors.accentTeal : AppColors.muted,
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: fg,
+                ),
+              ),
+              const SizedBox(width: 5),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                decoration: BoxDecoration(
+                  color: selected ? AppColors.accentTealBg : AppColors.border,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  '$count',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: fg,
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),

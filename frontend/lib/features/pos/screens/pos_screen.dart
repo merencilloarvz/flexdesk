@@ -9,6 +9,7 @@ import '../../../core/utils/money_format.dart';
 import '../../dashboard/providers/analytics_providers.dart';
 import '../../shell/app_shell.dart';
 import '../data/pos_repository.dart';
+import '../product_category.dart';
 import '../providers/cart_provider.dart';
 import '../providers/pos_providers.dart';
 import 'inventory_screen.dart';
@@ -22,7 +23,6 @@ class PosScreen extends ConsumerStatefulWidget {
 
 class _PosScreenState extends ConsumerState<PosScreen> {
   List<Product>? _products;
-  InventoryAlerts? _alerts;
   bool _loading = true;
   String? _error;
 
@@ -38,11 +38,7 @@ class _PosScreenState extends ConsumerState<PosScreen> {
       _error = null;
     });
     try {
-      final repo = ref.read(posRepositoryProvider);
-      final results = await Future.wait([
-        repo.fetchProducts(),
-        repo.fetchInventoryAlerts(),
-      ]);
+      final products = await ref.read(posRepositoryProvider).fetchProducts();
       if (!mounted) return;
       setState(() {
         // Deactivated products still come back from /products/ (the
@@ -50,10 +46,7 @@ class _PosScreenState extends ConsumerState<PosScreen> {
         // Inventory needs to be able to show them in its own INACTIVE
         // section). POS is the one place that must never sell one, so
         // the filter belongs here.
-        _products = (results[0] as List<Product>)
-            .where((p) => p.isActive)
-            .toList();
-        _alerts = results[1] as InventoryAlerts;
+        _products = products.where((p) => p.isActive).toList();
         _loading = false;
       });
     } on ApiException catch (e) {
@@ -131,6 +124,76 @@ class _PosScreenState extends ConsumerState<PosScreen> {
     );
   }
 
+  /// Sellable products first; out-of-stock ones sit in their own section
+  /// at the bottom. When nothing can be sold, a short message replaces
+  /// the grid instead of a screen of greyed-out cards.
+  Widget _productList({
+    required String currencyCode,
+    required CartNotifier cartNotifier,
+    required double bottomPadding,
+  }) {
+    final products = _products!;
+    final sellable = products.where((p) => !p.isOutOfStock).toList();
+    final out = products.where((p) => p.isOutOfStock).toList();
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Three across on normal phones; two on very narrow screens so
+        // names stay readable.
+        final columns = constraints.maxWidth >= 330 ? 3 : 2;
+
+        Widget rows(List<Product> items) => Column(
+          children: [
+            for (var i = 0; i < items.length; i += columns)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (var c = 0; c < columns; c++) ...[
+                        if (c > 0) const SizedBox(width: 8),
+                        Expanded(
+                          child: i + c < items.length
+                              ? ProductTile(
+                                  product: items[i + c],
+                                  cartQuantity: cartNotifier.quantityOf(
+                                    items[i + c].id,
+                                  ),
+                                  currencyCode: currencyCode,
+                                  onAdd: () => _addToCart(items[i + c]),
+                                  onRemove: () =>
+                                      _removeFromCart(items[i + c].id),
+                                )
+                              : const SizedBox.shrink(),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        );
+
+        return ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: EdgeInsets.fromLTRB(16, 0, 16, bottomPadding),
+          children: [
+            if (sellable.isEmpty)
+              const _NothingToSell()
+            else ...[
+              rows(sellable),
+              if (out.isNotEmpty) ...[
+                const _SectionDivider(label: 'Out of stock'),
+                rows(out),
+              ],
+            ],
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authControllerProvider);
@@ -163,25 +226,15 @@ class _PosScreenState extends ConsumerState<PosScreen> {
           style: TextStyle(color: AppColors.ink, fontWeight: FontWeight.w700),
         ),
         iconTheme: const IconThemeData(color: AppColors.ink),
-        actions: [
-          if (_alerts != null && _products != null)
-            Padding(
-              padding: const EdgeInsets.only(right: 16),
-              child: _StockBadgeChip(
-                alerts: _alerts!,
-                productCount: _products!.length,
-              ),
-            ),
-        ],
       ),
       body: SafeArea(
         child: Column(
           children: [
-            if (_alerts != null && hasProducts)
+            if (hasProducts)
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
                 child: _StockOverviewCard(
-                  alerts: _alerts!,
+                  products: _products!,
                   onManageStock: _openInventory,
                 ),
               ),
@@ -198,40 +251,11 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                   : RefreshIndicator(
                       onRefresh: _load,
                       color: AppColors.accentTeal,
-                      child: LayoutBuilder(
-                        builder: (context, constraints) {
-                          // Three across on normal phones; two on very
-                          // narrow screens so names stay readable.
-                          final columns = constraints.maxWidth >= 330 ? 3 : 2;
-                          return GridView.builder(
-                            padding: EdgeInsets.fromLTRB(
-                              16,
-                              0,
-                              16,
-                              AppShell.reservedNavHeight + cartCardAllowance,
-                            ),
-                            gridDelegate:
-                                SliverGridDelegateWithFixedCrossAxisCount(
-                                  crossAxisCount: columns,
-                                  mainAxisSpacing: 8,
-                                  crossAxisSpacing: 8,
-                                  mainAxisExtent: 140,
-                                ),
-                            itemCount: _products!.length,
-                            itemBuilder: (context, index) {
-                              final product = _products![index];
-                              return ProductTile(
-                                product: product,
-                                cartQuantity: cartNotifier.quantityOf(
-                                  product.id,
-                                ),
-                                currencyCode: currencyCode,
-                                onAdd: () => _addToCart(product),
-                                onRemove: () => _removeFromCart(product.id),
-                              );
-                            },
-                          );
-                        },
+                      child: _productList(
+                        currencyCode: currencyCode,
+                        cartNotifier: cartNotifier,
+                        bottomPadding:
+                            AppShell.reservedNavHeight + cartCardAllowance,
                       ),
                     ),
             ),
@@ -245,60 +269,6 @@ class _PosScreenState extends ConsumerState<PosScreen> {
               currencyCode: currencyCode,
               onPayNow: () => _openConfirm(currencyCode),
             ),
-    );
-  }
-}
-
-/// Reflects reality in every case: nothing to stock, alerts, or all fine.
-String stockBadgeLabel({
-  required int productCount,
-  required int lowCount,
-  required int outCount,
-}) {
-  if (productCount == 0) return 'No products';
-  if (lowCount > 0 && outCount > 0) return '$lowCount Low · $outCount Out';
-  if (lowCount > 0) return '$lowCount Low';
-  if (outCount > 0) return '$outCount Out';
-  return 'All in stock';
-}
-
-class _StockBadgeChip extends StatelessWidget {
-  const _StockBadgeChip({required this.alerts, required this.productCount});
-
-  final InventoryAlerts alerts;
-  final int productCount;
-
-  @override
-  Widget build(BuildContext context) {
-    final Color color;
-    if (productCount == 0) {
-      color = AppColors.muted;
-    } else if (alerts.lowStockCount > 0) {
-      color = AppColors.expiringBg;
-    } else if (alerts.outOfStockCount > 0) {
-      color = AppColors.errorText;
-    } else {
-      color = AppColors.linkGreen;
-    }
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: AppColors.cardBg,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: AppColors.border, width: 0.6),
-      ),
-      child: Text(
-        stockBadgeLabel(
-          productCount: productCount,
-          lowCount: alerts.lowStockCount,
-          outCount: alerts.outOfStockCount,
-        ),
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-          color: color,
-        ),
-      ),
     );
   }
 }
@@ -367,18 +337,37 @@ class _EmptyProducts extends StatelessWidget {
   }
 }
 
+/// Stock status carried by colour: green when everything is in stock,
+/// amber when anything is low or out. Hidden by the caller when there are
+/// no products at all.
 class _StockOverviewCard extends StatelessWidget {
-  const _StockOverviewCard({required this.alerts, required this.onManageStock});
+  const _StockOverviewCard({
+    required this.products,
+    required this.onManageStock,
+  });
 
-  final InventoryAlerts alerts;
+  final List<Product> products;
   final VoidCallback onManageStock;
 
   @override
   Widget build(BuildContext context) {
+    final low = products.where((p) => p.isLowStock).length;
+    final out = products.where((p) => p.isOutOfStock).length;
+    final allGood = low == 0 && out == 0;
+
+    final title = allGood
+        ? 'All in stock'
+        : [
+            if (low > 0) '$low low',
+            if (out > 0) '$out out of stock',
+          ].join(' · ');
+    final bg = allGood ? AppColors.successBg : AppColors.expiringIcon;
+    final fg = allGood ? AppColors.linkGreen : AppColors.expiringBg;
+
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.cardBg,
+        color: bg,
         borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
@@ -387,13 +376,15 @@ class _StockOverviewCard extends StatelessWidget {
             width: 36,
             height: 36,
             decoration: BoxDecoration(
-              color: AppColors.accentTealBg,
+              color: Colors.white.withValues(alpha: 0.7),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: const Icon(
-              Icons.inventory_2_outlined,
-              size: 18,
-              color: AppColors.accentTeal,
+            child: Icon(
+              allGood
+                  ? Icons.check_circle_outline
+                  : Icons.warning_amber_rounded,
+              size: 20,
+              color: fg,
             ),
           ),
           const SizedBox(width: 12),
@@ -401,19 +392,21 @@ class _StockOverviewCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Stock Overview',
+                Text(
+                  title,
                   style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.ink,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: fg,
                   ),
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  '${alerts.inStockCount} in Stock · ${alerts.lowStockCount} Low · '
-                  '${alerts.outOfStockCount} Out',
-                  style: const TextStyle(fontSize: 11, color: AppColors.muted),
+                  pluralize(products.length, 'product'),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: fg.withValues(alpha: 0.8),
+                  ),
                 ),
               ],
             ),
@@ -440,9 +433,11 @@ class _StockOverviewCard extends StatelessWidget {
   }
 }
 
-/// Compact product card: name, price, stock left — and the quantity
-/// stepper only once the product is in the cart. The whole card adds one
-/// unit when tapped; out-of-stock cards are dimmed, badged and inert.
+/// Compact product card that ends where its content ends: a thin category
+/// strip (icon + colour, grey when out of stock), name, price, stock left
+/// — and the quantity stepper only once the product is in the cart. The
+/// whole card adds one unit when tapped; out-of-stock cards are dimmed and
+/// inert.
 class ProductTile extends StatelessWidget {
   const ProductTile({
     super.key,
@@ -464,6 +459,15 @@ class ProductTile extends StatelessWidget {
     final out = product.isOutOfStock;
     final inCart = cartQuantity > 0;
 
+    final category = categoryFor(product.category);
+    final stripColor = out
+        ? AppColors.disabledLabel
+        : (category?.color ?? uncategorizedColor);
+    final stripIcon = category?.icon ?? uncategorizedIcon;
+    // Fixed categories show their name; anything else shows its own text
+    // so old free-text categories aren't hidden.
+    final stripLabel = category?.name ?? product.category.trim();
+
     final stockText = out
         ? 'Out of stock'
         : product.isLowStock
@@ -482,67 +486,153 @@ class ProductTile extends StatelessWidget {
           '${product.name}, ${formatMoney(product.priceCentavos, currencyCode)}, '
           '$stockText',
       child: Opacity(
-        opacity: out ? 0.5 : 1.0,
+        opacity: out ? 0.6 : 1.0,
         child: Material(
-          color: out ? AppColors.disabledBg : AppColors.cardBg,
-          borderRadius: BorderRadius.circular(14),
-          child: InkWell(
+          color: AppColors.cardBg,
+          clipBehavior: Clip.antiAlias,
+          shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
+            side: inCart
+                ? const BorderSide(color: AppColors.accentTeal, width: 1.5)
+                : BorderSide.none,
+          ),
+          child: InkWell(
             onTap: out ? null : onAdd,
-            child: Container(
-              padding: const EdgeInsets.fromLTRB(10, 9, 10, 8),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(14),
-                border: inCart
-                    ? Border.all(color: AppColors.accentTeal, width: 1.5)
-                    : null,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    product.name,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 12.5,
-                      height: 1.2,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.ink,
-                    ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Container(
+                  height: 22,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  color: stripColor.withValues(alpha: 0.16),
+                  child: Row(
+                    children: [
+                      Icon(stripIcon, size: 14, color: stripColor),
+                      if (stripLabel.isNotEmpty) ...[
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            stripLabel,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: stripColor,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    formatMoney(product.priceCentavos, currencyCode),
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.ink,
-                    ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(10, 7, 10, 8),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        product.name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 12.5,
+                          height: 1.2,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.ink,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        formatMoney(product.priceCentavos, currencyCode),
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.ink,
+                        ),
+                      ),
+                      Text(
+                        stockText,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w500,
+                          color: stockColor,
+                        ),
+                      ),
+                      if (inCart) ...[
+                        const SizedBox(height: 6),
+                        _QtyStepperPill(
+                          quantity: cartQuantity,
+                          onAdd: out ? null : onAdd,
+                          onRemove: onRemove,
+                        ),
+                      ],
+                    ],
                   ),
-                  const SizedBox(height: 1),
-                  Text(
-                    stockText,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 10.5,
-                      fontWeight: FontWeight.w500,
-                      color: stockColor,
-                    ),
-                  ),
-                  const Spacer(),
-                  if (inCart)
-                    _QtyStepperPill(
-                      quantity: cartQuantity,
-                      onAdd: out ? null : onAdd,
-                      onRemove: onRemove,
-                    ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _SectionDivider extends StatelessWidget {
+  const _SectionDivider({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(0, 6, 0, 10),
+      child: Row(
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.4,
+              color: AppColors.muted,
+            ),
+          ),
+          const SizedBox(width: 10),
+          const Expanded(child: Divider(height: 1, color: AppColors.border)),
+        ],
+      ),
+    );
+  }
+}
+
+class _NothingToSell extends StatelessWidget {
+  const _NothingToSell();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(top: 24),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.cardBg,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: const Column(
+        children: [
+          Icon(Icons.remove_shopping_cart_outlined, color: AppColors.muted),
+          SizedBox(height: 10),
+          Text(
+            'Nothing can be sold right now — restock in Manage Stock',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 14, color: AppColors.subtle),
+          ),
+        ],
       ),
     );
   }
