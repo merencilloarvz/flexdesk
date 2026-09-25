@@ -124,3 +124,36 @@ class OwnerWelcomeSeenViewTests(APITestCase):
         }, format="json")
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
         self.assertFalse(resp.data["user"]["has_seen_owner_welcome"])
+
+
+class BackfillMigrationTests(APITestCase):
+    """0028: owners who already have a gym are marked as having seen the
+    welcome flow; staff and gym-less users are left alone."""
+
+    def _run_backfill(self):
+        import importlib
+        from django.apps import apps
+
+        mod = importlib.import_module("core.migrations.0028_backfill_owner_welcome_seen")
+        mod.mark_existing_owners_as_seen(apps, None)
+
+    def test_existing_owner_marked_seen_but_staff_and_gymless_untouched(self):
+        gym = Gym.objects.create(name="Old Gym")
+        owner = User.objects.create_user(email="old@example.com", password="StrongPass123!", full_name="Old")
+        StaffProfile.objects.create(user=owner, gym=gym, role=StaffProfile.OWNER)
+        staff = User.objects.create_user(email="staff@example.com", password="StrongPass123!", full_name="S")
+        StaffProfile.objects.create(user=staff, gym=gym, role=StaffProfile.STAFF)
+        gymless = User.objects.create_user(email="none@example.com", password="StrongPass123!", full_name="N")
+
+        self._run_backfill()
+
+        for u in (owner, staff, gymless):
+            u.refresh_from_db()
+        self.assertTrue(owner.has_seen_owner_welcome)
+        self.assertFalse(staff.has_seen_owner_welcome)
+        self.assertFalse(gymless.has_seen_owner_welcome)
+
+    def test_signup_after_backfill_still_sees_welcome(self):
+        self._run_backfill()  # runs at migrate time only, before this signup
+        resp = self.client.post(f"{API}/auth/signup/", SIGNUP_PAYLOAD, format="json")
+        self.assertFalse(resp.data["user"]["has_seen_owner_welcome"])
