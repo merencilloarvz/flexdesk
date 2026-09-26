@@ -489,6 +489,10 @@ class _MemberPassCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final hasPlan =
+        validThru != null &&
+        status != MembershipStatus.noMembership &&
+        status != MembershipStatus.expired;
     final label = TextStyle(
       fontSize: 9.5,
       fontWeight: FontWeight.w700,
@@ -627,11 +631,11 @@ class _MemberPassCard extends StatelessWidget {
                             Text('VALID THRU', style: label),
                             const SizedBox(height: 2),
                             Text(
-                              validThru != null
+                              hasPlan
                                   ? DateFormat('MM/yy').format(validThru!)
-                                  : 'NO ACTIVE PLAN',
-                              style: TextStyle(
-                                fontSize: validThru != null ? 15 : 11,
+                                  : '\u2014',
+                              style: const TextStyle(
+                                fontSize: 15,
                                 fontWeight: FontWeight.w900,
                                 letterSpacing: 1.0,
                                 color: Colors.white,
@@ -675,8 +679,16 @@ class _PassStatusChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final noPlan =
+        status == MembershipStatus.noMembership ||
+        status == MembershipStatus.expired;
     final (bg, label) = switch (status) {
-      MembershipStatus.active => (const Color(0xFF16A34A), 'Active'),
+      MembershipStatus.active => (
+        const Color(0xFF16A34A),
+        daysLeft == null
+            ? 'Active'
+            : '$daysLeft ${daysLeft == 1 ? 'day' : 'days'} left',
+      ),
       MembershipStatus.expiring => (
         const Color(0xFFD97706),
         daysLeft == null
@@ -686,7 +698,7 @@ class _PassStatusChip extends StatelessWidget {
             : 'Expires in $daysLeft ${daysLeft == 1 ? 'day' : 'days'}',
       ),
       MembershipStatus.expired || MembershipStatus.noMembership => (
-        const Color(0xFFDC2626),
+        Colors.white.withValues(alpha: 0.14),
         'No active plan',
       ),
     };
@@ -698,15 +710,31 @@ class _PassStatusChip extends StatelessWidget {
         decoration: BoxDecoration(
           color: bg,
           borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.4)),
-        ),
-        child: Text(
-          label,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 11.5,
-            fontWeight: FontWeight.w700,
+          border: Border.all(
+            color: Colors.white.withValues(alpha: noPlan ? 0.3 : 0.4),
+            width: noPlan ? 0.8 : 1,
           ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (noPlan) ...[
+              Icon(
+                Icons.info_outline_rounded,
+                size: 13,
+                color: Colors.white.withValues(alpha: 0.8),
+              ),
+              const SizedBox(width: 5),
+            ],
+            Text(
+              label,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: noPlan ? 0.85 : 1),
+                fontSize: 11.5,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
         ),
       ),
     );

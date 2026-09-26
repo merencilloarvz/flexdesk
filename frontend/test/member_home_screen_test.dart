@@ -192,7 +192,7 @@ void main() {
       expect(find.text('VALID THRU'), findsOneWidget);
       expect(find.text(DateFormat('MM/yy').format(end)), findsOneWidget);
 
-      expect(find.text('Active'), findsOneWidget);
+      expect(find.text('30 days left'), findsOneWidget);
       expect(find.text('Show QR to check in'), findsOneWidget);
       expect(find.text('Staff scan it at the front desk'), findsOneWidget);
       expect(find.textContaining('VALIDITY'), findsNothing);
@@ -231,7 +231,7 @@ void main() {
     ) async {
       await _pump(tester, stats: _stats(code: '', plan: null));
       expect(find.text('MEMBER ID'), findsNothing);
-      expect(find.text('NO ACTIVE PLAN'), findsOneWidget); // valid thru slot
+      expect(find.text('—'), findsOneWidget); // valid thru dash
       expect(find.text('No active plan'), findsOneWidget); // chip
       expect(find.textContaining("don't have a plan yet"), findsOneWidget);
       expect(find.text('None yet'), findsOneWidget);

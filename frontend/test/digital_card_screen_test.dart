@@ -159,9 +159,10 @@ void main() {
     expect(find.text('IRON WORKS'), findsOneWidget);
     expect(_textColor(tester, 'IRON WORKS')!.a, greaterThan(0.5));
     // The 8-digit refresh code, and the countdown label.
-    final code = QrTotp.computeCode(_secret, QrTotp.timeStep(
-      _now.millisecondsSinceEpoch / 1000,
-    ));
+    final code = QrTotp.computeCode(
+      _secret,
+      QrTotp.timeStep(_now.millisecondsSinceEpoch / 1000),
+    );
     final shown = '${code.substring(0, 4)} ${code.substring(4)}';
     expect(_textColor(tester, shown), Colors.white);
     expect(find.text('New code in 40s'), findsOneWidget);
@@ -186,10 +187,12 @@ void main() {
     // ...on a white tile that floats (shadow) rather than the screen going
     // white.
     final tile = tester.widget<Container>(
-      find.ancestor(
-        of: find.byType(QrImageView),
-        matching: find.byType(Container),
-      ).first,
+      find
+          .ancestor(
+            of: find.byType(QrImageView),
+            matching: find.byType(Container),
+          )
+          .first,
     );
     final deco = tile.decoration as BoxDecoration;
     expect(deco.color, Colors.white);
@@ -198,9 +201,7 @@ void main() {
     await _unmount(tester);
   });
 
-  testWidgets('the rotation logic is unchanged: code and ring', (
-    tester,
-  ) async {
+  testWidgets('the rotation logic is unchanged: code and ring', (tester) async {
     await _pump(tester);
 
     final code = QrTotp.computeCode(
@@ -220,8 +221,7 @@ void main() {
     );
     expect(ring.value, closeTo(40 / 60, 0.001));
     // Bright green on the dark gradient, over a faint white track.
-    expect(ring.valueColor!.value,
-        AppColors.accentGreen);
+    expect(ring.valueColor!.value, AppColors.accentGreen);
     expect(ring.backgroundColor!.a, lessThan(0.3));
     await _unmount(tester);
   });
@@ -239,16 +239,24 @@ void main() {
         tester,
         summary: _summary(end: GymTime.today().add(const Duration(days: 3))),
       );
-      expect(_pillFor(tester, 'Expires in 3 days').color, const Color(0xFFD97706));
+      expect(
+        _pillFor(tester, 'Expires in 3 days').color,
+        const Color(0xFFD97706),
+      );
       await _unmount(tester);
     });
 
     testWidgets('expired', (tester) async {
       await _pump(
         tester,
-        summary: _summary(end: GymTime.today().subtract(const Duration(days: 4))),
+        summary: _summary(
+          end: GymTime.today().subtract(const Duration(days: 4)),
+        ),
       );
-      expect(_pillFor(tester, 'No active plan').color, const Color(0xFFDC2626));
+      expect(
+        _pillFor(tester, 'No active plan').color,
+        Colors.white.withValues(alpha: 0.14),
+      );
       await _unmount(tester);
     });
 
@@ -286,8 +294,10 @@ void main() {
         ),
       );
       expect(find.text('Connect once to set up your card.'), findsOneWidget);
-      expect(_textColor(tester, 'Connect once to set up your card.'),
-          Colors.white70);
+      expect(
+        _textColor(tester, 'Connect once to set up your card.'),
+        Colors.white70,
+      );
       expect(find.text('Retry'), findsOneWidget);
       expect(find.byType(QrImageView), findsNothing);
       await _unmount(tester);

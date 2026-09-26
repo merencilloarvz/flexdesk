@@ -376,7 +376,7 @@ class _CardContent extends StatelessWidget {
     final expiring = status == MembershipStatus.expiring;
 
     final footer = noPlan
-        ? 'Talk to the front desk to get a plan.'
+        ? 'Staff can still scan this. Talk to the front desk about a plan.'
         : expiring
         ? 'Hold this up at the front desk. Renew soon to keep training.'
         : 'Hold this up at the front desk to check in.';
@@ -422,27 +422,24 @@ class _CardContent extends StatelessWidget {
             const SizedBox(height: 12),
             _StatusChip(status: status, daysLeft: days),
             const SizedBox(height: 24),
-            // The QR stays dark-on-white so it scans reliably; with no
-            // plan it is only dimmed slightly, never hidden.
-            Opacity(
-              opacity: noPlan ? 0.65 : 1,
-              child: Container(
-                width: 240,
-                height: 240,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(24),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.35),
-                      blurRadius: 28,
-                      offset: const Offset(0, 12),
-                    ),
-                  ],
-                ),
-                child: QrImageView(data: qrPayload, version: QrVersions.auto),
+            // The QR stays pure white at full opacity in every state:
+            // scanners need the contrast.
+            Container(
+              width: 240,
+              height: 240,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.35),
+                    blurRadius: 28,
+                    offset: const Offset(0, 12),
+                  ),
+                ],
               ),
+              child: QrImageView(data: qrPayload, version: QrVersions.auto),
             ),
             const SizedBox(height: 12),
             SizedBox(
@@ -467,18 +464,6 @@ class _CardContent extends StatelessWidget {
                 color: Colors.white.withValues(alpha: 0.7),
               ),
             ),
-            if (noPlan) ...[
-              const SizedBox(height: 12),
-              Text(
-                "You'll need a plan before you can train.",
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white.withValues(alpha: 0.85),
-                ),
-              ),
-            ],
             const SizedBox(height: 24),
             Text(
               'OR GIVE THIS CODE',
@@ -533,6 +518,9 @@ class _StatusChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final noPlan =
+        status == MembershipStatus.noMembership ||
+        status == MembershipStatus.expired;
     final (bg, label) = switch (status) {
       MembershipStatus.active => (
         const Color(0xFF16A34A),
@@ -547,7 +535,7 @@ class _StatusChip extends StatelessWidget {
             : 'Expires in $daysLeft ${daysLeft == 1 ? 'day' : 'days'}',
       ),
       MembershipStatus.expired || MembershipStatus.noMembership => (
-        const Color(0xFFDC2626),
+        Colors.white.withValues(alpha: 0.14),
         'No active plan',
       ),
     };
@@ -557,15 +545,31 @@ class _StatusChip extends StatelessWidget {
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.4)),
-      ),
-      child: Text(
-        label,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
+        border: Border.all(
+          color: Colors.white.withValues(alpha: noPlan ? 0.3 : 0.4),
+          width: noPlan ? 0.8 : 1,
         ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (noPlan) ...[
+            Icon(
+              Icons.info_outline_rounded,
+              size: 14,
+              color: Colors.white.withValues(alpha: 0.8),
+            ),
+            const SizedBox(width: 6),
+          ],
+          Text(
+            label,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: noPlan ? 0.85 : 1),
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
       ),
     );
   }
