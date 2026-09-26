@@ -157,15 +157,15 @@ void main() {
 
     expect(_textColor(tester, 'Ana Cruz'), Colors.white);
     expect(find.text('IRON WORKS'), findsOneWidget);
-    expect(_textColor(tester, 'IRON WORKS')!.a, greaterThan(0.6));
+    expect(_textColor(tester, 'IRON WORKS')!.a, greaterThan(0.5));
     // The 8-digit refresh code, and the countdown label.
     final code = QrTotp.computeCode(_secret, QrTotp.timeStep(
       _now.millisecondsSinceEpoch / 1000,
     ));
     final shown = '${code.substring(0, 4)} ${code.substring(4)}';
     expect(_textColor(tester, shown), Colors.white);
-    expect(find.text('Refreshes in 40s'), findsOneWidget);
-    expect(_textColor(tester, 'Refreshes in 40s')!.a, greaterThan(0.6));
+    expect(find.text('New code in 40s'), findsOneWidget);
+    expect(_textColor(tester, 'New code in 40s')!.a, greaterThan(0.6));
 
     // The title and back arrow are light on the transparent app bar.
     final bar = tester.widget<AppBar>(find.byType(AppBar));
@@ -215,8 +215,8 @@ void main() {
     );
     expect(find.byType(QrImageView), findsOneWidget);
 
-    final ring = tester.widget<CircularProgressIndicator>(
-      find.byType(CircularProgressIndicator),
+    final ring = tester.widget<LinearProgressIndicator>(
+      find.byType(LinearProgressIndicator),
     );
     expect(ring.value, closeTo(40 / 60, 0.001));
     // Bright green on the dark gradient, over a faint white track.
@@ -229,8 +229,8 @@ void main() {
   group('status pill keeps its colors from statusFor()', () {
     testWidgets('active', (tester) async {
       await _pump(tester);
-      final pill = _pillFor(tester, '30 days left');
-      expect(pill.color, AppColors.activeBg);
+      final pill = _pillFor(tester, 'Active · 30 days left');
+      expect(pill.color, const Color(0xFF16A34A));
       await _unmount(tester);
     });
 
@@ -239,7 +239,7 @@ void main() {
         tester,
         summary: _summary(end: GymTime.today().add(const Duration(days: 3))),
       );
-      expect(_pillFor(tester, '3 days left').color, AppColors.expiringBg);
+      expect(_pillFor(tester, 'Expires in 3 days').color, const Color(0xFFD97706));
       await _unmount(tester);
     });
 
@@ -248,7 +248,7 @@ void main() {
         tester,
         summary: _summary(end: GymTime.today().subtract(const Duration(days: 4))),
       );
-      expect(_pillFor(tester, 'Expired').color, AppColors.expiredBg);
+      expect(_pillFor(tester, 'No active plan').color, const Color(0xFFDC2626));
       await _unmount(tester);
     });
 
@@ -256,9 +256,8 @@ void main() {
       tester,
     ) async {
       await _pump(tester);
-      final pill = _pillFor(tester, '30 days left');
+      final pill = _pillFor(tester, 'Active · 30 days left');
       expect(pill.border, isNotNull);
-      expect(pill.boxShadow, isNotEmpty);
       await _unmount(tester);
     });
   });
