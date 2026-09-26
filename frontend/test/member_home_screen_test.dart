@@ -179,7 +179,10 @@ void main() {
         stats: _stats(endDate: end, lastCheckInAt: yesterday),
       );
 
-      expect(find.text('Welcome, Ana'), findsOneWidget);
+      expect(
+        find.text('${GymTime.greetingFor(GymTime.now())}, Ana'),
+        findsOneWidget,
+      );
       // Gym name: the header line and the card's top-left.
       expect(find.text('Iron Works'), findsOneWidget);
       expect(find.text('IRON WORKS'), findsOneWidget);
@@ -189,15 +192,15 @@ void main() {
       expect(find.text('VALID THRU'), findsOneWidget);
       expect(find.text(DateFormat('MM/yy').format(end)), findsOneWidget);
 
-      expect(find.text('30'), findsOneWidget);
-      expect(find.text('days left'), findsOneWidget);
       expect(find.text('Active'), findsOneWidget);
-      expect(find.text('Valid until ${DateFormat('MMM d, yyyy').format(end)}'),
-          findsOneWidget);
+      expect(find.text('Show QR to check in'), findsOneWidget);
+      expect(find.text('Staff scan it at the front desk'), findsOneWidget);
+      expect(find.textContaining('VALIDITY'), findsNothing);
 
       expect(find.text('7'), findsOneWidget);
       expect(find.text('this month'), findsOneWidget);
-      expect(find.text('Last visit: Yesterday'), findsOneWidget);
+      expect(find.text('LAST VISIT'), findsOneWidget);
+      expect(find.text('Yesterday'), findsOneWidget);
     });
 
     testWidgets('none of the old placeholder content is left', (tester) async {
@@ -229,36 +232,32 @@ void main() {
       await _pump(tester, stats: _stats(code: '', plan: null));
       expect(find.text('MEMBER ID'), findsNothing);
       expect(find.text('NO ACTIVE PLAN'), findsOneWidget); // valid thru slot
-      expect(find.text('No active plan'), findsOneWidget); // pass validity
-      expect(find.text('No plan'), findsOneWidget); // badge
-      expect(find.text('Last visit: None yet'), findsOneWidget);
+      expect(find.text('No active plan'), findsOneWidget); // chip
+      expect(find.textContaining("don't have a plan yet"), findsOneWidget);
+      expect(find.text('None yet'), findsOneWidget);
     });
   });
 
-  group('pass validity badge reuses statusFor', () {
+  group('pass chip reuses statusFor', () {
     testWidgets('expiring', (tester) async {
       await _pump(
         tester,
         stats: _stats(endDate: _today().add(const Duration(days: 3))),
       );
-      expect(find.text('Expiring'), findsOneWidget);
-      expect(find.text('3'), findsOneWidget);
+      expect(find.text('Expires in 3 days'), findsOneWidget);
     });
 
     testWidgets('the last valid day is still active', (tester) async {
       await _pump(tester, stats: _stats(endDate: _today()));
-      expect(find.text('Last day'), findsOneWidget);
-      expect(find.text('Expiring'), findsOneWidget);
-      expect(find.text('Expired'), findsNothing);
+      expect(find.text('Expires today'), findsOneWidget);
+      expect(find.text('No active plan'), findsNothing);
     });
 
     testWidgets('expired', (tester) async {
       final end = _today().subtract(const Duration(days: 5));
       await _pump(tester, stats: _stats(endDate: end));
-      // Value and badge both say Expired.
-      expect(find.text('Expired'), findsNWidgets(2));
-      expect(find.text('Ended ${DateFormat('MMM d, yyyy').format(end)}'),
-          findsOneWidget);
+      expect(find.text('No active plan'), findsOneWidget);
+      expect(find.textContaining("don't have a plan yet"), findsOneWidget);
     });
   });
 
@@ -287,14 +286,14 @@ void main() {
   group('navigation', () {
     testWidgets('quick entry opens the digital check-in card', (tester) async {
       await _pump(tester, stats: _stats());
-      await tester.tap(find.text('Show QR to Check In'));
+      await tester.tap(find.text('Show QR to check in'));
       await tester.pumpAndSettle();
       expect(find.text('stub:/me/card'), findsOneWidget);
     });
 
-    testWidgets('pass validity opens membership details', (tester) async {
+    testWidgets('the status chip opens membership details', (tester) async {
       await _pump(tester, stats: _stats());
-      await tester.tap(find.text('PASS VALIDITY'));
+      await tester.tap(find.text('No active plan'));
       await tester.pumpAndSettle();
       expect(find.text('stub:/me/membership'), findsOneWidget);
     });
@@ -326,8 +325,11 @@ void main() {
         stats: _stats(),
         events: [
           _eventJson('past', date: t.subtract(const Duration(days: 2))),
-          _eventJson('cancelled',
-              date: t.add(const Duration(days: 1)), canceled: true),
+          _eventJson(
+            'cancelled',
+            date: t.add(const Duration(days: 1)),
+            canceled: true,
+          ),
           _eventJson('later', date: t.add(const Duration(days: 20))),
           _eventJson('soon', date: t.add(const Duration(days: 2))),
           _eventJson('today', date: t),
@@ -381,20 +383,24 @@ void main() {
       ], today);
       expect(result.map((e) => e.id), ['a', 'b']);
       expect(
-        upcomingEvents([_event('c', date: DateTime(2026, 9, 25))], today)
-            .single
-            .id,
+        upcomingEvents([
+          _event('c', date: DateTime(2026, 9, 25)),
+        ], today).single.id,
         'c',
       );
     });
 
     test('same-day events order by start time, no time last', () {
       final d = DateTime(2026, 9, 20);
-      final result = upcomingEvents([
-        _event('none', date: d),
-        _event('late', date: d, startTime: '18:00:00'),
-        _event('early', date: d, startTime: '07:30:00'),
-      ], today, limit: 3);
+      final result = upcomingEvents(
+        [
+          _event('none', date: d),
+          _event('late', date: d, startTime: '18:00:00'),
+          _event('early', date: d, startTime: '07:30:00'),
+        ],
+        today,
+        limit: 3,
+      );
       expect(result.map((e) => e.id), ['early', 'late', 'none']);
     });
   });

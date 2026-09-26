@@ -407,6 +407,18 @@ class _CardContent extends StatelessWidget {
                 color: Colors.white,
               ),
             ),
+            if (memberCode.isNotEmpty) ...[
+              const SizedBox(height: 2),
+              Text(
+                memberCode,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 1.2,
+                  color: Colors.white.withValues(alpha: 0.5),
+                ),
+              ),
+            ],
             const SizedBox(height: 12),
             _StatusChip(status: status, daysLeft: days),
             const SizedBox(height: 24),
