@@ -177,7 +177,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 // ---------------------------------------------------------
                 // HEADER
                 // ---------------------------------------------------------
-                _GreetingHeader(fullName: user.fullName, now: GymTime.now()),
+                _GreetingHeader(
+                  gymName: user.gym?.name ?? '',
+                  now: GymTime.now(),
+                ),
                 if (_offline) ...[
                   const SizedBox(height: 7),
                   Row(
@@ -438,20 +441,20 @@ class _RenewalsBanner extends StatelessWidget {
 }
 
 class _GreetingHeader extends StatelessWidget {
-  const _GreetingHeader({required this.fullName, required this.now});
+  const _GreetingHeader({required this.gymName, required this.now});
 
-  final String fullName;
+  final String gymName;
 
   /// Gym-local wall clock ([GymTime.now]) — never the device clock.
   final DateTime now;
 
   @override
   Widget build(BuildContext context) {
-    final first = fullName.trim().split(RegExp(r'\s+')).first;
+    final name = gymName.trim();
     final greeting = GymTime.greetingFor(now);
 
     return Text(
-      first.isEmpty ? greeting : '$greeting, $first',
+      name.isEmpty ? greeting : '$greeting, $name',
       style: const TextStyle(
         fontSize: 24,
         fontWeight: FontWeight.w700,

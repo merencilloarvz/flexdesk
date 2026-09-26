@@ -141,6 +141,16 @@ class GoogleSignupViewTests(APITestCase):
         self.assertEqual(user.full_name, "New Owner")
         self.assertTrue(Gym.objects.filter(name="Never Der Gym").exists())
 
+    def test_missing_google_name_falls_back_to_email_local_part(self, mock_verify):
+        mock_verify.return_value = _google_payload(
+            sub="noname-sub", email="coach.jo@example.com", full_name="")
+        resp = self.client.post(f"{API}/auth/google/signup/", {
+            "id_token": "tok", "gym_name": "No Name Gym",
+        }, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(
+            User.objects.get(email="coach.jo@example.com").full_name, "coach.jo")
+
     def test_existing_email_is_refused(self, mock_verify):
         User.objects.create_user(
             email="taken@example.com", password="StrongPass123!", full_name="Taken")
