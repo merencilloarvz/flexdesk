@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/api/api_exception.dart';
 import '../../../../core/theme/colors.dart';
 import '../../../../core/utils/gym_time.dart';
+import '../../../../core/utils/money_format.dart';
 import '../../auth/providers/auth_providers.dart';
 import '../../auth/providers/dashboard_providers.dart';
 import '../../members/providers/check_ins_provider.dart';
@@ -136,6 +137,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     final user = authState.user;
     final gymId = user.gym?.id ?? '';
     final isOwner = user.role == UserRole.owner;
+    final currencyCode = user.gym?.currency ?? 'PHP';
 
     final statsAsync = ref.watch(dashboardStatsProvider(gymId));
 
@@ -177,9 +179,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 // ---------------------------------------------------------
                 // HEADER
                 // ---------------------------------------------------------
-                _GreetingHeader(
+                GreetingHero(
+                  gymId: gymId,
                   gymName: user.gym?.name ?? '',
                   now: GymTime.now(),
+                  checkIns: stats.checkInsToday,
+                  members: stats.totalMembers,
+                  currencyCode: currencyCode,
+                  showSales: isOwner,
                 ),
                 if (_offline) ...[
                   const SizedBox(height: 7),
@@ -400,36 +407,55 @@ class _RenewalsBanner extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(top: 10),
       child: Material(
-        color: AppColors.cardBg,
-        borderRadius: BorderRadius.circular(12),
+        color: AppColors.expiringIcon,
+        borderRadius: BorderRadius.circular(14),
         child: InkWell(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(14),
           onTap: () => context.push('/renewals'),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             child: Row(
               children: [
-                const Icon(
-                  Icons.event_repeat_outlined,
-                  size: 18,
-                  color: AppColors.accentTeal,
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: AppColors.categoryAmber,
+                    borderRadius: BorderRadius.circular(11),
+                  ),
+                  child: const Icon(
+                    Icons.event_repeat_outlined,
+                    size: 20,
+                    color: Colors.white,
+                  ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 12),
                 Expanded(
-                  child: Text(
-                    '$count membership${count == 1 ? '' : 's'} expiring '
-                    'this week',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.ink,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '$count membership${count == 1 ? '' : 's'} expiring',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.expiringBg,
+                        ),
+                      ),
+                      const Text(
+                        'This week',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: AppColors.expiringBg,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 const Icon(
                   Icons.chevron_right,
-                  size: 18,
-                  color: AppColors.muted,
+                  size: 20,
+                  color: AppColors.expiringBg,
                 ),
               ],
             ),
@@ -440,28 +466,165 @@ class _RenewalsBanner extends StatelessWidget {
   }
 }
 
-class _GreetingHeader extends StatelessWidget {
-  const _GreetingHeader({required this.gymName, required this.now});
+/// Hero card at the top of the dashboard: greeting (gym-local time), the
+/// gym name, and three quick numbers already on this screen.
+class GreetingHero extends StatelessWidget {
+  const GreetingHero({
+    super.key,
+    required this.gymId,
+    required this.gymName,
+    required this.now,
+    required this.checkIns,
+    required this.members,
+    required this.currencyCode,
+    required this.showSales,
+  });
 
+  final String gymId;
   final String gymName;
 
   /// Gym-local wall clock ([GymTime.now]) — never the device clock.
   final DateTime now;
+  final int checkIns;
+  final int members;
+  final String currencyCode;
+
+  /// Sales come from the owner-only analytics endpoint, so staff don't get
+  /// that block.
+  final bool showSales;
 
   @override
   Widget build(BuildContext context) {
-    final name = gymName.trim();
     final greeting = GymTime.greetingFor(now);
+    final name = gymName.trim();
 
-    return Text(
-      name.isEmpty ? greeting : '$greeting, $name',
-      style: const TextStyle(
-        fontSize: 24,
-        fontWeight: FontWeight.w700,
-        height: 1.15,
-        color: AppColors.ink,
+    return Container(
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(22),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [AppColors.accentTeal, Color(0xFF07382C)],
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            greeting,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              color: Colors.white.withValues(alpha: 0.75),
+            ),
+          ),
+          if (name.isNotEmpty) ...[
+            const SizedBox(height: 2),
+            Text(
+              name,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.w700,
+                height: 1.15,
+                color: Colors.white,
+              ),
+            ),
+          ],
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              if (showSales) ...[
+                Expanded(
+                  child: _HeroSalesBlock(
+                    gymId: gymId,
+                    currencyCode: currencyCode,
+                  ),
+                ),
+                const SizedBox(width: 8),
+              ],
+              Expanded(
+                child: _HeroStat(label: 'Check-ins', value: '$checkIns'),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _HeroStat(label: 'Members', value: '$members'),
+              ),
+            ],
+          ),
+        ],
       ),
     );
+  }
+}
+
+class _HeroStat extends StatelessWidget {
+  const _HeroStat({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 11,
+              color: Colors.white.withValues(alpha: 0.75),
+            ),
+          ),
+          const SizedBox(height: 3),
+          // Big numbers shrink rather than overflow the block.
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              value,
+              style: const TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// "Sales today" — the 1D total from the same analytics endpoint the Sales
+/// Overview card uses. Shows a dash until it loads (or if it fails).
+class _HeroSalesBlock extends ConsumerWidget {
+  const _HeroSalesBlock({required this.gymId, required this.currencyCode});
+
+  final String gymId;
+  final String currencyCode;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final snapshot = ref.watch(analyticsProvider((gymId: gymId, range: '1D')));
+    final total = snapshot.asData?.value.revenueTotal;
+    final text = total == null
+        ? '—'
+        : formatMoney(
+            (total * 100).round(),
+            currencyCode,
+          ).replaceAll('.00', '');
+    return _HeroStat(label: 'Sales today', value: text);
   }
 }
 
