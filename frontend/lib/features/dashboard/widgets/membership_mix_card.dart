@@ -29,7 +29,7 @@ class MembershipMixCard extends StatelessWidget {
     final activePct = total == 0 ? 0 : (active / total * 100).round();
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
       decoration: BoxDecoration(
         color: AppColors.cardBg,
         borderRadius: BorderRadius.circular(20),
@@ -51,8 +51,8 @@ class MembershipMixCard extends StatelessWidget {
               ),
               Container(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 6,
+                  horizontal: 10,
+                  vertical: 4,
                 ),
                 decoration: BoxDecoration(
                   color: AppColors.fieldBg,
@@ -70,13 +70,13 @@ class MembershipMixCard extends StatelessWidget {
             ],
           ),
 
-          const SizedBox(height: 16),
+          const SizedBox(height: 8),
 
           Row(
             children: [
               SizedBox(
-                width: 110,
-                height: 110,
+                width: 84,
+                height: 84,
                 child: Stack(
                   alignment: Alignment.center,
                   children: [
@@ -84,14 +84,14 @@ class MembershipMixCard extends StatelessWidget {
                       PieChartData(
                         startDegreeOffset: -90,
                         sectionsSpace: 2,
-                        centerSpaceRadius: 37,
+                        centerSpaceRadius: 27,
                         sections: total == 0
                             ? [
                                 PieChartSectionData(
                                   value: 1,
                                   color: AppColors.disabledBg,
                                   showTitle: false,
-                                  radius: 16,
+                                  radius: 12,
                                 ),
                               ]
                             : [
@@ -99,19 +99,19 @@ class MembershipMixCard extends StatelessWidget {
                                   value: active.toDouble(),
                                   color: _MixColors.active,
                                   showTitle: false,
-                                  radius: 16,
+                                  radius: 12,
                                 ),
                                 PieChartSectionData(
                                   value: expiring.toDouble(),
                                   color: _MixColors.expiring,
                                   showTitle: false,
-                                  radius: 16,
+                                  radius: 12,
                                 ),
                                 PieChartSectionData(
                                   value: expired.toDouble(),
                                   color: _MixColors.expired,
                                   showTitle: false,
-                                  radius: 16,
+                                  radius: 12,
                                 ),
                               ],
                       ),
@@ -122,19 +122,19 @@ class MembershipMixCard extends StatelessWidget {
                         Text(
                           '$activePct%',
                           style: const TextStyle(
-                            fontSize: 20,
+                            fontSize: 16,
                             fontWeight: FontWeight.w700,
                             color: AppColors.ink,
                             height: 1,
                           ),
                         ),
-                        const SizedBox(height: 5),
+                        const SizedBox(height: 3),
                         Text(
                           'ACTIVE',
                           style: TextStyle(
-                            fontSize: 9,
+                            fontSize: 8,
                             fontWeight: FontWeight.w700,
-                            letterSpacing: 0.7,
+                            letterSpacing: 0.6,
                             color: _MixColors.active,
                           ),
                         ),
@@ -144,7 +144,7 @@ class MembershipMixCard extends StatelessWidget {
                 ),
               ),
 
-              const SizedBox(width: 18),
+              const SizedBox(width: 16),
 
               Expanded(
                 child: Column(
@@ -155,13 +155,13 @@ class MembershipMixCard extends StatelessWidget {
                       label: 'Active',
                       value: active,
                     ),
-                    const SizedBox(height: 11),
+                    const SizedBox(height: 7),
                     _MixRow(
                       color: _MixColors.expiring,
                       label: 'Expiring soon',
                       value: expiring,
                     ),
-                    const SizedBox(height: 11),
+                    const SizedBox(height: 7),
                     _MixRow(
                       color: _MixColors.expired,
                       label: 'Expired',

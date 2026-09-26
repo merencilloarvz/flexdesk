@@ -18,8 +18,7 @@ class OwnerWelcomeScreen extends ConsumerStatefulWidget {
   const OwnerWelcomeScreen({super.key});
 
   @override
-  ConsumerState<OwnerWelcomeScreen> createState() =>
-      _OwnerWelcomeScreenState();
+  ConsumerState<OwnerWelcomeScreen> createState() => _OwnerWelcomeScreenState();
 }
 
 class _OwnerWelcomeScreenState extends ConsumerState<OwnerWelcomeScreen>
@@ -42,10 +41,10 @@ class _OwnerWelcomeScreenState extends ConsumerState<OwnerWelcomeScreen>
     curve: Curves.easeOut,
   );
 
-  late final Animation<Offset> _slide =
-      Tween(begin: const Offset(0, 0.04), end: Offset.zero).animate(
-        CurvedAnimation(parent: _entrance, curve: Curves.easeOut),
-      );
+  late final Animation<Offset> _slide = Tween(
+    begin: const Offset(0, 0.04),
+    end: Offset.zero,
+  ).animate(CurvedAnimation(parent: _entrance, curve: Curves.easeOut));
 
   @override
   void dispose() {
@@ -59,8 +58,12 @@ class _OwnerWelcomeScreenState extends ConsumerState<OwnerWelcomeScreen>
     final full = authState is AuthAuthenticated
         ? authState.user.fullName.trim()
         : '';
-    if (full.isEmpty) return 'there';
-    return full.split(RegExp(r'\s+')).first;
+    if (full.isNotEmpty) return full.split(RegExp(r'\s+')).first;
+    // No name on the account: greet by gym name rather than "Welcome, !".
+    final gymName = authState is AuthAuthenticated
+        ? (authState.user.gym?.name ?? '').trim()
+        : '';
+    return gymName.isEmpty ? 'there' : gymName;
   }
 
   void _onPageChanged(int page) {
@@ -173,10 +176,7 @@ class _OwnerWelcomeScreenState extends ConsumerState<OwnerWelcomeScreen>
                                       ),
                                     ),
                                     const SizedBox(width: 8),
-                                    const Icon(
-                                      Icons.arrow_forward,
-                                      size: 18,
-                                    ),
+                                    const Icon(Icons.arrow_forward, size: 18),
                                   ],
                                 ),
                         ),
@@ -256,10 +256,7 @@ class _CelebrationSlide extends StatelessWidget {
             ),
             const SizedBox(height: 14),
             Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 14,
-                vertical: 6,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
               decoration: BoxDecoration(
                 color: AppColors.accentTealBg,
                 borderRadius: BorderRadius.circular(999),

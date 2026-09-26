@@ -789,7 +789,9 @@ class GoogleSignupSerializer(GoogleTokenSerializerMixin):
             )
         attrs["google_sub"] = sub
         attrs["email"] = email
-        attrs["full_name"] = full_name or email
+        # Google sometimes sends no name; use the part before the "@" rather
+        # than storing the whole email address as the person's name.
+        attrs["full_name"] = full_name or email.split("@")[0]
         return attrs
 
     @transaction.atomic

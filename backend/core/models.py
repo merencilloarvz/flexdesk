@@ -55,7 +55,8 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     objects = UserManager()
     USERNAME_FIELD = "email"
-    REQUIRED_FIELDS = []
+    # createsuperuser asks for a name, so no account is created nameless.
+    REQUIRED_FIELDS = ["full_name"]
 
     @property
     def gym(self):

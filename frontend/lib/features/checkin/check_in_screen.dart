@@ -82,11 +82,12 @@ String _initialsFor(String name) {
 
 // Relative under an hour, clock time after — a 6am check-in should read
 // as a time, not "11 hrs ago", once you're looking at it mid-afternoon.
-String _formatCheckInTime(DateTime utcTime) {
-  final local = utcTime.toLocal();
-  final diff = DateTime.now().difference(local);
+// The clock time is the GYM's local time (via GymTime), never the phone's.
+String formatCheckInTime(DateTime utcTime, {DateTime? now}) {
+  final diff = (now ?? DateTime.now()).toUtc().difference(utcTime.toUtc());
   if (diff.inMinutes < 1) return 'Just now';
   if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+  final local = GymTime.toGymLocal(utcTime);
   final hour = local.hour % 12 == 0 ? 12 : local.hour % 12;
   final period = local.hour < 12 ? 'AM' : 'PM';
   final minute = local.minute.toString().padLeft(2, '0');
@@ -95,7 +96,7 @@ String _formatCheckInTime(DateTime utcTime) {
 
 enum _CheckInTab { member, walkin }
 
-enum _ListFilter { all, walkins }
+enum _ListFilter { all, members, walkins }
 
 class CheckInScreen extends ConsumerStatefulWidget {
   const CheckInScreen({
@@ -134,6 +135,11 @@ class _CheckInScreenState extends ConsumerState<CheckInScreen> {
       setState(
         () => _searchQuery = _searchController.text.trim().toLowerCase(),
       );
+    });
+    // Rebuild as the guest name changes so the Check in button's label and
+    // enabled state always follow what's typed.
+    _walkInNameController.addListener(() {
+      if (mounted) setState(() {});
     });
     WidgetsBinding.instance.addPostFrameCallback((_) => _refresh());
   }
@@ -208,6 +214,7 @@ class _CheckInScreenState extends ConsumerState<CheckInScreen> {
     String? locationId,
     List<MembershipPlan> dayPassPlans,
   ) async {
+    if (_walkInSubmitting) return;
     if (locationId == null) {
       setState(
         () => _walkInError = 'No location assigned — ask your gym owner.',
@@ -447,9 +454,13 @@ class _CheckInScreenState extends ConsumerState<CheckInScreen> {
     final nonVoidedToday = todaysCheckIns
         .where((c) => c.voidedAt == null)
         .toList();
-    final walkInsToday = nonVoidedToday
-        .where((c) => c.visitType == 'WALKIN')
-        .toList();
+
+    final todaySection = _CheckedInTodaySection(
+      loading: checkInsAsync.isLoading && !checkInsAsync.hasValue,
+      todaysCheckIns: todaysCheckIns,
+      filter: _filter,
+      onFilterChanged: (f) => setState(() => _filter = f),
+    );
 
     final plansAsync = ref.watch(activePlansProvider(widget.gymId));
     final dayPassPlans =
@@ -527,10 +538,7 @@ class _CheckInScreenState extends ConsumerState<CheckInScreen> {
                         membersAsync: membersAsync,
                         today: today,
                         todaysCheckIns: todaysCheckIns,
-                        nonVoidedToday: nonVoidedToday,
-                        walkInsToday: walkInsToday,
-                        filter: _filter,
-                        onFilterChanged: (f) => setState(() => _filter = f),
+                        todaySection: todaySection,
                         matchingMembers: _matchingMembers,
                         todaysCheckInFor: _todaysCheckInFor,
                         onMemberTap: (member) => _openMemberConfirmSheet(
@@ -555,6 +563,7 @@ class _CheckInScreenState extends ConsumerState<CheckInScreen> {
                         error: _walkInError,
                         submitting: _walkInSubmitting,
                         onSubmit: () => _submitWalkIn(locationId, dayPassPlans),
+                        todaySection: todaySection,
                       ),
               ),
             ],
@@ -671,43 +680,93 @@ class _TabButton extends StatelessWidget {
   }
 }
 
-// C1/C3 — a Scan button alongside the existing search. Never disabled
-// in the Flutter sense (onPressed: null): offline still responds to a
-// tap, just with the "needs a connection" message instead of opening
-// the camera, which is what C3 means by "disabled ... plus a shortcut
-// to the search field" — greyed out is purely visual here.
-class _ScanButton extends StatelessWidget {
-  const _ScanButton({required this.offline, required this.onTap});
+// The main front-desk action: scanning a member's pass. Never disabled in
+// the Flutter sense (onPressed: null): offline still responds to a tap,
+// just with the "needs a connection" message instead of opening the
+// camera (and a shortcut to the search field) — greyed out is purely
+// visual.
+class _BigScanButton extends StatelessWidget {
+  const _BigScanButton({required this.offline, required this.onTap});
 
   final bool offline;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final color = offline ? AppColors.muted : AppColors.accentTeal;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(999),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.qr_code_scanner_rounded, size: 16, color: color),
-              const SizedBox(width: 4),
-              Text(
-                'Scan',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: color,
+    final bg = offline ? AppColors.disabledBg : AppColors.accentTeal;
+    final fg = offline ? AppColors.subtle : Colors.white;
+    return Semantics(
+      button: true,
+      label: offline
+          ? 'Scan member pass. Needs a connection.'
+          : 'Scan member pass',
+      child: Material(
+        color: bg,
+        borderRadius: BorderRadius.circular(20),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.qr_code_scanner_rounded, size: 40, color: fg),
+                const SizedBox(width: 16),
+                Flexible(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Scan member pass',
+                        style: TextStyle(
+                          fontSize: 19,
+                          fontWeight: FontWeight.w700,
+                          color: fg,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        offline
+                            ? 'Needs a connection — search instead'
+                            : 'Fastest way to check someone in',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: fg.withValues(alpha: 0.85),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _OrDivider extends StatelessWidget {
+  const _OrDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.symmetric(vertical: 14),
+      child: Row(
+        children: [
+          Expanded(child: Divider(height: 1, color: AppColors.border)),
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: 12),
+            child: Text(
+              'or',
+              style: TextStyle(fontSize: 12, color: AppColors.muted),
+            ),
+          ),
+          Expanded(child: Divider(height: 1, color: AppColors.border)),
+        ],
       ),
     );
   }
@@ -721,10 +780,7 @@ class _MemberTabContent extends StatelessWidget {
     required this.membersAsync,
     required this.today,
     required this.todaysCheckIns,
-    required this.nonVoidedToday,
-    required this.walkInsToday,
-    required this.filter,
-    required this.onFilterChanged,
+    required this.todaySection,
     required this.matchingMembers,
     required this.todaysCheckInFor,
     required this.onMemberTap,
@@ -738,31 +794,24 @@ class _MemberTabContent extends StatelessWidget {
   final AsyncValue<List<Member>> membersAsync;
   final DateTime today;
   final List<CheckIn> todaysCheckIns;
-  final List<CheckIn> nonVoidedToday;
-  final List<CheckIn> walkInsToday;
-  final _ListFilter filter;
-  final ValueChanged<_ListFilter> onFilterChanged;
+  final Widget todaySection;
   final List<Member> Function(List<Member>) matchingMembers;
   final CheckIn? Function(String, List<CheckIn>) todaysCheckInFor;
   final void Function(Member) onMemberTap;
-  // C3 — Scan stays visually "on" but tapping it while offline shows
-  // the specific message and focuses search instead of opening the
-  // camera; gated by the same _offline flag that drives the sync
-  // banner, not a second connectivity mechanism.
+  // Scan stays visually "on" but tapping it while offline shows the
+  // specific message and focuses search instead of opening the camera;
+  // gated by the same _offline flag that drives the sync pill, not a
+  // second connectivity mechanism.
   final bool offline;
   final VoidCallback onScanTap;
 
   @override
   Widget build(BuildContext context) {
-    // Voided rows still shown in the raw list below, but excluded from
-    // every count — struck-through visibility, zero weight in numbers.
-    final visibleRows = filter == _ListFilter.all
-        ? todaysCheckIns
-        : todaysCheckIns.where((c) => c.visitType == 'WALKIN').toList();
-
     return ListView(
       padding: EdgeInsets.only(bottom: AppShell.reservedNavHeight + 24),
       children: [
+        _BigScanButton(offline: offline, onTap: onScanTap),
+        const _OrDivider(),
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
@@ -772,19 +821,13 @@ class _MemberTabContent extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Search Member Name or ID',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.ink,
-                    ),
-                  ),
-                  _ScanButton(offline: offline, onTap: onScanTap),
-                ],
+              const Text(
+                'Search Member Name or ID',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.ink,
+                ),
               ),
               const SizedBox(height: 6),
               Container(
@@ -808,13 +851,6 @@ class _MemberTabContent extends StatelessWidget {
                   ),
                 ),
               ),
-              if (offline) ...[
-                const SizedBox(height: 6),
-                const Text(
-                  'QR check-in needs a connection — search for them instead.',
-                  style: TextStyle(fontSize: 11, color: AppColors.muted),
-                ),
-              ],
               if (searchQuery.isNotEmpty) ...[
                 const SizedBox(height: 10),
                 membersAsync.when(
@@ -847,56 +883,162 @@ class _MemberTabContent extends StatelessWidget {
                       ],
                     );
                   },
-                  loading: () => const SizedBox.shrink(),
-                  error: (_, _) => const SizedBox.shrink(),
+                  loading: () => const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 10),
+                    child: Center(
+                      child: SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    ),
+                  ),
+                  error: (_, _) => const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 8),
+                    child: Text(
+                      "Couldn't load members. Pull down to try again.",
+                      style: TextStyle(color: AppColors.muted, fontSize: 12),
+                    ),
+                  ),
                 ),
               ],
             ],
           ),
         ),
         const SizedBox(height: 20),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        todaySection,
+      ],
+    );
+  }
+}
+
+/// "Checked In Today" with All / Members / Walk-ins filters — shared by
+/// both tabs. Voided rows stay visible (struck through) in the list but
+/// count for nothing in the numbers.
+class _CheckedInTodaySection extends StatelessWidget {
+  const _CheckedInTodaySection({
+    required this.loading,
+    required this.todaysCheckIns,
+    required this.filter,
+    required this.onFilterChanged,
+  });
+
+  final bool loading;
+  final List<CheckIn> todaysCheckIns;
+  final _ListFilter filter;
+  final ValueChanged<_ListFilter> onFilterChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final live = todaysCheckIns.where((c) => c.voidedAt == null).toList();
+    final memberCount = live.where((c) => c.visitType == 'MEMBER').length;
+    final walkInCount = live.where((c) => c.visitType == 'WALKIN').length;
+
+    final visibleRows = switch (filter) {
+      _ListFilter.all => todaysCheckIns,
+      _ListFilter.members =>
+        todaysCheckIns.where((c) => c.visitType == 'MEMBER').toList(),
+      _ListFilter.walkins =>
+        todaysCheckIns.where((c) => c.visitType == 'WALKIN').toList(),
+    };
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Text(
+          'Checked In Today',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            color: AppColors.ink,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
           children: [
-            const Text(
-              'Checked In Today',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: AppColors.ink,
-              ),
+            _FilterChip(
+              label: 'All (${live.length})',
+              selected: filter == _ListFilter.all,
+              onTap: () => onFilterChanged(_ListFilter.all),
             ),
-            Row(
-              children: [
-                _FilterChip(
-                  label: 'All (${nonVoidedToday.length})',
-                  selected: filter == _ListFilter.all,
-                  onTap: () => onFilterChanged(_ListFilter.all),
-                ),
-                const SizedBox(width: 6),
-                _FilterChip(
-                  label: 'Walk-in (${walkInsToday.length})',
-                  selected: filter == _ListFilter.walkins,
-                  onTap: () => onFilterChanged(_ListFilter.walkins),
-                ),
-              ],
+            _FilterChip(
+              label: 'Members ($memberCount)',
+              selected: filter == _ListFilter.members,
+              onTap: () => onFilterChanged(_ListFilter.members),
+            ),
+            _FilterChip(
+              label: 'Walk-ins ($walkInCount)',
+              selected: filter == _ListFilter.walkins,
+              onTap: () => onFilterChanged(_ListFilter.walkins),
             ),
           ],
         ),
         const SizedBox(height: 10),
-        if (visibleRows.isEmpty)
+        if (loading && todaysCheckIns.isEmpty)
           const Padding(
-            padding: EdgeInsets.symmetric(vertical: 16),
-            child: Text(
-              'No check-ins yet today',
-              style: TextStyle(color: AppColors.subtle),
-            ),
+            padding: EdgeInsets.symmetric(vertical: 24),
+            child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
           )
+        else if (visibleRows.isEmpty)
+          _NoCheckInsYet(filtered: todaysCheckIns.isNotEmpty)
         else
           Column(
             children: [for (final c in visibleRows) _CheckInTile(checkIn: c)],
           ),
       ],
+    );
+  }
+}
+
+class _NoCheckInsYet extends StatelessWidget {
+  const _NoCheckInsYet({required this.filtered});
+
+  /// True when there ARE check-ins today, just none in this filter.
+  final bool filtered;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
+      decoration: BoxDecoration(
+        color: AppColors.cardBg,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: const BoxDecoration(
+              color: AppColors.accentTealBg,
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.how_to_reg_outlined,
+              color: AppColors.accentTeal,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            filtered ? 'Nobody in this list yet' : 'No check-ins yet today',
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: AppColors.ink,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            filtered
+                ? 'Try another filter.'
+                : 'Scan a member pass or add a walk-in guest to get started.',
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 12, color: AppColors.subtle),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -916,15 +1058,15 @@ class _FilterChip extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
         decoration: BoxDecoration(
-          color: selected ? AppColors.accentTealBg : Colors.transparent,
+          color: selected ? AppColors.accentTealBg : AppColors.fieldBg,
           borderRadius: BorderRadius.circular(999),
         ),
         child: Text(
           label,
           style: TextStyle(
-            fontSize: 11,
+            fontSize: 12,
             fontWeight: FontWeight.w600,
             color: selected ? AppColors.accentTeal : AppColors.muted,
           ),
@@ -933,6 +1075,23 @@ class _FilterChip extends StatelessWidget {
     );
   }
 }
+
+/// What the Check in button should say, in one place so it's testable:
+/// says what's missing while disabled, and the amount when ready.
+String walkInButtonLabel({
+  required bool submitting,
+  required String guestName,
+  required MembershipPlan? selectedPlan,
+}) {
+  if (submitting) return 'Checking in…';
+  if (guestName.trim().isEmpty) return 'Enter a guest name';
+  if (selectedPlan == null) return 'Pick a rate';
+  return 'Check in · ${_formatPesos(selectedPlan.priceCentavos)}';
+}
+
+String _formatPesos(int centavos) => centavos % 100 == 0
+    ? '₱${centavos ~/ 100}'
+    : '₱${(centavos / 100).toStringAsFixed(2)}';
 
 class _WalkInTabContent extends StatelessWidget {
   const _WalkInTabContent({
@@ -946,6 +1105,7 @@ class _WalkInTabContent extends StatelessWidget {
     required this.error,
     required this.submitting,
     required this.onSubmit,
+    required this.todaySection,
   });
 
   final TextEditingController nameController;
@@ -957,21 +1117,24 @@ class _WalkInTabContent extends StatelessWidget {
   final bool submitting;
   final VoidCallback onSubmit;
   final String gymId;
+  final Widget todaySection;
 
-  /// Only owners can set plan prices; staff get a message instead of a
-  /// link to a screen they can't change.
+  /// Only owners can set plan prices; staff are told the owner needs to.
   final bool canManagePlans;
 
-  bool get _canSubmit {
-    if (selectedPlanId == null) return false;
+  MembershipPlan? get _selectedPlan {
     final plan = dayPassPlans.where((p) => p.id == selectedPlanId).firstOrNull;
-    return plan != null &&
-        plan.priceCentavos > 0 &&
-        nameController.text.trim().isNotEmpty;
+    return plan != null && plan.priceCentavos > 0 ? plan : null;
   }
+
+  bool get _canSubmit =>
+      _selectedPlan != null && nameController.text.trim().isNotEmpty;
 
   @override
   Widget build(BuildContext context) {
+    final unpriced = dayPassPlans.where((p) => p.priceCentavos <= 0).toList();
+    final selected = _selectedPlan;
+
     return ListView(
       padding: EdgeInsets.only(bottom: AppShell.reservedNavHeight + 24),
       children: [
@@ -1000,6 +1163,8 @@ class _WalkInTabContent extends StatelessWidget {
                 ),
                 child: TextField(
                   controller: nameController,
+                  enabled: !submitting,
+                  textCapitalization: TextCapitalization.words,
                   decoration: const InputDecoration(
                     hintText: "Enter guest's name",
                     hintStyle: TextStyle(color: AppColors.muted, fontSize: 14),
@@ -1023,31 +1188,33 @@ class _WalkInTabContent extends StatelessWidget {
                       color: AppColors.ink,
                     ),
                   ),
-                  GestureDetector(
-                    onTap: () => showEditWalkInPricesSheet(
-                      context,
-                      gymId: gymId,
-                      dayPassPlans: dayPassPlans,
-                    ),
-                    child: const Row(
-                      children: [
-                        Icon(
-                          Icons.edit_outlined,
-                          size: 14,
-                          color: AppColors.accentTeal,
-                        ),
-                        SizedBox(width: 4),
-                        Text(
-                          'Edit prices',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
+                  // Owner-only: the server refuses price changes from staff.
+                  if (canManagePlans)
+                    GestureDetector(
+                      onTap: () => showEditWalkInPricesSheet(
+                        context,
+                        gymId: gymId,
+                        dayPassPlans: dayPassPlans,
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(
+                            Icons.edit_outlined,
+                            size: 14,
                             color: AppColors.accentTeal,
                           ),
-                        ),
-                      ],
+                          SizedBox(width: 4),
+                          Text(
+                            'Edit prices',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                              color: AppColors.accentTeal,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
                 ],
               ),
               const SizedBox(height: 8),
@@ -1058,63 +1225,88 @@ class _WalkInTabContent extends StatelessWidget {
                     child: CircularProgressIndicator(strokeWidth: 2),
                   ),
                 ),
-                error: (e, _) => Text(
-                  'Something went wrong: $e',
-                  style: const TextStyle(
-                    color: AppColors.errorText,
-                    fontSize: 12,
-                  ),
+                error: (e, _) => const Text(
+                  "Couldn't load rates. Pull down on Check-in to try again.",
+                  style: TextStyle(color: AppColors.errorText, fontSize: 12),
                 ),
                 data: (_) {
                   if (dayPassPlans.isEmpty) {
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      child: Text(
-                        canManagePlans
-                            ? 'No day-pass plans set up yet. Add one in Manage Plans.'
-                            : 'No day-pass plans set up yet. Ask the gym owner to add one.',
-                        style: const TextStyle(
-                          color: AppColors.muted,
-                          fontSize: 12,
-                        ),
-                      ),
+                    return _PriceWarning(
+                      text: canManagePlans
+                          ? 'No walk-in rates set up yet. Add them with '
+                                'Edit prices.'
+                          : 'No walk-in rates set up yet. The owner needs to '
+                                'add them.',
                     );
                   }
-                  return Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      for (final plan in dayPassPlans)
-                        SizedBox(
-                          width:
-                              (MediaQuery.of(context).size.width -
-                                  32 -
-                                  32 -
-                                  10) /
-                              2,
-                          child: _PlanPriceCard(
-                            plan: plan,
-                            selected: plan.id == selectedPlanId,
-                            onTap: () {
-                              if (plan.priceCentavos <= 0) {
-                                if (canManagePlans) {
-                                  context.push('/plans/manage');
-                                } else {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text(
-                                        'This plan has no price yet. Ask the '
-                                        'gym owner to set it.',
-                                      ),
-                                    ),
-                                  );
-                                }
-                              } else {
-                                onSelectPlan(plan.id);
-                              }
-                            },
-                          ),
+                      if (unpriced.isNotEmpty) ...[
+                        _PriceWarning(
+                          text: canManagePlans
+                              ? '${unpriced.map((p) => p.category.isEmpty ? p.name : p.category).join(' and ')} '
+                                    '${unpriced.length == 1 ? 'has' : 'have'} no '
+                                    'price yet, so guests can’t be checked in '
+                                    'at ${unpriced.length == 1 ? 'that rate' : 'those rates'}.'
+                              : 'The owner needs to set this price. Until '
+                                    'then, guests can’t be checked in at a '
+                                    'rate with no price.',
+                          actionLabel: canManagePlans ? 'Edit prices' : null,
+                          onAction: canManagePlans
+                              ? () => showEditWalkInPricesSheet(
+                                  context,
+                                  gymId: gymId,
+                                  dayPassPlans: dayPassPlans,
+                                )
+                              : null,
                         ),
+                        const SizedBox(height: 10),
+                      ],
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 10,
+                        children: [
+                          for (final plan in dayPassPlans)
+                            SizedBox(
+                              width:
+                                  (MediaQuery.of(context).size.width -
+                                      32 -
+                                      32 -
+                                      10) /
+                                  2,
+                              child: _PlanPriceCard(
+                                plan: plan,
+                                selected: plan.id == selectedPlanId,
+                                canSetPrice: canManagePlans,
+                                onTap: () {
+                                  if (plan.priceCentavos <= 0) {
+                                    if (canManagePlans) {
+                                      showEditWalkInPricesSheet(
+                                        context,
+                                        gymId: gymId,
+                                        dayPassPlans: dayPassPlans,
+                                      );
+                                    } else {
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        const SnackBar(
+                                          content: Text(
+                                            'The owner needs to set this '
+                                            'price.',
+                                          ),
+                                        ),
+                                      );
+                                    }
+                                  } else {
+                                    onSelectPlan(plan.id);
+                                  }
+                                },
+                              ),
+                            ),
+                        ],
+                      ),
                     ],
                   );
                 },
@@ -1131,11 +1323,16 @@ class _WalkInTabContent extends StatelessWidget {
                 const SizedBox(height: 6),
               ],
               SizedBox(
-                height: 48,
+                height: 52,
                 child: FilledButton(
+                  // The label says what's missing; the button is only
+                  // enabled when everything is ready, and locked while a
+                  // check-in is in flight so it can't be double-tapped.
                   onPressed: submitting || !_canSubmit ? null : onSubmit,
                   style: FilledButton.styleFrom(
                     backgroundColor: AppColors.accentTeal,
+                    disabledBackgroundColor: AppColors.disabledBg,
+                    disabledForegroundColor: AppColors.subtle,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
@@ -1149,13 +1346,88 @@ class _WalkInTabContent extends StatelessWidget {
                             color: Colors.white,
                           ),
                         )
-                      : const Text('Check In'),
+                      : Text(
+                          walkInButtonLabel(
+                            submitting: submitting,
+                            guestName: nameController.text,
+                            selectedPlan: selected,
+                          ),
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
                 ),
               ),
             ],
           ),
         ),
+        const SizedBox(height: 20),
+        todaySection,
       ],
+    );
+  }
+}
+
+/// A visible amber notice — used when rates have no price (or none exist).
+class _PriceWarning extends StatelessWidget {
+  const _PriceWarning({required this.text, this.actionLabel, this.onAction});
+
+  final String text;
+  final String? actionLabel;
+  final VoidCallback? onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.expiringIcon,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(
+                Icons.warning_amber_rounded,
+                size: 18,
+                color: AppColors.expiringBg,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  text,
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    height: 1.35,
+                    color: AppColors.expiringBg,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (actionLabel != null && onAction != null) ...[
+            const SizedBox(height: 6),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: onAction,
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.expiringBg,
+                  minimumSize: const Size(0, 32),
+                ),
+                child: Text(
+                  actionLabel!,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }
@@ -1165,9 +1437,13 @@ class _PlanPriceCard extends StatelessWidget {
     required this.plan,
     required this.selected,
     required this.onTap,
+    required this.canSetPrice,
   });
   final MembershipPlan plan;
   final bool selected;
+
+  /// Owners can set a missing price; staff just see that it's missing.
+  final bool canSetPrice;
   final VoidCallback onTap;
 
   @override
@@ -1213,7 +1489,7 @@ class _PlanPriceCard extends StatelessWidget {
             const SizedBox(height: 2),
             Text(
               zeroPrice
-                  ? 'Set price'
+                  ? (canSetPrice ? 'Set price' : 'No price yet')
                   : '₱${(plan.priceCentavos / 100).toStringAsFixed(0)}',
               style: TextStyle(
                 fontSize: 12,
@@ -1304,7 +1580,7 @@ class _SearchResultTile extends StatelessWidget {
               if (alreadyCheckedIn != null) ...[
                 const SizedBox(height: 4),
                 Text(
-                  'Checked in ${_formatCheckInTime(alreadyCheckedIn!.checkedInAt)}',
+                  'Checked in ${formatCheckInTime(alreadyCheckedIn!.checkedInAt)}',
                   style: const TextStyle(
                     fontSize: 11,
                     color: AppColors.accentTeal,
@@ -1406,7 +1682,7 @@ class _CheckInTile extends ConsumerWidget {
                 Row(
                   children: [
                     Text(
-                      _formatCheckInTime(checkIn.checkedInAt),
+                      formatCheckInTime(checkIn.checkedInAt),
                       style: const TextStyle(
                         fontSize: 11,
                         color: AppColors.muted,
