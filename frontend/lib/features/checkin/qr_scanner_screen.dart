@@ -73,7 +73,11 @@ class QrScanFailure implements Exception {
 /// [onScanned] returns the value to pop the screen with on success, or
 /// throws [QrScanFailure] to show a message and keep scanning.
 class QrScannerScreen<T extends Object> extends ConsumerStatefulWidget {
-  const QrScannerScreen({super.key, required this.title, required this.onScanned});
+  const QrScannerScreen({
+    super.key,
+    required this.title,
+    required this.onScanned,
+  });
 
   final String title;
   final Future<T> Function(String payload) onScanned;
@@ -206,9 +210,7 @@ class _QrScannerScreenState<T extends Object>
           // full camera preview, this never narrows detection.
           const IgnorePointer(child: Center(child: _FrameGuide())),
           if (_verifying)
-            const Center(
-              child: CircularProgressIndicator(color: Colors.white),
-            ),
+            const Center(child: CircularProgressIndicator(color: Colors.white)),
           if (_errorMessage != null)
             Positioned(
               left: 20,
