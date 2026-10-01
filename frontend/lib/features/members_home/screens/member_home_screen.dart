@@ -15,21 +15,19 @@ import '../../community/widgets/event_card.dart';
 import '../../shell/app_shell.dart';
 import '../providers/member_stats_provider.dart';
 import '../widgets/member_pass_style.dart';
-import '../widgets/membership_status_badge.dart';
 
 /// The next few events worth showing on the home screen: not cancelled,
 /// not already past (today still counts), soonest first, at most [limit].
 List<Event> upcomingEvents(List<Event> all, DateTime today, {int limit = 2}) {
   final day = DateTime(today.year, today.month, today.day);
-  final upcoming = all
-      .where((e) => !e.isCanceled && !e.eventDate.isBefore(day))
-      .toList()
-    ..sort((a, b) {
-      final byDate = a.eventDate.compareTo(b.eventDate);
-      if (byDate != 0) return byDate;
-      // Same day: earlier start first; no start time sorts last.
-      return (a.startTime ?? '99').compareTo(b.startTime ?? '99');
-    });
+  final upcoming =
+      all.where((e) => !e.isCanceled && !e.eventDate.isBefore(day)).toList()
+        ..sort((a, b) {
+          final byDate = a.eventDate.compareTo(b.eventDate);
+          if (byDate != 0) return byDate;
+          // Same day: earlier start first; no start time sorts last.
+          return (a.startTime ?? '99').compareTo(b.startTime ?? '99');
+        });
   return upcoming.take(limit).toList();
 }
 
@@ -209,6 +207,7 @@ class _MemberHomeScreenState extends ConsumerState<MemberHomeScreen>
                 ),
                 children: [
                   _Header(
+                    greeting: GymTime.greetingFor(GymTime.now()),
                     firstName: firstName,
                     gymName: user.gym?.name ?? '',
                     onProfileTap: () => context.go('/member-settings'),
@@ -221,6 +220,10 @@ class _MemberHomeScreenState extends ConsumerState<MemberHomeScreen>
                   _MembershipBanner(status: status, daysLeft: daysLeft),
 
                   _MemberPassCard(
+                    status: status,
+                    daysLeft: daysLeft,
+                    onQrTap: () => context.push('/me/card'),
+                    onStatusTap: () => context.push('/me/membership'),
                     gymName: user.gym?.name ?? '',
                     planName: stats.planCategory,
                     fullName: fullName,
@@ -229,16 +232,15 @@ class _MemberHomeScreenState extends ConsumerState<MemberHomeScreen>
                   ),
                   const SizedBox(height: 14),
 
-                  _QuickEntryCard(onTap: () => context.push('/me/card')),
-                  const SizedBox(height: 14),
+                  if (status == MembershipStatus.noMembership ||
+                      status == MembershipStatus.expired) ...[
+                    const _NoPlanCard(),
+                    const SizedBox(height: 14),
+                  ],
 
                   _StatsRow(
-                    status: status,
-                    daysLeft: daysLeft,
-                    endDate: stats.currentEndDate,
                     visitsThisMonth: stats.checkInsThisMonth,
                     lastVisit: lastVisitLabel(stats.lastCheckInAt, today),
-                    onPassTap: () => context.push('/me/membership'),
                   ),
                   const SizedBox(height: 14),
 
@@ -292,11 +294,13 @@ BoxDecoration _cardDecoration() => BoxDecoration(
 
 class _Header extends StatelessWidget {
   const _Header({
+    required this.greeting,
     required this.firstName,
     required this.gymName,
     required this.onProfileTap,
   });
 
+  final String greeting;
   final String firstName;
   final String gymName;
   final VoidCallback onProfileTap;
@@ -311,7 +315,7 @@ class _Header extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Welcome, $firstName',
+                '$greeting, $firstName',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
@@ -404,8 +408,7 @@ class _MembershipBannerState extends State<_MembershipBanner> {
   @override
   Widget build(BuildContext context) {
     if (_dismissed) return const SizedBox.shrink();
-    if (widget.status != MembershipStatus.expiring &&
-        widget.status != MembershipStatus.expired) {
+    if (widget.status != MembershipStatus.expiring) {
       return const SizedBox.shrink();
     }
 
@@ -463,6 +466,10 @@ class _MembershipBannerState extends State<_MembershipBanner> {
 
 class _MemberPassCard extends StatelessWidget {
   const _MemberPassCard({
+    required this.status,
+    required this.daysLeft,
+    required this.onQrTap,
+    required this.onStatusTap,
     required this.gymName,
     required this.planName,
     required this.fullName,
@@ -470,6 +477,10 @@ class _MemberPassCard extends StatelessWidget {
     required this.validThru,
   });
 
+  final MembershipStatus status;
+  final int? daysLeft;
+  final VoidCallback onQrTap;
+  final VoidCallback onStatusTap;
   final String gymName;
   final String? planName;
   final String fullName;
@@ -478,12 +489,14 @@ class _MemberPassCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final label = TextStyle(
-      fontSize: 9.5,
-      fontWeight: FontWeight.w700,
-      letterSpacing: 0.8,
-      color: AppColors.accentTealBg.withValues(alpha: 0.7),
-    );
+    final hasPlan =
+        validThru != null &&
+        status != MembershipStatus.noMembership &&
+        status != MembershipStatus.expired;
+    final planPart = hasPlan
+        ? 'Until ${DateFormat('d MMM yyyy').format(validThru!)}'
+        : 'No plan yet';
+    final metaLine = memberCode.isEmpty ? planPart : '$memberCode · $planPart';
 
     return Container(
       width: double.infinity,
@@ -501,133 +514,88 @@ class _MemberPassCard extends StatelessWidget {
       ),
       child: Stack(
         children: [
-          Positioned.fill(child: CustomPaint(painter: MemberPassRingsPainter())),
-          Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+          Positioned.fill(
+            child: CustomPaint(painter: MemberPassRingsPainter()),
+          ),
+          Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            gymName.toUpperCase(),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 0.9,
-                              color: Colors.white,
-                            ),
-                          ),
-                          if (planName != null && planName!.isNotEmpty) ...[
-                            const SizedBox(height: 2),
-                            Text(
-                              planName!.toUpperCase(),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 9.5,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: 0.6,
-                                color: AppColors.accentGreen,
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                gymName.toUpperCase(),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 0.9,
+                                  color: Colors.white,
+                                ),
                               ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.14),
-                        borderRadius: BorderRadius.circular(999),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.25),
-                        ),
-                      ),
-                      child: const Text(
-                        'MEMBER PASS',
-                        style: TextStyle(
-                          fontSize: 9.5,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0.9,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 34),
-                Text(
-                  fullName.toUpperCase(),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1.1,
-                    height: 1.15,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(height: 18),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Expanded(
-                      child: memberCode.isEmpty
-                          ? const SizedBox.shrink()
-                          : Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('MEMBER ID', style: label),
+                              if (planName != null && planName!.isNotEmpty) ...[
                                 const SizedBox(height: 2),
                                 Text(
-                                  memberCode,
+                                  planName!.toUpperCase(),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w800,
-                                    letterSpacing: 1.2,
-                                    color: Colors.white,
+                                    fontSize: 9.5,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 0.6,
+                                    color: AppColors.accentGreen,
                                   ),
                                 ),
                               ],
-                            ),
-                    ),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text('VALID THRU', style: label),
-                        const SizedBox(height: 2),
-                        Text(
-                          validThru != null
-                              ? DateFormat('MM/yy').format(validThru!)
-                              : 'NO ACTIVE PLAN',
-                          style: TextStyle(
-                            fontSize: validThru != null ? 15 : 11,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 1.0,
-                            color: Colors.white,
+                            ],
                           ),
+                        ),
+                        const SizedBox(width: 10),
+                        _PassStatusChip(
+                          status: status,
+                          daysLeft: daysLeft,
+                          onTap: onStatusTap,
                         ),
                       ],
                     ),
+                    const SizedBox(height: 14),
+                    Text(
+                      fullName.toUpperCase(),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1.1,
+                        height: 1.15,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      metaLine,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white.withValues(alpha: 0.65),
+                      ),
+                    ),
                   ],
                 ),
-              ],
-            ),
+              ),
+              _QrStrip(onTap: onQrTap),
+            ],
           ),
         ],
       ),
@@ -635,87 +603,169 @@ class _MemberPassCard extends StatelessWidget {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Quick entry
-// ---------------------------------------------------------------------------
+class _PassStatusChip extends StatelessWidget {
+  const _PassStatusChip({
+    required this.status,
+    required this.daysLeft,
+    required this.onTap,
+  });
+
+  final MembershipStatus status;
+  final int? daysLeft;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final noPlan =
+        status == MembershipStatus.noMembership ||
+        status == MembershipStatus.expired;
+    final (bg, label) = switch (status) {
+      MembershipStatus.active => (
+        const Color(0xFF16A34A),
+        daysLeft == null
+            ? 'Active'
+            : '$daysLeft ${daysLeft == 1 ? 'day' : 'days'} left',
+      ),
+      MembershipStatus.expiring => (
+        const Color(0xFFD97706),
+        daysLeft == null
+            ? 'Expiring soon'
+            : daysLeft == 0
+            ? 'Expires today'
+            : 'Expires in $daysLeft ${daysLeft == 1 ? 'day' : 'days'}',
+      ),
+      // Short label only: the amber no-plan card below already carries
+      // the full sentence, so the chip doesn't need to repeat it.
+      MembershipStatus.expired || MembershipStatus.noMembership => (
+        Colors.white.withValues(alpha: 0.14),
+        'No plan',
+      ),
+    };
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(999),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: noPlan ? 0.3 : 0.4),
+            width: noPlan ? 0.8 : 1,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (noPlan) ...[
+              Icon(
+                Icons.info_outline_rounded,
+                size: 13,
+                color: Colors.white.withValues(alpha: 0.8),
+              ),
+              const SizedBox(width: 5),
+            ],
+            Text(
+              label,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: noPlan ? 0.85 : 1),
+                fontSize: 11.5,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 /// Opens the member's digital check-in card (`/me/card`): the rotating QR
-/// code that front-desk staff scan to check them in. The member doesn't
-/// scan anything themselves — the scanner lives on the staff side — so
-/// this says what actually happens.
-class _QuickEntryCard extends StatelessWidget {
-  const _QuickEntryCard({required this.onTap});
+/// code that front-desk staff scan to check them in. Sits across the
+/// bottom of the pass card.
+class _QrStrip extends StatelessWidget {
+  const _QrStrip({required this.onTap});
 
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.transparent,
+      color: Colors.black.withValues(alpha: 0.22),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Ink(
-          padding: const EdgeInsets.all(16),
-          decoration: _cardDecoration(),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
           child: Row(
             children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: AppColors.accentTealBg,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: const Icon(
-                  Icons.qr_code_2_rounded,
-                  size: 28,
-                  color: AppColors.accentTeal,
-                ),
+              const Icon(
+                Icons.qr_code_2_rounded,
+                size: 22,
+                color: Colors.white,
               ),
-              const SizedBox(width: 14),
-              const Expanded(
+              const SizedBox(width: 12),
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Show QR to Check In',
+                    const Text(
+                      'Show QR to check in',
                       style: TextStyle(
-                        fontSize: 15,
+                        fontSize: 14,
                         fontWeight: FontWeight.w800,
-                        color: AppColors.ink,
+                        color: Colors.white,
                       ),
                     ),
-                    SizedBox(height: 3),
+                    const SizedBox(height: 1),
                     Text(
-                      'Your code refreshes automatically — staff scan it at '
-                      'the front desk.',
+                      'Staff scan it at the front desk',
                       style: TextStyle(
-                        fontSize: 12,
-                        color: AppColors.subtle,
-                        height: 1.3,
+                        fontSize: 11.5,
+                        color: Colors.white.withValues(alpha: 0.7),
                       ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(width: 8),
-              Container(
-                width: 34,
-                height: 34,
-                decoration: const BoxDecoration(
-                  color: AppColors.fieldBg,
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.chevron_right,
-                  size: 20,
-                  color: AppColors.subtle,
-                ),
-              ),
+              const Icon(Icons.chevron_right, size: 22, color: Colors.white),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _NoPlanCard extends StatelessWidget {
+  const _NoPlanCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFEF3C7),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFF59E0B)),
+      ),
+      child: const Row(
+        children: [
+          Icon(Icons.info_outline_rounded, color: Color(0xFF92400E)),
+          SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              "You don't have a plan yet. Talk to the front desk to get "
+              'started.',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF92400E),
+                height: 1.3,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -726,74 +776,26 @@ class _QuickEntryCard extends StatelessWidget {
 // ---------------------------------------------------------------------------
 
 class _StatsRow extends StatelessWidget {
-  const _StatsRow({
-    required this.status,
-    required this.daysLeft,
-    required this.endDate,
-    required this.visitsThisMonth,
-    required this.lastVisit,
-    required this.onPassTap,
-  });
+  const _StatsRow({required this.visitsThisMonth, required this.lastVisit});
 
-  final MembershipStatus status;
-  final int? daysLeft;
-  final DateTime? endDate;
   final int visitsThisMonth;
   final String lastVisit;
-  final VoidCallback onPassTap;
 
   @override
   Widget build(BuildContext context) {
-    final dateFmt = DateFormat('MMM d, yyyy');
-
-    // Big number + unit, and the line under it, per state. Days come from
-    // daysRemaining() (0 = the last valid day, still active).
-    final String value;
-    final String unit;
-    final String detail;
-    switch (status) {
-      case MembershipStatus.noMembership:
-        value = '—';
-        unit = '';
-        detail = 'No active plan';
-      case MembershipStatus.expired:
-        value = 'Expired';
-        unit = '';
-        detail = 'Ended ${dateFmt.format(endDate!)}';
-      case MembershipStatus.active:
-      case MembershipStatus.expiring:
-        final d = daysLeft ?? 0;
-        value = d == 0 ? 'Last day' : '$d';
-        unit = d == 0 ? '' : (d == 1 ? 'day left' : 'days left');
-        detail = 'Valid until ${dateFmt.format(endDate!)}';
-    }
-
     return IntrinsicHeight(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Expanded(
-            child: _StatCard(
-              label: 'PASS VALIDITY',
-              trailing: MembershipStatusBadge(status: status),
-              value: value,
-              unit: unit,
-              detail: detail,
-              onTap: onPassTap,
-            ),
+            child: _StatCard(label: 'LAST VISIT', value: lastVisit),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: _StatCard(
               label: 'VISITS',
-              trailing: const Icon(
-                Icons.check_circle_outline_rounded,
-                size: 15,
-                color: AppColors.accentTeal,
-              ),
               value: '$visitsThisMonth',
               unit: 'this month',
-              detail: 'Last visit: $lastVisit',
             ),
           ),
         ],
@@ -803,88 +805,62 @@ class _StatsRow extends StatelessWidget {
 }
 
 class _StatCard extends StatelessWidget {
-  const _StatCard({
-    required this.label,
-    required this.trailing,
-    required this.value,
-    required this.unit,
-    required this.detail,
-    this.onTap,
-  });
+  const _StatCard({required this.label, required this.value, this.unit = ''});
 
   final String label;
-  final Widget trailing;
   final String value;
   final String unit;
-  final String detail;
-  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     return Material(
       color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Ink(
-          padding: const EdgeInsets.all(14),
-          decoration: _cardDecoration(),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      label,
-                      style: const TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.5,
-                        color: AppColors.muted,
-                      ),
+      child: Ink(
+        padding: const EdgeInsets.all(14),
+        decoration: _cardDecoration(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.5,
+                color: AppColors.muted,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Flexible(
+                  child: Text(
+                    value,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w900,
+                      color: AppColors.ink,
                     ),
                   ),
-                  trailing,
-                ],
-              ),
-              const SizedBox(height: 10),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.baseline,
-                textBaseline: TextBaseline.alphabetic,
-                children: [
-                  Flexible(
-                    child: Text(
-                      value,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w900,
-                        color: AppColors.ink,
-                      ),
+                ),
+                if (unit.isNotEmpty) ...[
+                  const SizedBox(width: 4),
+                  Text(
+                    unit,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      color: AppColors.subtle,
                     ),
                   ),
-                  if (unit.isNotEmpty) ...[
-                    const SizedBox(width: 4),
-                    Text(
-                      unit,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w500,
-                        color: AppColors.subtle,
-                      ),
-                    ),
-                  ],
                 ],
-              ),
-              const SizedBox(height: 4),
-              Text(
-                detail,
-                style: const TextStyle(fontSize: 11, color: AppColors.muted),
-              ),
-            ],
-          ),
+              ],
+            ),
+          ],
         ),
       ),
     );
@@ -937,42 +913,20 @@ class _ActionButtons extends StatelessWidget {
         Expanded(
           child: SizedBox(
             height: 48,
-            // With Book Class it's the quieter partner; alone it's the
-            // row's one action, so it gets the filled treatment.
-            child: showBookClass
-                ? OutlinedButton.icon(
-                    onPressed: onHistory,
-                    icon: const Icon(Icons.history_rounded, size: 18),
-                    label: const Text(
-                      'History',
-                      style: TextStyle(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AppColors.ink,
-                      backgroundColor: AppColors.cardBg,
-                      side: const BorderSide(color: AppColors.border),
-                      shape: shape,
-                    ),
-                  )
-                : FilledButton.icon(
-                    onPressed: onHistory,
-                    icon: const Icon(Icons.history_rounded, size: 18),
-                    label: const Text(
-                      'History',
-                      style: TextStyle(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: AppColors.accentTeal,
-                      foregroundColor: Colors.white,
-                      shape: shape,
-                    ),
-                  ),
+            child: OutlinedButton.icon(
+              onPressed: onHistory,
+              icon: const Icon(Icons.history_rounded, size: 18),
+              label: const Text(
+                'History',
+                style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
+              ),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.ink,
+                backgroundColor: AppColors.cardBg,
+                side: const BorderSide(color: AppColors.border),
+                shape: shape,
+              ),
+            ),
           ),
         ),
       ],

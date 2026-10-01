@@ -211,28 +211,21 @@ class _DigitalCardScreenState extends ConsumerState<DigitalCardScreen>
         foregroundColor: Colors.white,
         systemOverlayStyle: SystemUiOverlayStyle.light,
         title: const Text(
-          'Digital card',
+          'Member pass',
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
         ),
       ),
       body: DecoratedBox(
         decoration: BoxDecoration(gradient: memberPassGradient),
-        child: Stack(
-          children: [
-            const Positioned.fill(
-              child: CustomPaint(painter: MemberPassRingsPainter()),
-            ),
-            SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.only(top: kToolbarHeight),
-                child: memberId == null
-                    ? const _CardSpinner()
-                    : summary != null && summary.isArchived
-                    ? _ArchivedBanner(gymName: summary.gymName)
-                    : _buildBody(summary),
-              ),
-            ),
-          ],
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.only(top: kToolbarHeight),
+            child: memberId == null
+                ? const _CardSpinner()
+                : summary != null && summary.isArchived
+                ? _ArchivedBanner(gymName: summary.gymName)
+                : _buildBody(summary),
+          ),
         ),
       ),
     );
@@ -370,10 +363,20 @@ class _CardContent extends StatelessWidget {
     final today = GymTime.today();
     final status = statusFor(endDate, today);
     final days = daysRemaining(endDate, today);
+    final noPlan =
+        status == MembershipStatus.noMembership ||
+        status == MembershipStatus.expired;
+    final expiring = status == MembershipStatus.expiring;
+
+    final footer = noPlan
+        ? 'Staff can still scan this. Talk to the front desk about a plan.'
+        : expiring
+        ? 'Hold this up at the front desk. Renew soon to keep training.'
+        : 'Hold this up at the front desk to check in.';
 
     return Center(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -382,79 +385,89 @@ class _CardContent extends StatelessWidget {
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 12,
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w700,
                 letterSpacing: 1.4,
-                color: Colors.white.withValues(alpha: 0.75),
+                color: Colors.white.withValues(alpha: 0.55),
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             Text(
               fullName,
               textAlign: TextAlign.center,
               style: const TextStyle(
-                fontSize: 24,
+                fontSize: 26,
                 fontWeight: FontWeight.w900,
-                letterSpacing: 0.4,
                 color: Colors.white,
               ),
             ),
-            const SizedBox(height: 2),
-            Text(
-              memberCode,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 1.2,
-                color: AppColors.accentTealBg.withValues(alpha: 0.75),
+            if (memberCode.isNotEmpty) ...[
+              const SizedBox(height: 2),
+              Text(
+                memberCode,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 1.2,
+                  color: Colors.white.withValues(alpha: 0.5),
+                ),
               ),
-            ),
+            ],
             const SizedBox(height: 12),
             _StatusChip(status: status, daysLeft: days),
-            const SizedBox(height: 28),
-            SizedBox(
-              width: 272,
-              height: 272,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  SizedBox(
-                    width: 272,
-                    height: 272,
-                    child: CircularProgressIndicator(
-                      value: period == 0 ? 0 : secondsLeft / period,
-                      strokeWidth: 4,
-                      backgroundColor: Colors.white.withValues(alpha: 0.16),
-                      valueColor: const AlwaysStoppedAnimation(
-                        AppColors.accentGreen,
-                      ),
-                    ),
-                  ),
-                  // The QR stays dark-on-white so it scans reliably; the
-                  // white tile floats on the gradient.
-                  Container(
-                    width: 240,
-                    height: 240,
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(24),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.35),
-                          blurRadius: 28,
-                          offset: const Offset(0, 12),
-                        ),
-                      ],
-                    ),
-                    child: QrImageView(
-                      data: qrPayload,
-                      version: QrVersions.auto,
-                    ),
+            const SizedBox(height: 24),
+            // The QR stays pure white at full opacity in every state:
+            // scanners need the contrast.
+            Container(
+              width: 240,
+              height: 240,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.35),
+                    blurRadius: 28,
+                    offset: const Offset(0, 12),
                   ),
                 ],
               ),
+              child: QrImageView(data: qrPayload, version: QrVersions.auto),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: 240,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(2),
+                child: LinearProgressIndicator(
+                  value: period == 0 ? 0 : secondsLeft / period,
+                  minHeight: 3,
+                  backgroundColor: Colors.white.withValues(alpha: 0.16),
+                  valueColor: const AlwaysStoppedAnimation(
+                    AppColors.accentGreen,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'New code in ${secondsLeft}s',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.white.withValues(alpha: 0.7),
+              ),
             ),
             const SizedBox(height: 24),
+            Text(
+              'OR GIVE THIS CODE',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1.4,
+                color: Colors.white.withValues(alpha: 0.55),
+              ),
+            ),
+            const SizedBox(height: 6),
             Text(
               code,
               style: const TextStyle(
@@ -464,9 +477,10 @@ class _CardContent extends StatelessWidget {
                 color: Colors.white,
               ),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 24),
             Text(
-              'Refreshes in ${secondsLeft}s',
+              footer,
+              textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 13,
                 color: Colors.white.withValues(alpha: 0.7),
@@ -497,43 +511,58 @@ class _StatusChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final noPlan =
+        status == MembershipStatus.noMembership ||
+        status == MembershipStatus.expired;
     final (bg, label) = switch (status) {
       MembershipStatus.active => (
-        AppColors.activeBg,
-        daysLeft != null ? '$daysLeft days left' : 'Active',
+        const Color(0xFF16A34A),
+        daysLeft != null ? 'Active · $daysLeft days left' : 'Active',
       ),
       MembershipStatus.expiring => (
-        AppColors.expiringBg,
-        daysLeft != null ? '$daysLeft days left' : 'Expiring soon',
+        const Color(0xFFD97706),
+        daysLeft == null
+            ? 'Expiring soon'
+            : daysLeft == 0
+            ? 'Expires today'
+            : 'Expires in $daysLeft ${daysLeft == 1 ? 'day' : 'days'}',
       ),
-      MembershipStatus.expired => (AppColors.expiredBg, 'Expired'),
-      MembershipStatus.noMembership => (AppColors.noMembershipBg, 'No plan'),
+      MembershipStatus.expired || MembershipStatus.noMembership => (
+        Colors.white.withValues(alpha: 0.14),
+        'No active plan',
+      ),
     };
 
-    // The fill is still the status color from statusFor(); the light edge
-    // and soft shadow keep it (especially the teal "active") from
-    // dissolving into the gradient behind it.
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.55)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.25),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: noPlan ? 0.3 : 0.4),
+          width: noPlan ? 0.8 : 1,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (noPlan) ...[
+            Icon(
+              Icons.info_outline_rounded,
+              size: 14,
+              color: Colors.white.withValues(alpha: 0.8),
+            ),
+            const SizedBox(width: 6),
+          ],
+          Text(
+            label,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: noPlan ? 0.85 : 1),
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ],
-      ),
-      child: Text(
-        label,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-        ),
       ),
     );
   }
