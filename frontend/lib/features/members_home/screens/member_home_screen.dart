@@ -493,12 +493,10 @@ class _MemberPassCard extends StatelessWidget {
         validThru != null &&
         status != MembershipStatus.noMembership &&
         status != MembershipStatus.expired;
-    final label = TextStyle(
-      fontSize: 9.5,
-      fontWeight: FontWeight.w700,
-      letterSpacing: 0.8,
-      color: AppColors.accentTealBg.withValues(alpha: 0.7),
-    );
+    final planPart = hasPlan
+        ? 'Until ${DateFormat('d MMM yyyy').format(validThru!)}'
+        : 'No plan yet';
+    final metaLine = memberCode.isEmpty ? planPart : '$memberCode · $planPart';
 
     return Container(
       width: double.infinity,
@@ -526,31 +524,49 @@ class _MemberPassCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      gymName.toUpperCase(),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 0.9,
-                        color: Colors.white,
-                      ),
-                    ),
-                    if (planName != null && planName!.isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        planName!.toUpperCase(),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 9.5,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 0.6,
-                          color: AppColors.accentGreen,
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                gymName.toUpperCase(),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 0.9,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              if (planName != null && planName!.isNotEmpty) ...[
+                                const SizedBox(height: 2),
+                                Text(
+                                  planName!.toUpperCase(),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 9.5,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 0.6,
+                                    color: AppColors.accentGreen,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
+                        const SizedBox(width: 10),
+                        _PassStatusChip(
+                          status: status,
+                          daysLeft: daysLeft,
+                          onTap: onStatusTap,
+                        ),
+                      ],
+                    ),
                     const SizedBox(height: 14),
                     Text(
                       fullName.toUpperCase(),
@@ -564,60 +580,16 @@ class _MemberPassCard extends StatelessWidget {
                         color: Colors.white,
                       ),
                     ),
-                    const SizedBox(height: 14),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        if (memberCode.isNotEmpty)
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('MEMBER NO', style: label),
-                                const SizedBox(height: 2),
-                                Text(
-                                  memberCode,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w800,
-                                    letterSpacing: 1.2,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              Text('VALID THRU', style: label),
-                              const SizedBox(height: 2),
-                              Text(
-                                hasPlan
-                                    ? DateFormat('MM/yy').format(validThru!)
-                                    : '\u2014',
-                                style: const TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w900,
-                                  letterSpacing: 1.0,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Align(
-                          alignment: Alignment.centerRight,
-                          child: _PassStatusChip(
-                            status: status,
-                            daysLeft: daysLeft,
-                            onTap: onStatusTap,
-                          ),
-                        ),
-                      ],
+                    const SizedBox(height: 4),
+                    Text(
+                      metaLine,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white.withValues(alpha: 0.65),
+                      ),
                     ),
                   ],
                 ),

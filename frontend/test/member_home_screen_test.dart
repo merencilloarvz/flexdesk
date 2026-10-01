@@ -188,10 +188,10 @@ void main() {
       expect(find.text('IRON WORKS'), findsOneWidget);
       expect(find.text('MEMBER PASS'), findsNothing);
       expect(find.text('ANA CRUZ'), findsOneWidget);
-      expect(find.text('MEMBER NO'), findsOneWidget);
-      expect(find.text('M-0042'), findsOneWidget);
-      expect(find.text('VALID THRU'), findsOneWidget);
-      expect(find.text(DateFormat('MM/yy').format(end)), findsOneWidget);
+      expect(
+        find.text('M-0042 · Until ${DateFormat('d MMM yyyy').format(end)}'),
+        findsOneWidget,
+      );
 
       expect(find.text('30 days left'), findsOneWidget);
       expect(find.text('Show QR to check in'), findsOneWidget);
@@ -231,8 +231,7 @@ void main() {
       tester,
     ) async {
       await _pump(tester, stats: _stats(code: '', plan: null));
-      expect(find.text('MEMBER NO'), findsNothing);
-      expect(find.text('—'), findsOneWidget); // valid thru dash
+      expect(find.text('No plan yet'), findsOneWidget); // meta line
       expect(find.text('No plan'), findsOneWidget); // chip
       expect(find.textContaining("don't have a plan yet"), findsOneWidget);
       expect(find.text('None yet'), findsOneWidget);
