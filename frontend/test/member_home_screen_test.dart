@@ -232,7 +232,7 @@ void main() {
       await _pump(tester, stats: _stats(code: '', plan: null));
       expect(find.text('MEMBER ID'), findsNothing);
       expect(find.text('—'), findsOneWidget); // valid thru dash
-      expect(find.text('No active plan'), findsOneWidget); // chip
+      expect(find.text('No plan'), findsOneWidget); // chip
       expect(find.textContaining("don't have a plan yet"), findsOneWidget);
       expect(find.text('None yet'), findsOneWidget);
     });
@@ -250,13 +250,13 @@ void main() {
     testWidgets('the last valid day is still active', (tester) async {
       await _pump(tester, stats: _stats(endDate: _today()));
       expect(find.text('Expires today'), findsOneWidget);
-      expect(find.text('No active plan'), findsNothing);
+      expect(find.text('No plan'), findsNothing);
     });
 
     testWidgets('expired', (tester) async {
       final end = _today().subtract(const Duration(days: 5));
       await _pump(tester, stats: _stats(endDate: end));
-      expect(find.text('No active plan'), findsOneWidget);
+      expect(find.text('No plan'), findsOneWidget);
       expect(find.textContaining("don't have a plan yet"), findsOneWidget);
     });
   });
@@ -293,7 +293,7 @@ void main() {
 
     testWidgets('the status chip opens membership details', (tester) async {
       await _pump(tester, stats: _stats());
-      await tester.tap(find.text('No active plan'));
+      await tester.tap(find.text('No plan'));
       await tester.pumpAndSettle();
       expect(find.text('stub:/me/membership'), findsOneWidget);
     });

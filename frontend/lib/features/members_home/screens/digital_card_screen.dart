@@ -217,22 +217,15 @@ class _DigitalCardScreenState extends ConsumerState<DigitalCardScreen>
       ),
       body: DecoratedBox(
         decoration: BoxDecoration(gradient: memberPassGradient),
-        child: Stack(
-          children: [
-            const Positioned.fill(
-              child: CustomPaint(painter: MemberPassRingsPainter()),
-            ),
-            SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.only(top: kToolbarHeight),
-                child: memberId == null
-                    ? const _CardSpinner()
-                    : summary != null && summary.isArchived
-                    ? _ArchivedBanner(gymName: summary.gymName)
-                    : _buildBody(summary),
-              ),
-            ),
-          ],
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.only(top: kToolbarHeight),
+            child: memberId == null
+                ? const _CardSpinner()
+                : summary != null && summary.isArchived
+                ? _ArchivedBanner(gymName: summary.gymName)
+                : _buildBody(summary),
+          ),
         ),
       ),
     );

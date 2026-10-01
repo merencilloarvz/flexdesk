@@ -643,16 +643,13 @@ class _MemberPassCard extends StatelessWidget {
                             ),
                           ],
                         ),
+                        const SizedBox(width: 12),
+                        _PassStatusChip(
+                          status: status,
+                          daysLeft: daysLeft,
+                          onTap: onStatusTap,
+                        ),
                       ],
-                    ),
-                    const SizedBox(height: 12),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: _PassStatusChip(
-                        status: status,
-                        daysLeft: daysLeft,
-                        onTap: onStatusTap,
-                      ),
                     ),
                   ],
                 ),
@@ -697,9 +694,11 @@ class _PassStatusChip extends StatelessWidget {
             ? 'Expires today'
             : 'Expires in $daysLeft ${daysLeft == 1 ? 'day' : 'days'}',
       ),
+      // Short label only: the amber no-plan card below already carries
+      // the full sentence, so the chip doesn't need to repeat it.
       MembershipStatus.expired || MembershipStatus.noMembership => (
         Colors.white.withValues(alpha: 0.14),
-        'No active plan',
+        'No plan',
       ),
     };
     return InkWell(
