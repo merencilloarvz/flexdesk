@@ -186,8 +186,9 @@ void main() {
       // Gym name: the header line and the card's top-left.
       expect(find.text('Iron Works'), findsOneWidget);
       expect(find.text('IRON WORKS'), findsOneWidget);
-      expect(find.text('MEMBER PASS'), findsOneWidget);
+      expect(find.text('MEMBER PASS'), findsNothing);
       expect(find.text('ANA CRUZ'), findsOneWidget);
+      expect(find.text('MEMBER NO'), findsOneWidget);
       expect(find.text('M-0042'), findsOneWidget);
       expect(find.text('VALID THRU'), findsOneWidget);
       expect(find.text(DateFormat('MM/yy').format(end)), findsOneWidget);
@@ -230,7 +231,7 @@ void main() {
       tester,
     ) async {
       await _pump(tester, stats: _stats(code: '', plan: null));
-      expect(find.text('MEMBER ID'), findsNothing);
+      expect(find.text('MEMBER NO'), findsNothing);
       expect(find.text('—'), findsOneWidget); // valid thru dash
       expect(find.text('No plan'), findsOneWidget); // chip
       expect(find.textContaining("don't have a plan yet"), findsOneWidget);
